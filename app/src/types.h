@@ -26,7 +26,8 @@ typedef enum {
     VELA_CREATE_MANDATE = 0x11,   /// grant an envelope (requires approval)
     VELA_AUTHORIZE_SPEND = 0x12,  /// the hot path: check, reserve, no tap
     VELA_SETTLE_CONFIRM = 0x13,   /// release the unused headroom
-    VELA_REVOKE_MANDATE = 0x14    /// kill switch (requires approval)
+    VELA_REVOKE_MANDATE = 0x14,   /// kill switch (requires approval)
+    VELA_QUIT_APP = 0x15          /// return to the dashboard, so a host can reload
 } command_e;
 /**
  * Enumeration with parsing state.

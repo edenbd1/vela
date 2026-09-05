@@ -21,6 +21,7 @@
 #include "buffer.h"
 #include "io.h"
 #include "ledger_assert.h"
+#include "os.h"
 
 #include "dispatcher.h"
 #include "constants.h"
@@ -76,6 +77,13 @@ int apdu_dispatcher(const command_t *cmd) {
         // ---- Vela: the mandate surface -------------------------------
         case VELA_GET_MANDATE:
             return handler_get_mandate(cmd->p1);
+
+        // Lets the development loop reload without a manual trip to the
+        // dashboard. Exiting an app is not a privileged action — the
+        // dashboard is the safe state — and `ledgerctl run` has no inverse.
+        case VELA_QUIT_APP:
+            os_sched_exit(0);
+            return 0;
 
         case VELA_CREATE_MANDATE:
         case VELA_AUTHORIZE_SPEND:
