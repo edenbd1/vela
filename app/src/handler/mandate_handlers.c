@@ -22,6 +22,23 @@
 #include "menu.h"
 #include "mandate/mandate.h"
 
+/**
+ * Read exactly `n` bytes and advance.
+ *
+ * Not buffer_move(): despite its signature, that one copies the *entire*
+ * remaining buffer and fails when more bytes follow than the destination
+ * holds. It suits a payload whose last field is the rest of the message,
+ * which is how the boilerplate uses it, but not a multi-field one like
+ * ours, where it refuses on the very first field.
+ */
+static bool read_bytes(buffer_t *b, uint8_t *out, size_t n) {
+    if (!buffer_can_read(b, n)) {
+        return false;
+    }
+    memmove(out, b->ptr + b->offset, n);
+    return buffer_seek_cur(b, n);
+}
+
 /** Map a policy verdict onto the status word the host will see. */
 static uint16_t sw_for(mandate_status_t st) {
     switch (st) {
@@ -86,21 +103,27 @@ int handler_create_mandate(buffer_t *cdata) {
     mandate_t m;
     memset(&m, 0, sizeof(m));
 
-    if (!buffer_move(cdata, m.agent_id, AGENT_ID_LEN) ||       //
-        !buffer_read_u8(cdata, &m.n_services)) {
+    if (!read_bytes(cdata, m.agent_id, AGENT_ID_LEN)) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+    if (!buffer_read_u8(cdata, &m.n_services)) {
         return io_send_sw(SW_VELA_ARGS);
     }
     if (m.n_services == 0 || m.n_services > MANDATE_MAX_SERVICES) {
         return io_send_sw(SW_VELA_ARGS);
     }
     for (uint8_t i = 0; i < m.n_services; i++) {
-        if (!buffer_move(cdata, m.services[i], SERVICE_ID_LEN)) {
+        if (!read_bytes(cdata, m.services[i], SERVICE_ID_LEN)) {
             return io_send_sw(SW_VELA_ARGS);
         }
     }
-    if (!buffer_read_u64(cdata, &m.budget_total, BE) ||   //
-        !buffer_read_u64(cdata, &m.per_call_max, BE) ||   //
-        !buffer_read_u32(cdata, &m.expiry, BE)) {
+    if (!buffer_read_u64(cdata, &m.budget_total, BE)) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+    if (!buffer_read_u64(cdata, &m.per_call_max, BE)) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+    if (!buffer_read_u32(cdata, &m.expiry, BE)) {
         return io_send_sw(SW_VELA_ARGS);
     }
     if (m.budget_total == 0 || m.per_call_max == 0 || m.per_call_max > m.budget_total) {
@@ -139,7 +162,7 @@ int handler_authorize_spend(buffer_t *cdata) {
     uint32_t now = 0;
 
     if (!buffer_read_u8(cdata, &id) ||                          //
-        !buffer_move(cdata, service_id, SERVICE_ID_LEN) ||       //
+        !read_bytes(cdata, service_id, SERVICE_ID_LEN) ||       //
         !buffer_read_u64(cdata, &amount, BE) ||                  //
         !buffer_read_u32(cdata, &now, BE)) {
         return io_send_sw(SW_VELA_ARGS);
