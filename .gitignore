@@ -1,0 +1,22 @@
+# Ledger app build artifacts
+app/build/
+app/bin/
+app/debug/
+app/dep/
+app/src/glyphs.[ch]
+app/glyphs/home_vela_*.gif
+
+# Node
+node_modules/
+dist/
+*.log
+
+# Secrets — jamais commités
+.env
+.env.*
+!.env.example
+*.enc.key
+out/
+
+# OS
+.DS_Store
