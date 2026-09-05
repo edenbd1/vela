@@ -1,0 +1,11 @@
+# Manifest ledgerctl (distinct de ledger_app.toml, qui est le manifest SDK).
+# Clé = target id du device. 0x33300004 = Ledger Flex.
+name = "Vela"
+version = "0.1.0"
+
+["0x33300004"]
+binary = "bin/app.hex"
+dataSize = 776          # 0x308 : _nvram_end - _nvram_data (voir debug/app.map)
+flags = "0x000"
+icon = "icons/app_vela_40px.gif"
+derivationPath = { curves = ["secp256k1"], paths = ["44'/3030'"] }

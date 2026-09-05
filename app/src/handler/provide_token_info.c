@@ -127,8 +127,8 @@ DEFINE_TLV_PARSER(TUID_TLV_TAGS, NULL, parse_dynamic_token_tuid)
  * @return true if coin type is valid
  */
 static bool validate_coin_type(uint32_t coin_type) {
-    return coin_type == BOILERPLATE_SLIP44_COIN_TYPE ||
-           coin_type == BOILERPLATE_SLIP44_COIN_TYPE_HARDENED;
+    return coin_type == VELA_SLIP44_COIN_TYPE ||
+           coin_type == VELA_SLIP44_COIN_TYPE_HARDENED;
 }
 
 int handler_provide_token_info(buffer_t *cdata) {
@@ -160,8 +160,8 @@ int handler_provide_token_info(buffer_t *cdata) {
     // Validate coin type matches SLIP-44 value
     if (!validate_coin_type(tlv_output.coin_type)) {
         PRINTF("Invalid coin type - expected 0x%08x or 0x%08x, got 0x%08x\n",
-               BOILERPLATE_SLIP44_COIN_TYPE,
-               BOILERPLATE_SLIP44_COIN_TYPE_HARDENED,
+               VELA_SLIP44_COIN_TYPE,
+               VELA_SLIP44_COIN_TYPE_HARDENED,
                tlv_output.coin_type);
         return io_send_sw(SW_INVALID_DYNAMIC_TOKEN);
     }

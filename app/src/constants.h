@@ -36,13 +36,13 @@
 #define EXPONENT_SMALLEST_UNIT 3
 
 /**
- * Boilerplate SLIP-44 coin type (TEST coin - 0x8001).
+ * Vela SLIP-44 coin type (Hedera HBAR - 3030).
  * Production apps must use their assigned SLIP-44 coin type.
  * @see https://github.com/satoshilabs/slips/blob/master/slip-0044.md
  */
-#define BOILERPLATE_SLIP44_COIN_TYPE 0x8001
+#define VELA_SLIP44_COIN_TYPE 3030  // Hedera HBAR
 
 /**
- * Boilerplate SLIP-44 coin type with hardened bit (0x80008001).
+ * Vela SLIP-44 coin type with hardened bit (0x80000BD6).
  */
-#define BOILERPLATE_SLIP44_COIN_TYPE_HARDENED (0x80000000 | BOILERPLATE_SLIP44_COIN_TYPE)
+#define VELA_SLIP44_COIN_TYPE_HARDENED (0x80000000 | VELA_SLIP44_COIN_TYPE)

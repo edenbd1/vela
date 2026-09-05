@@ -152,7 +152,7 @@ static int ui_display_transaction_bs_token_choice(bool is_blind_signing, bool is
         // Start blind-signing review flow
         nbgl_useCaseReviewBlindSigning(TYPE_TRANSACTION,
                                        &pairList,
-                                       &ICON_APP_BOILERPLATE,
+                                       &ICON_APP_VELA,
                                        review_text,
                                        NULL,
                                        sign_text,
@@ -162,7 +162,7 @@ static int ui_display_transaction_bs_token_choice(bool is_blind_signing, bool is
         // Start review flow
         nbgl_useCaseReview(TYPE_TRANSACTION,
                            &pairList,
-                           &ICON_APP_BOILERPLATE,
+                           &ICON_APP_VELA,
                            review_text,
                            NULL,
                            sign_text,
