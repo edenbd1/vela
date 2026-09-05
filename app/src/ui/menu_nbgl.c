@@ -73,13 +73,13 @@ static char detail_title[24];
 static char confirm_title[48];
 static uint8_t selected_slot;
 
-static nbgl_content_t home_contents[1];
+static nbgl_content_t home_contents[2];
 static nbgl_content_t detail_contents[2];
 
 #define INFO_NB 2
 static const char *const INFO_TYPES[INFO_NB] = {"Version", "Enforced in"};
 static const char *const INFO_CONTENTS[INFO_NB] = {APPVERSION, "Secure Element"};
-static const nbgl_contentInfoList_t infoList = {
+static nbgl_contentInfoList_t infoList = {
     .nbInfos = INFO_NB,
     .infoTypes = INFO_TYPES,
     .infoContents = INFO_CONTENTS,
@@ -87,7 +87,7 @@ static const nbgl_contentInfoList_t infoList = {
 
 static const nbgl_genericContents_t homeGenericContents = {.callbackCallNeeded = false,
                                                            .contentsList = home_contents,
-                                                           .nbContents = 1};
+                                                           .nbContents = 2};
 static const nbgl_genericContents_t detailGenericContents = {.callbackCallNeeded = false,
                                                              .contentsList = detail_contents,
                                                              .nbContents = 2};
@@ -137,6 +137,11 @@ static void refresh_bars(void) {
     home_contents[0].content.barsList.nbBars = BAR_COUNT;
     home_contents[0].content.barsList.tuneId = NBGL_NO_TUNE;
     home_contents[0].contentActionCallback = home_controls;
+
+    // Second page: what this app is, and where the bounds actually live.
+    home_contents[1].type = INFOS_LIST;
+    home_contents[1].content.infosList = infoList;
+    home_contents[1].contentActionCallback = NULL;
 }
 
 /** Fill the detail rows for one slot. */
@@ -274,12 +279,8 @@ static void open_detail(uint8_t slot) {
 void ui_menu_main(void) {
     refresh_bars();
 
-    nbgl_useCaseHomeAndSettings(APPNAME,
-                                &ICON_APP_HOME,
-                                "Spending mandates,\nenforced on-chip",
-                                INIT_HOME_PAGE,
-                                &homeGenericContents,
-                                &infoList,
-                                NULL,
-                                app_quit);
+    // The app opens straight onto the mandates. Burying the one thing this
+    // device is for behind a settings gear would be the wrong default: the
+    // list *is* the product, and the kill switch has to be one tap away.
+    nbgl_useCaseGenericConfiguration(APPNAME, 0, &homeGenericContents, app_quit);
 }
