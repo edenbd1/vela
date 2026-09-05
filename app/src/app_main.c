@@ -59,13 +59,13 @@ void app_main() {
 
     init_dynamic_token_storage();
 
-    // Initialize the NVM data if required
-    if (N_storage.initialized != 0x01) {
-        internal_storage_t storage;
-        storage.dummy1_allowed = 0x00;
-        storage.dummy2_allowed = 0x00;
-        storage.initialized = 0x01;
-        nvm_write((void *) &N_storage, &storage, sizeof(internal_storage_t));
+    // Bring up the mandate store. Idempotent: on every boot after the first
+    // this is a single NVRAM read, and the envelopes granted in a previous
+    // session are still there — which is the whole point of the device.
+    if (mandate_storage_init()) {
+        PRINTF("VELA: mandate storage initialised (%d slots)\n", MANDATE_COUNT);
+    } else {
+        PRINTF("VELA: %d/%d mandates active\n", mandate_active_count(), MANDATE_COUNT);
     }
 
     for (;;) {

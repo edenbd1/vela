@@ -1,155 +1,129 @@
-
 /*****************************************************************************
- *   Ledger App Boilerplate.
- *   (c) 2020 Ledger SAS.
+ *   Vela — home screen and on-device mandate state.
+ *
+ *  Derived from Ledger App Boilerplate, (c) 2020 Ledger SAS.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
  *****************************************************************************/
+
+#include <stdio.h>
+#include <string.h>
 
 #include "os.h"
 #include "glyphs.h"
 #include "nbgl_use_case.h"
 #include "os_nvm.h"
 #include "os_helpers.h"
+#include "format.h"
 
 #include "globals.h"
 #include "menu.h"
 #include "display.h"
+#include "mandate/mandate.h"
 
-//  -----------------------------------------------------------
-//  ----------------------- HOME PAGE -------------------------
-//  -----------------------------------------------------------
+/** HBAR has 8 decimals: 1 HBAR = 100 000 000 tinybars. */
+#define HBAR_DECIMALS 8
 
 void app_quit(void) {
-    // exit app here
     os_sched_exit(-1);
 }
 
 //  -----------------------------------------------------------
-//  --------------------- SETTINGS MENU -----------------------
+//  --------------------- MANDATE STATE -----------------------
 //  -----------------------------------------------------------
-#define SETTING_INFO_NB 2
-static const char *const INFO_TYPES[SETTING_INFO_NB] = {"Version", "Developer"};
-static const char *const INFO_CONTENTS[SETTING_INFO_NB] = {APPVERSION, "Ledger"};
+//
+//  This page is not decoration. It is the chip reporting its own counters:
+//  what each envelope was granted, and how much of it is left. Nothing on
+//  the host can change these numbers, which is the entire point of Vela.
 
-// settings switches definitions
-enum { DUMMY_SWITCH_1_TOKEN = FIRST_USER_TOKEN, DUMMY_SWITCH_2_TOKEN };
-enum { DUMMY_SWITCH_1_ID = 0, DUMMY_SWITCH_2_ID, SETTINGS_SWITCHES_NB };
+#define SLOT_LABEL_LEN 16
+#define SLOT_VALUE_LEN 48
 
-static nbgl_contentSwitch_t switches[SETTINGS_SWITCHES_NB] = {0};
+static char slot_labels[MANDATE_COUNT][SLOT_LABEL_LEN];
+static char slot_values[MANDATE_COUNT][SLOT_VALUE_LEN];
+static const char *slot_label_ptrs[MANDATE_COUNT];
+static const char *slot_value_ptrs[MANDATE_COUNT];
+
+#define INFO_NB 2
+static const char *const INFO_TYPES[INFO_NB] = {"Version", "Enforced in"};
+static const char *const INFO_CONTENTS[INFO_NB] = {APPVERSION, "Secure Element"};
 
 static const nbgl_contentInfoList_t infoList = {
-    .nbInfos = SETTING_INFO_NB,
+    .nbInfos = INFO_NB,
     .infoTypes = INFO_TYPES,
     .infoContents = INFO_CONTENTS,
 };
 
-static uint8_t initSettingPage;
-static void review_warning_choice(bool confirm);
-static void controls_callback(int token, uint8_t index, int page);
+static nbgl_contentInfoList_t mandateList;
 
-// settings menu definition
 #define SETTING_CONTENTS_NB 1
-static const nbgl_content_t contents[SETTING_CONTENTS_NB] = {
-    {.type = SWITCHES_LIST,
-     .content.switchesList.nbSwitches = SETTINGS_SWITCHES_NB,
-     .content.switchesList.switches = switches,
-     .contentActionCallback = controls_callback}};
+static nbgl_content_t contents[SETTING_CONTENTS_NB];
 
 static const nbgl_genericContents_t settingContents = {.callbackCallNeeded = false,
                                                        .contentsList = contents,
                                                        .nbContents = SETTING_CONTENTS_NB};
 
-// callback for setting warning choice
-static void review_warning_choice(bool confirm) {
-    uint8_t switch_value;
-    if (confirm) {
-        // toggle the switch value
-        switch_value = !N_storage.dummy2_allowed;
-        switches[DUMMY_SWITCH_2_ID].initState = (nbgl_state_t) switch_value;
-        // store the new setting value in NVM
-        nvm_write((void *) &N_storage.dummy2_allowed, &switch_value, 1);
+/**
+ * Render one slot as "<available> of <total> HBAR" or "Free".
+ */
+static void render_slot(uint8_t id) {
+    const mandate_t *m = mandate_get(id);
+
+    snprintf(slot_labels[id], SLOT_LABEL_LEN, "Mandate %u", (unsigned) id);
+
+    if (m == NULL || m->in_use == MANDATE_SLOT_FREE) {
+        snprintf(slot_values[id], SLOT_VALUE_LEN, "Free");
+        return;
     }
 
-    // Reset setting menu to the right page
-    nbgl_useCaseHomeAndSettings(APPNAME,
-                                &ICON_APP_HOME,
-                                NULL,
-                                initSettingPage,
-                                &settingContents,
-                                &infoList,
-                                NULL,
-                                app_quit);
-}
-
-static void controls_callback(int token, uint8_t index, int page) {
-    UNUSED(index);
-
-    initSettingPage = page;
-
-    uint8_t switch_value;
-    if (token == DUMMY_SWITCH_1_TOKEN) {
-        // Dummy 1 switch touched
-        // toggle the switch value
-        switch_value = !N_storage.dummy1_allowed;
-        switches[DUMMY_SWITCH_1_ID].initState = (nbgl_state_t) switch_value;
-        // store the new setting value in NVM
-        nvm_write((void *) &N_storage.dummy1_allowed, &switch_value, 1);
-    } else if (token == DUMMY_SWITCH_2_TOKEN) {
-        // Dummy 2 switch touched
-
-        // in this example we display a warning when the user wants
-        // to activate the dummy 2 setting
-        if (!N_storage.dummy2_allowed) {
-            // Display the warning message and ask the user to confirm
-            nbgl_useCaseChoice(&ICON_APP_WARNING,
-                               "Dummy 2",
-                               "Are you sure to\nallow dummy 2\nin transactions?",
-                               "I understand, confirm",
-                               "Cancel",
-                               review_warning_choice);
-        } else {
-            // toggle the switch value
-            switch_value = !N_storage.dummy2_allowed;
-            switches[DUMMY_SWITCH_2_ID].initState = (nbgl_state_t) switch_value;
-            // store the new setting value in NVM
-            nvm_write((void *) &N_storage.dummy2_allowed, &switch_value, 1);
-        }
+    char left[24] = {0};
+    char total[24] = {0};
+    if (!format_fpu64_trimmed(left, sizeof(left), mandate_available(id), HBAR_DECIMALS) ||
+        !format_fpu64_trimmed(total, sizeof(total), m->budget_total, HBAR_DECIMALS)) {
+        snprintf(slot_values[id], SLOT_VALUE_LEN, "?");
+        return;
     }
+
+    snprintf(slot_values[id],
+             SLOT_VALUE_LEN,
+             "%s of %s HBAR left, %u draws",
+             left,
+             total,
+             (unsigned) m->seq);
 }
 
-// home page definition
+/**
+ * Refresh the on-device view of every slot.
+ *
+ * Called on every return to the home screen, so the numbers a judge reads on
+ * the device are the NVRAM counters as they stand, not a cached snapshot.
+ */
+static void refresh_mandate_view(void) {
+    for (uint8_t i = 0; i < MANDATE_COUNT; i++) {
+        render_slot(i);
+        slot_label_ptrs[i] = slot_labels[i];
+        slot_value_ptrs[i] = slot_values[i];
+    }
+
+    mandateList.nbInfos = MANDATE_COUNT;
+    mandateList.infoTypes = slot_label_ptrs;
+    mandateList.infoContents = slot_value_ptrs;
+
+    contents[0].type = INFOS_LIST;
+    contents[0].content.infosList = mandateList;
+    contents[0].contentActionCallback = NULL;
+}
+
 void ui_menu_main(void) {
-    // Initialize switches data
-    switches[DUMMY_SWITCH_1_ID].initState = (nbgl_state_t) N_storage.dummy1_allowed;
-    switches[DUMMY_SWITCH_1_ID].text = "Dummy 1";
-    switches[DUMMY_SWITCH_1_ID].subText = "Allow dummy 1\nin transactions";
-    switches[DUMMY_SWITCH_1_ID].token = DUMMY_SWITCH_1_TOKEN;
-#ifdef HAVE_PIEZO_SOUND
-    switches[DUMMY_SWITCH_1_ID].tuneId = TUNE_TAP_CASUAL;
-#endif
-
-    switches[DUMMY_SWITCH_2_ID].initState = (nbgl_state_t) N_storage.dummy2_allowed;
-    switches[DUMMY_SWITCH_2_ID].text = "Dummy 2";
-    switches[DUMMY_SWITCH_2_ID].subText = "Allow dummy 2\nin transactions";
-    switches[DUMMY_SWITCH_2_ID].token = DUMMY_SWITCH_2_TOKEN;
-#ifdef HAVE_PIEZO_SOUND
-    switches[DUMMY_SWITCH_2_ID].tuneId = TUNE_TAP_CASUAL;
-#endif
+    refresh_mandate_view();
 
     nbgl_useCaseHomeAndSettings(APPNAME,
                                 &ICON_APP_HOME,
-                                NULL,
+                                "Spending mandates,\nenforced on-chip",
                                 INIT_HOME_PAGE,
                                 &settingContents,
                                 &infoList,

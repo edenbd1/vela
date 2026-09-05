@@ -7,6 +7,7 @@
 #include "io.h"
 #include "types.h"
 #include "constants.h"
+#include "mandate/mandate.h"
 
 #include "os_pic.h"
 
@@ -19,9 +20,8 @@ extern global_ctx_t G_context;
  * Global structure for NVM data storage.
  */
 typedef struct internal_storage_t {
-    uint8_t dummy1_allowed;
-    uint8_t dummy2_allowed;
-    uint8_t initialized;
+    uint32_t magic;                      /// MANDATE_STORAGE_MAGIC once initialised
+    mandate_t mandates[MANDATE_COUNT];   /// the envelopes, persisted across reboots
 } internal_storage_t;
 
 #ifdef TEST

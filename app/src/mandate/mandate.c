@@ -1,0 +1,193 @@
+/*****************************************************************************
+ *   Vela — mandate storage and policy, resident in the Secure Element.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *****************************************************************************/
+
+#include <string.h>
+
+#include "os.h"
+
+#include "mandate.h"
+#include "globals.h"
+
+/**
+ * Constant-time-ish comparison of two service ids.
+ *
+ * Service ids are not secrets, so this is about correctness rather than side
+ * channels; memcmp would do. Kept explicit to make the fixed length obvious.
+ */
+static bool service_eq(const uint8_t *a, const uint8_t *b) {
+    return memcmp(a, b, SERVICE_ID_LEN) == 0;
+}
+
+/** Is `service_id` on this mandate's allowlist? */
+static bool service_allowed(const mandate_t *m, const uint8_t *service_id) {
+    for (uint8_t i = 0; i < m->n_services && i < MANDATE_MAX_SERVICES; i++) {
+        if (service_eq(m->services[i], service_id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool mandate_storage_init(void) {
+    if (N_storage.magic == MANDATE_STORAGE_MAGIC) {
+        return false;
+    }
+
+    // Zero every slot, then stamp the magic last: if we are interrupted
+    // mid-write the magic is still absent and the next boot re-initialises.
+    mandate_t empty;
+    memset(&empty, 0, sizeof(empty));
+    for (uint8_t i = 0; i < MANDATE_COUNT; i++) {
+        nvm_write((void *) &N_storage.mandates[i], (void *) &empty, sizeof(empty));
+    }
+
+    uint32_t magic = MANDATE_STORAGE_MAGIC;
+    nvm_write((void *) &N_storage.magic, (void *) &magic, sizeof(magic));
+    return true;
+}
+
+const mandate_t *mandate_get(uint8_t id) {
+    if (id >= MANDATE_COUNT) {
+        return NULL;
+    }
+    return (const mandate_t *) &N_storage.mandates[id];
+}
+
+uint8_t mandate_active_count(void) {
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < MANDATE_COUNT; i++) {
+        if (N_storage.mandates[i].in_use != MANDATE_SLOT_FREE) {
+            n++;
+        }
+    }
+    return n;
+}
+
+uint64_t mandate_available(uint8_t id) {
+    const mandate_t *m = mandate_get(id);
+    if (m == NULL || m->in_use == MANDATE_SLOT_FREE) {
+        return 0;
+    }
+    uint64_t committed = m->reserved + m->spent;
+    if (committed >= m->budget_total) {
+        return 0;
+    }
+    return m->budget_total - committed;
+}
+
+mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id) {
+    if (m == NULL || out_id == NULL) {
+        return MANDATE_ERR_ARGS;
+    }
+    if (m->n_services == 0 || m->n_services > MANDATE_MAX_SERVICES) {
+        return MANDATE_ERR_ARGS;
+    }
+    if (m->budget_total == 0 || m->per_call_max == 0) {
+        return MANDATE_ERR_ARGS;
+    }
+    if (m->per_call_max > m->budget_total) {
+        return MANDATE_ERR_ARGS;
+    }
+
+    for (uint8_t i = 0; i < MANDATE_COUNT; i++) {
+        if (N_storage.mandates[i].in_use != MANDATE_SLOT_FREE) {
+            continue;
+        }
+
+        mandate_t fresh;
+        memcpy(&fresh, m, sizeof(fresh));
+        fresh.in_use = 1;
+        fresh.reserved = 0;
+        fresh.spent = 0;
+        fresh.seq = 0;
+
+        nvm_write((void *) &N_storage.mandates[i], (void *) &fresh, sizeof(fresh));
+        explicit_bzero(&fresh, sizeof(fresh));
+
+        *out_id = i;
+        return MANDATE_OK;
+    }
+
+    return MANDATE_ERR_NO_SLOT;
+}
+
+mandate_status_t mandate_authorize(uint8_t id,
+                                   const uint8_t *service_id,
+                                   uint64_t amount,
+                                   uint32_t now,
+                                   uint32_t *out_seq) {
+    if (service_id == NULL || out_seq == NULL || amount == 0) {
+        return MANDATE_ERR_ARGS;
+    }
+
+    const mandate_t *m = mandate_get(id);
+    if (m == NULL || m->in_use == MANDATE_SLOT_FREE) {
+        return MANDATE_ERR_NOT_FOUND;
+    }
+
+    // Order matters: the cheapest and most specific refusals first, so the
+    // reason the agent gets back is the most actionable one.
+    if (m->expiry != 0 && now >= m->expiry) {
+        return MANDATE_ERR_EXPIRED;
+    }
+    if (!service_allowed(m, service_id)) {
+        return MANDATE_ERR_SERVICE;
+    }
+    if (amount > m->per_call_max) {
+        return MANDATE_ERR_PER_CALL;
+    }
+    if (amount > mandate_available(id)) {
+        return MANDATE_ERR_BUDGET;
+    }
+
+    // Commit the reservation before returning. The caller signs only after
+    // this write has landed, so a crash in between loses the draw rather
+    // than letting the same headroom be spent twice.
+    uint64_t reserved = m->reserved + amount;
+    uint32_t seq = m->seq + 1;
+    nvm_write((void *) &N_storage.mandates[id].reserved, (void *) &reserved, sizeof(reserved));
+    nvm_write((void *) &N_storage.mandates[id].seq, (void *) &seq, sizeof(seq));
+
+    *out_seq = seq;
+    return MANDATE_OK;
+}
+
+mandate_status_t mandate_settle(uint8_t id, uint64_t quoted, uint64_t actual) {
+    const mandate_t *m = mandate_get(id);
+    if (m == NULL || m->in_use == MANDATE_SLOT_FREE) {
+        return MANDATE_ERR_NOT_FOUND;
+    }
+    if (actual > quoted) {
+        return MANDATE_ERR_SETTLE_AMOUNT;
+    }
+    if (quoted > m->reserved) {
+        return MANDATE_ERR_SETTLE_AMOUNT;
+    }
+
+    uint64_t reserved = m->reserved - quoted;
+    uint64_t spent = m->spent + actual;
+    nvm_write((void *) &N_storage.mandates[id].reserved, (void *) &reserved, sizeof(reserved));
+    nvm_write((void *) &N_storage.mandates[id].spent, (void *) &spent, sizeof(spent));
+
+    return MANDATE_OK;
+}
+
+mandate_status_t mandate_revoke(uint8_t id) {
+    const mandate_t *m = mandate_get(id);
+    if (m == NULL || m->in_use == MANDATE_SLOT_FREE) {
+        return MANDATE_ERR_NOT_FOUND;
+    }
+
+    mandate_t empty;
+    memset(&empty, 0, sizeof(empty));
+    nvm_write((void *) &N_storage.mandates[id], (void *) &empty, sizeof(empty));
+
+    return MANDATE_OK;
+}

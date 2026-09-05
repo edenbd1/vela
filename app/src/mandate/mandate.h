@@ -1,0 +1,150 @@
+/*****************************************************************************
+ *   Vela — a spending mandate enforced inside the Secure Element.
+ *
+ *  A mandate is an envelope granted once, with a physical tap, that bounds
+ *  what an autonomous agent may spend. It lives in NVRAM, so it survives a
+ *  reboot, a redeploy, a replaced agent binary, and root on the host.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *****************************************************************************/
+
+#pragma once
+
+#include <stdint.h>
+#include <stdbool.h>
+
+/**
+ * Number of mandates the device can hold at once.
+ *
+ * Bounded by the 512 bytes of NVRAM the app is loaded with (dataSize).
+ * Three is enough to run several competing agents side by side.
+ */
+#define MANDATE_COUNT 3
+
+/** Services a single mandate may pay. */
+#define MANDATE_MAX_SERVICES 4
+
+/**
+ * Length of a service identifier, in bytes.
+ *
+ * The host hashes the service (its domain, or a venue contract address) with
+ * SHA-256 and truncates to 16 bytes. An allowlist does not need 256 bits of
+ * collision resistance, and NVRAM is the scarce resource here.
+ */
+#define SERVICE_ID_LEN 16
+
+/** Length of an agent identifier (ERC-8004 / HCS-14 digest, truncated). */
+#define AGENT_ID_LEN 20
+
+/** Marks NVRAM as initialised by this app, and this layout version. */
+#define MANDATE_STORAGE_MAGIC 0x56454C41  // "VELA"
+
+/** No mandate occupies this slot. */
+#define MANDATE_SLOT_FREE 0
+
+/**
+ * One spending envelope.
+ *
+ * `budget_total` is split three ways at any instant:
+ *   available = budget_total - reserved - spent
+ *
+ * `reserved` holds authorisations that have been signed but not yet settled.
+ * Without it, N open authorisations of X each would all pass a cap of less
+ * than N*X, because none of them has settled yet — the same way a card
+ * pre-authorisation holds against a balance.
+ */
+typedef struct {
+    uint8_t in_use;                                            /// MANDATE_SLOT_FREE or 1
+    uint8_t n_services;                                        /// entries used in `services`
+    uint8_t agent_id[AGENT_ID_LEN];                            /// who this envelope is for
+    uint8_t services[MANDATE_MAX_SERVICES][SERVICE_ID_LEN];    /// allowlist
+    uint64_t budget_total;                                     /// tinybars
+    uint64_t reserved;                                         /// authorised, not yet settled
+    uint64_t spent;                                            /// settled
+    uint64_t per_call_max;                                     /// ceiling for a single draw
+    uint32_t expiry;                                           /// unix seconds, 0 = never
+    uint32_t seq;                                              /// monotonic, anchors the audit log
+} mandate_t;
+
+/**
+ * Why the chip refused.
+ *
+ * Every refusal is a distinct code so the host can hand the agent a concrete
+ * reason instead of a generic failure, and the agent can correct itself
+ * rather than retry-loop.
+ */
+typedef enum {
+    MANDATE_OK = 0,
+    MANDATE_ERR_NO_SLOT,        /// every slot is occupied
+    MANDATE_ERR_NOT_FOUND,      /// no mandate with that id
+    MANDATE_ERR_EXPIRED,        /// past its expiry
+    MANDATE_ERR_SERVICE,        /// payee is not on the allowlist
+    MANDATE_ERR_PER_CALL,       /// amount exceeds the per-call ceiling
+    MANDATE_ERR_BUDGET,         /// amount exceeds what is left in the envelope
+    MANDATE_ERR_SETTLE_AMOUNT,  /// settling more than was authorised
+    MANDATE_ERR_ARGS,           /// malformed request
+} mandate_status_t;
+
+/**
+ * Initialise NVRAM on first run. Idempotent.
+ *
+ * @return true if the storage was freshly written, false if it already held a
+ *         valid layout from a previous boot.
+ */
+bool mandate_storage_init(void);
+
+/** Read-only view of a slot, or NULL if the id is out of range. */
+const mandate_t *mandate_get(uint8_t id);
+
+/** Slots currently holding a mandate. */
+uint8_t mandate_active_count(void);
+
+/**
+ * Write a new mandate into a free slot.
+ *
+ * The caller is responsible for having obtained the user's physical approval
+ * first: this function only persists what was approved.
+ *
+ * @param[in]  m       the mandate to store; `in_use`, `reserved`, `spent` and
+ *                     `seq` are set by this function and ignored on input.
+ * @param[out] out_id  slot the mandate landed in.
+ */
+mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id);
+
+/**
+ * The hot path: decide whether a draw is inside the envelope, and reserve it.
+ *
+ * Runs entirely on-chip. On success the reservation is committed to NVRAM
+ * *before* the caller is allowed to sign, so a power loss between the two
+ * costs the agent a reservation rather than letting it spend twice.
+ *
+ * @param[in]  id          mandate slot
+ * @param[in]  service_id  SERVICE_ID_LEN bytes identifying the payee
+ * @param[in]  amount      tinybars
+ * @param[in]  now         unix seconds, supplied by the host
+ * @param[out] out_seq     sequence number assigned to this draw
+ */
+mandate_status_t mandate_authorize(uint8_t id,
+                                   const uint8_t *service_id,
+                                   uint64_t amount,
+                                   uint32_t now,
+                                   uint32_t *out_seq);
+
+/**
+ * Close a draw: release the unused headroom, record what actually settled.
+ *
+ * @param[in] id        mandate slot
+ * @param[in] quoted    amount previously reserved by mandate_authorize
+ * @param[in] actual    amount that actually settled; must be <= quoted
+ */
+mandate_status_t mandate_settle(uint8_t id, uint64_t quoted, uint64_t actual);
+
+/** Kill switch. Frees the slot; the agent is powerless immediately. */
+mandate_status_t mandate_revoke(uint8_t id);
+
+/** budget_total - reserved - spent, or 0 if the slot is empty. */
+uint64_t mandate_available(uint8_t id);
