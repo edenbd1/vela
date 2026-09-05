@@ -52,3 +52,17 @@ int ui_display_blind_signed_transaction(void);
  *
  */
 int ui_display_token_transaction(void);
+
+/**
+ * Show the mandate a host is asking to have granted, and wait for a tap.
+ *
+ * Everything the agent will be allowed to do is on this one screen. After
+ * the tap, the bounds live in the Secure Element and no software can widen
+ * them — not the host, not the agent, not this app.
+ */
+int ui_display_create_mandate(void);
+
+/**
+ * Ask the user to confirm killing a mandate.
+ */
+int ui_display_revoke_mandate(uint8_t id);

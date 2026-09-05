@@ -32,6 +32,7 @@
 #include "get_public_key.h"
 #include "sign_tx.h"
 #include "provide_token_info.h"
+#include "mandate_handlers.h"
 
 int apdu_dispatcher(const command_t *cmd) {
     LEDGER_ASSERT(cmd != NULL, "NULL cmd");
@@ -71,6 +72,30 @@ int apdu_dispatcher(const command_t *cmd) {
             buf.offset = 0;
 
             return handler_get_public_key(&buf, (bool) cmd->p1);
+
+        // ---- Vela: the mandate surface -------------------------------
+        case VELA_GET_MANDATE:
+            return handler_get_mandate(cmd->p1);
+
+        case VELA_CREATE_MANDATE:
+        case VELA_AUTHORIZE_SPEND:
+        case VELA_SETTLE_CONFIRM:
+        case VELA_REVOKE_MANDATE:
+            if (!cmd->data) {
+                return io_send_sw(SWO_WRONG_DATA_LENGTH);
+            }
+            buf.ptr = cmd->data;
+            buf.size = cmd->lc;
+            buf.offset = 0;
+
+            if (cmd->ins == VELA_CREATE_MANDATE) {
+                return handler_create_mandate(&buf);
+            } else if (cmd->ins == VELA_AUTHORIZE_SPEND) {
+                return handler_authorize_spend(&buf);
+            } else if (cmd->ins == VELA_SETTLE_CONFIRM) {
+                return handler_settle_confirm(&buf);
+            }
+            return handler_revoke_mandate(&buf);
 
         case SIGN_TX:
         case SIGN_TOKEN_TX:

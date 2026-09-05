@@ -1,0 +1,122 @@
+/*****************************************************************************
+ *   Vela — the screens where a mandate is granted or killed.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *****************************************************************************/
+
+#include <stdio.h>
+#include <string.h>
+
+#include "os.h"
+#include "glyphs.h"
+#include "nbgl_use_case.h"
+#include "format.h"
+
+#include "display.h"
+#include "globals.h"
+#include "sw.h"
+#include "menu.h"
+#include "mandate/mandate.h"
+#include "handler/mandate_handlers.h"
+
+#define HBAR_DECIMALS 8
+
+// What the user actually reads before granting an envelope. These are the
+// only bounds that will ever apply, and after this screen no software —
+// including ours — can widen them.
+static char g_agent[2 * AGENT_ID_LEN + 1];
+static char g_budget[32];
+static char g_per_call[32];
+static char g_services[24];
+static char g_expiry[32];
+
+static nbgl_contentTagValue_t pairs[5];
+static nbgl_contentTagValueList_t pairList;
+
+static char g_revoke_title[48];
+
+static void create_choice(bool confirm) {
+    validate_create_mandate(confirm);
+    nbgl_useCaseReviewStatus(confirm ? STATUS_TYPE_OPERATION_SIGNED : STATUS_TYPE_OPERATION_REJECTED,
+                             ui_menu_main);
+}
+
+static void revoke_choice(bool confirm) {
+    validate_revoke_mandate(confirm);
+    nbgl_useCaseReviewStatus(confirm ? STATUS_TYPE_OPERATION_SIGNED : STATUS_TYPE_OPERATION_REJECTED,
+                             ui_menu_main);
+}
+
+int ui_display_create_mandate(void) {
+    const mandate_t *m = &G_context.pending_mandate;
+
+    explicit_bzero(g_agent, sizeof(g_agent));
+    explicit_bzero(g_budget, sizeof(g_budget));
+    explicit_bzero(g_per_call, sizeof(g_per_call));
+    explicit_bzero(g_services, sizeof(g_services));
+    explicit_bzero(g_expiry, sizeof(g_expiry));
+
+    if (format_hex(m->agent_id, AGENT_ID_LEN, g_agent, sizeof(g_agent)) == -1) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+
+    char amount[32] = {0};
+    if (!format_fpu64_trimmed(amount, sizeof(amount), m->budget_total, HBAR_DECIMALS)) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+    snprintf(g_budget, sizeof(g_budget), "%s HBAR", amount);
+
+    if (!format_fpu64_trimmed(amount, sizeof(amount), m->per_call_max, HBAR_DECIMALS)) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+    snprintf(g_per_call, sizeof(g_per_call), "%s HBAR", amount);
+
+    snprintf(g_services, sizeof(g_services), "%u allowed", (unsigned) m->n_services);
+
+    if (m->expiry == 0) {
+        snprintf(g_expiry, sizeof(g_expiry), "Never");
+    } else {
+        snprintf(g_expiry, sizeof(g_expiry), "unix %u", (unsigned) m->expiry);
+    }
+
+    pairs[0].item = "Agent";
+    pairs[0].value = g_agent;
+    pairs[1].item = "Total budget";
+    pairs[1].value = g_budget;
+    pairs[2].item = "Max per draw";
+    pairs[2].value = g_per_call;
+    pairs[3].item = "Services";
+    pairs[3].value = g_services;
+    pairs[4].item = "Expires";
+    pairs[4].value = g_expiry;
+
+    pairList.nbMaxLinesForValue = 0;
+    pairList.nbPairs = 5;
+    pairList.pairs = pairs;
+    pairList.wrapping = true;
+
+    nbgl_useCaseReview(TYPE_OPERATION,
+                       &pairList,
+                       &ICON_APP_VELA,
+                       "Grant a spending\nmandate",
+                       NULL,
+                       "Grant this mandate?\nThe agent will draw on it\nwithout asking again.",
+                       create_choice);
+    return 0;
+}
+
+int ui_display_revoke_mandate(uint8_t id) {
+    snprintf(g_revoke_title, sizeof(g_revoke_title), "Revoke mandate %u?", (unsigned) id);
+
+    nbgl_useCaseChoice(&ICON_APP_VELA,
+                       g_revoke_title,
+                       "The agent loses every\nremaining draw immediately.",
+                       "Revoke",
+                       "Cancel",
+                       revoke_choice);
+    return 0;
+}
