@@ -31,8 +31,18 @@
 /** Length of an agent identifier (ERC-8004 / HCS-14 digest, truncated). */
 #define AGENT_ID_LEN 20
 
-/** Marks NVRAM as initialised by this app, and this layout version. */
-#define MANDATE_STORAGE_MAGIC 0x56454C41  // "VELA"
+/**
+ * Marks NVRAM as initialised, and pins the layout it was written with.
+ *
+ * Bump the low byte whenever mandate_t changes shape. Without that, an app
+ * upgrade finds a magic it recognises, skips initialisation, and reads the
+ * old bytes through the new struct — silently, and with real money behind
+ * the numbers it gets wrong.
+ *
+ *   0x...01  services as 16-byte hashes
+ *   0x...02  payees as Hedera account numbers
+ */
+#define MANDATE_STORAGE_MAGIC 0x56454C02  // "VEL" + layout version
 
 /** No mandate occupies this slot. */
 #define MANDATE_SLOT_FREE 0
