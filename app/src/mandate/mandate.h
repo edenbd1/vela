@@ -25,17 +25,8 @@
  */
 #define MANDATE_COUNT 3
 
-/** Services a single mandate may pay. */
-#define MANDATE_MAX_SERVICES 4
-
-/**
- * Length of a service identifier, in bytes.
- *
- * The host hashes the service (its domain, or a venue contract address) with
- * SHA-256 and truncates to 16 bytes. An allowlist does not need 256 bits of
- * collision resistance, and NVRAM is the scarce resource here.
- */
-#define SERVICE_ID_LEN 16
+/** Payees a single mandate may pay. */
+#define MANDATE_MAX_PAYEES 4
 
 /** Length of an agent identifier (ERC-8004 / HCS-14 digest, truncated). */
 #define AGENT_ID_LEN 20
@@ -58,10 +49,14 @@
  * pre-authorisation holds against a balance.
  */
 typedef struct {
-    uint8_t in_use;                                            /// MANDATE_SLOT_FREE or 1
-    uint8_t n_services;                                        /// entries used in `services`
-    uint8_t agent_id[AGENT_ID_LEN];                            /// who this envelope is for
-    uint8_t services[MANDATE_MAX_SERVICES][SERVICE_ID_LEN];    /// allowlist
+    uint8_t in_use;                                  /// MANDATE_SLOT_FREE or 1
+    uint8_t n_payees;                                /// entries used in `payees`
+    uint8_t agent_id[AGENT_ID_LEN];                  /// who this envelope is for
+    /// Hedera account numbers this envelope may pay. Not a hash supplied by
+    /// the host: the chip reads the payee out of the transfer it is about to
+    /// encode and matches it here, so the allowlist describes what is
+    /// actually signed rather than what the host claims is being signed.
+    uint64_t payees[MANDATE_MAX_PAYEES];
     uint64_t budget_total;                                     /// tinybars
     uint64_t reserved;                                         /// authorised, not yet settled
     uint64_t spent;                                            /// settled
@@ -82,7 +77,7 @@ typedef enum {
     MANDATE_ERR_NO_SLOT,        /// every slot is occupied
     MANDATE_ERR_NOT_FOUND,      /// no mandate with that id
     MANDATE_ERR_EXPIRED,        /// past its expiry
-    MANDATE_ERR_SERVICE,        /// payee is not on the allowlist
+    MANDATE_ERR_PAYEE,          /// payee is not on the allowlist
     MANDATE_ERR_PER_CALL,       /// amount exceeds the per-call ceiling
     MANDATE_ERR_BUDGET,         /// amount exceeds what is left in the envelope
     MANDATE_ERR_SETTLE_AMOUNT,  /// settling more than was authorised
@@ -123,13 +118,13 @@ mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id);
  * costs the agent a reservation rather than letting it spend twice.
  *
  * @param[in]  id          mandate slot
- * @param[in]  service_id  SERVICE_ID_LEN bytes identifying the payee
+ * @param[in]  payee       Hedera account number receiving the funds
  * @param[in]  amount      tinybars
  * @param[in]  now         unix seconds, supplied by the host
  * @param[out] out_seq     sequence number assigned to this draw
  */
 mandate_status_t mandate_authorize(uint8_t id,
-                                   const uint8_t *service_id,
+                                   uint64_t payee,
                                    uint64_t amount,
                                    uint32_t now,
                                    uint32_t *out_seq);

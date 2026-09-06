@@ -21,6 +21,8 @@
 #include "display.h"
 #include "menu.h"
 #include "mandate/mandate.h"
+#include "hedera/tx.h"
+#include "hedera/sign.h"
 
 /**
  * Read exactly `n` bytes and advance.
@@ -50,8 +52,8 @@ static uint16_t sw_for(mandate_status_t st) {
             return SW_VELA_NOT_FOUND;
         case MANDATE_ERR_EXPIRED:
             return SW_VELA_EXPIRED;
-        case MANDATE_ERR_SERVICE:
-            return SW_VELA_SERVICE;
+        case MANDATE_ERR_PAYEE:
+            return SW_VELA_PAYEE;
         case MANDATE_ERR_PER_CALL:
             return SW_VELA_PER_CALL;
         case MANDATE_ERR_BUDGET:
@@ -106,14 +108,14 @@ int handler_create_mandate(buffer_t *cdata) {
     if (!read_bytes(cdata, m.agent_id, AGENT_ID_LEN)) {
         return io_send_sw(SW_VELA_ARGS);
     }
-    if (!buffer_read_u8(cdata, &m.n_services)) {
+    if (!buffer_read_u8(cdata, &m.n_payees)) {
         return io_send_sw(SW_VELA_ARGS);
     }
-    if (m.n_services == 0 || m.n_services > MANDATE_MAX_SERVICES) {
+    if (m.n_payees == 0 || m.n_payees > MANDATE_MAX_PAYEES) {
         return io_send_sw(SW_VELA_ARGS);
     }
-    for (uint8_t i = 0; i < m.n_services; i++) {
-        if (!read_bytes(cdata, m.services[i], SERVICE_ID_LEN)) {
+    for (uint8_t i = 0; i < m.n_payees; i++) {
+        if (!buffer_read_u64(cdata, &m.payees[i], BE)) {
             return io_send_sw(SW_VELA_ARGS);
         }
     }
@@ -157,30 +159,61 @@ void validate_create_mandate(bool approved) {
 
 int handler_authorize_spend(buffer_t *cdata) {
     uint8_t id = 0;
-    uint8_t service_id[SERVICE_ID_LEN] = {0};
-    uint64_t amount = 0;
+    hedera_transfer_t t = {0};
     uint32_t now = 0;
 
-    if (!buffer_read_u8(cdata, &id) ||                          //
-        !read_bytes(cdata, service_id, SERVICE_ID_LEN) ||       //
-        !buffer_read_u64(cdata, &amount, BE) ||                  //
+    if (!buffer_read_u8(cdata, &id) ||                        //
+        !buffer_read_u64(cdata, &t.payer, BE) ||              //
+        !buffer_read_u64(cdata, &t.payee, BE) ||              //
+        !buffer_read_u64(cdata, &t.node, BE) ||               //
+        !buffer_read_u64(cdata, &t.amount, BE) ||             //
+        !buffer_read_u64(cdata, &t.fee, BE) ||                //
+        !buffer_read_u64(cdata, &t.valid_start_sec, BE) ||    //
+        !buffer_read_u32(cdata, &t.valid_start_nanos, BE) ||  //
+        !buffer_read_u32(cdata, &t.valid_duration_sec, BE) || //
         !buffer_read_u32(cdata, &now, BE)) {
         return io_send_sw(SW_VELA_ARGS);
     }
 
+    // The payee checked here is the same value that goes into the body two
+    // lines down. The host does not get to name one account and have another
+    // one paid.
     uint32_t seq = 0;
-    mandate_status_t st = mandate_authorize(id, service_id, amount, now, &seq);
+    mandate_status_t st = mandate_authorize(id, t.payee, t.amount, now, &seq);
     if (st != MANDATE_OK) {
         PRINTF("VELA: draw refused on mandate %d, code %d\n", id, st);
         return io_send_sw(sw_for(st));
     }
 
-    // seq (4) || available after the reservation (8)
-    uint8_t out[12] = {0};
-    write_u32_be(out, 0, seq);
-    write_u64_be(out, 4, mandate_available(id));
+    uint8_t body[HEDERA_BODY_MAX];
+    int body_len = hedera_build_transfer_body(&t, body, sizeof(body));
+    if (body_len <= 0) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
 
-    return io_send_response_pointer(out, sizeof(out), SWO_SUCCESS);
+    uint8_t sig[HEDERA_SIG_LEN];
+    if (!hedera_sign_body(0, body, (size_t) body_len, sig)) {
+        return io_send_sw(SWO_SECURITY_ISSUE);
+    }
+
+    // seq (4) || available (8) || body_len (1) || body || signature (64)
+    //
+    // The body travels back with the signature because the host must submit
+    // exactly these bytes. It never built them and cannot alter them without
+    // the signature ceasing to match.
+    uint8_t out[4 + 8 + 1 + HEDERA_BODY_MAX + HEDERA_SIG_LEN];
+    size_t off = 0;
+    write_u32_be(out, off, seq);
+    off += 4;
+    write_u64_be(out, off, mandate_available(id));
+    off += 8;
+    out[off++] = (uint8_t) body_len;
+    memcpy(out + off, body, (size_t) body_len);
+    off += (size_t) body_len;
+    memcpy(out + off, sig, HEDERA_SIG_LEN);
+    off += HEDERA_SIG_LEN;
+
+    return io_send_response_pointer(out, off, SWO_SUCCESS);
 }
 
 int handler_settle_confirm(buffer_t *cdata) {
@@ -233,4 +266,12 @@ void validate_revoke_mandate(bool approved) {
 
     mandate_status_t st = mandate_revoke(G_context.pending_revoke_id);
     io_send_sw(sw_for(st));
+}
+
+int handler_get_pubkey(uint8_t index) {
+    uint8_t pk[HEDERA_PUBKEY_LEN];
+    if (!hedera_pubkey(index, pk)) {
+        return io_send_sw(SWO_SECURITY_ISSUE);
+    }
+    return io_send_response_pointer(pk, sizeof(pk), SWO_SUCCESS);
 }

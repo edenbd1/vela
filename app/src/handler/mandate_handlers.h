@@ -26,7 +26,7 @@ int handler_get_mandate(uint8_t id);
 /**
  * Grant an envelope. Requires the user's physical approval.
  *
- * data = agent_id (20) || n_services (1) || services (n * 16) ||
+ * data = agent_id (20) || n_payees (1) || payees (n * 8, BE) ||
  *        budget_total (8, BE) || per_call_max (8, BE) || expiry (4, BE)
  */
 int handler_create_mandate(buffer_t *cdata);
@@ -38,7 +38,11 @@ int handler_create_mandate(buffer_t *cdata);
  * Skipping it here is exactly what that mandate authorised — and it is the
  * chip, not the host, that holds the bounds.
  *
- * data = mandate_id (1) || service_id (16) || amount (8, BE) || now (4, BE)
+ * data = mandate_id (1) || payer (8) || payee (8) || node (8) || amount (8) ||
+ *        fee (8) || valid_start_sec (8) || valid_start_nanos (4) ||
+ *        valid_duration_sec (4) || now (4)   — all big endian
+ *
+ * reply = seq (4) || available (8) || body_len (1) || body || signature (64)
  */
 int handler_authorize_spend(buffer_t *cdata);
 
@@ -61,3 +65,6 @@ void validate_create_mandate(bool approved);
 
 /** Called from the UI once the user has answered a revoke prompt. */
 void validate_revoke_mandate(bool approved);
+
+/** The buyer's Ed25519 public key, so the host can derive its account. */
+int handler_get_pubkey(uint8_t index);

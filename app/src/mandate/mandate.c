@@ -15,20 +15,10 @@
 #include "mandate.h"
 #include "globals.h"
 
-/**
- * Constant-time-ish comparison of two service ids.
- *
- * Service ids are not secrets, so this is about correctness rather than side
- * channels; memcmp would do. Kept explicit to make the fixed length obvious.
- */
-static bool service_eq(const uint8_t *a, const uint8_t *b) {
-    return memcmp(a, b, SERVICE_ID_LEN) == 0;
-}
-
-/** Is `service_id` on this mandate's allowlist? */
-static bool service_allowed(const mandate_t *m, const uint8_t *service_id) {
-    for (uint8_t i = 0; i < m->n_services && i < MANDATE_MAX_SERVICES; i++) {
-        if (service_eq(m->services[i], service_id)) {
+/** Is this Hedera account on the mandate's allowlist? */
+static bool payee_allowed(const mandate_t *m, uint64_t payee) {
+    for (uint8_t i = 0; i < m->n_payees && i < MANDATE_MAX_PAYEES; i++) {
+        if (m->payees[i] == payee) {
             return true;
         }
     }
@@ -86,7 +76,7 @@ mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id) {
     if (m == NULL || out_id == NULL) {
         return MANDATE_ERR_ARGS;
     }
-    if (m->n_services == 0 || m->n_services > MANDATE_MAX_SERVICES) {
+    if (m->n_payees == 0 || m->n_payees > MANDATE_MAX_PAYEES) {
         return MANDATE_ERR_ARGS;
     }
     if (m->budget_total == 0 || m->per_call_max == 0) {
@@ -119,11 +109,11 @@ mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id) {
 }
 
 mandate_status_t mandate_authorize(uint8_t id,
-                                   const uint8_t *service_id,
+                                   uint64_t payee,
                                    uint64_t amount,
                                    uint32_t now,
                                    uint32_t *out_seq) {
-    if (service_id == NULL || out_seq == NULL || amount == 0) {
+    if (out_seq == NULL || amount == 0) {
         return MANDATE_ERR_ARGS;
     }
 
@@ -137,8 +127,8 @@ mandate_status_t mandate_authorize(uint8_t id,
     if (m->expiry != 0 && now >= m->expiry) {
         return MANDATE_ERR_EXPIRED;
     }
-    if (!service_allowed(m, service_id)) {
-        return MANDATE_ERR_SERVICE;
+    if (!payee_allowed(m, payee)) {
+        return MANDATE_ERR_PAYEE;
     }
     if (amount > m->per_call_max) {
         return MANDATE_ERR_PER_CALL;

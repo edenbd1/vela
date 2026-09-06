@@ -27,7 +27,8 @@ typedef enum {
     VELA_AUTHORIZE_SPEND = 0x12,  /// the hot path: check, reserve, no tap
     VELA_SETTLE_CONFIRM = 0x13,   /// release the unused headroom
     VELA_REVOKE_MANDATE = 0x14,   /// kill switch (requires approval)
-    VELA_QUIT_APP = 0x15          /// return to the dashboard, so a host can reload
+    VELA_QUIT_APP = 0x15,         /// return to the dashboard, so a host can reload
+    VELA_GET_PUBKEY = 0x16        /// the buyer's Ed25519 key, to derive its account
 } command_e;
 /**
  * Enumeration with parsing state.

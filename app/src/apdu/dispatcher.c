@@ -78,6 +78,9 @@ int apdu_dispatcher(const command_t *cmd) {
         case VELA_GET_MANDATE:
             return handler_get_mandate(cmd->p1);
 
+        case VELA_GET_PUBKEY:
+            return handler_get_pubkey(cmd->p1);
+
         // Lets the development loop reload without a manual trip to the
         // dashboard. Exiting an app is not a privileged action — the
         // dashboard is the safe state — and `ledgerctl run` has no inverse.

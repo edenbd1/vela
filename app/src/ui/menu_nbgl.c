@@ -160,7 +160,7 @@ static void refresh_detail(uint8_t id) {
     snprintf(detail_labels[2], DETAIL_LABEL_LEN, "Available");
     snprintf(detail_labels[3], DETAIL_LABEL_LEN, "Reserved");
     snprintf(detail_labels[4], DETAIL_LABEL_LEN, "Draws");
-    snprintf(detail_labels[5], DETAIL_LABEL_LEN, "Services");
+    snprintf(detail_labels[5], DETAIL_LABEL_LEN, "Payees");
 
     if (m == NULL || m->in_use == MANDATE_SLOT_FREE) {
         snprintf(detail_values[0], DETAIL_VALUE_LEN, "None");
@@ -190,7 +190,7 @@ static void refresh_detail(uint8_t id) {
     snprintf(detail_values[3], DETAIL_VALUE_LEN, "%s HBAR", amount);
 
     snprintf(detail_values[4], DETAIL_VALUE_LEN, "%u", (unsigned) m->seq);
-    snprintf(detail_values[5], DETAIL_VALUE_LEN, "%u allowed", (unsigned) m->n_services);
+    snprintf(detail_values[5], DETAIL_VALUE_LEN, "%u allowed", (unsigned) m->n_payees);
 }
 
 /** Wipe every slot. The panic button. */

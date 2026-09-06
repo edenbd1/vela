@@ -75,7 +75,7 @@ int ui_display_create_mandate(void) {
     }
     snprintf(g_per_call, sizeof(g_per_call), "%s HBAR", amount);
 
-    snprintf(g_services, sizeof(g_services), "%u allowed", (unsigned) m->n_services);
+    snprintf(g_services, sizeof(g_services), "%u account(s)", (unsigned) m->n_payees);
 
     if (m->expiry == 0) {
         snprintf(g_expiry, sizeof(g_expiry), "Never");
@@ -89,7 +89,7 @@ int ui_display_create_mandate(void) {
     pairs[1].value = g_budget;
     pairs[2].item = "Max per draw";
     pairs[2].value = g_per_call;
-    pairs[3].item = "Services";
+    pairs[3].item = "May pay";
     pairs[3].value = g_services;
     pairs[4].item = "Expires";
     pairs[4].value = g_expiry;

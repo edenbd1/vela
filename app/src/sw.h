@@ -11,7 +11,7 @@
 #define SW_VELA_NO_SLOT       0xB101  /// every mandate slot is occupied
 #define SW_VELA_NOT_FOUND     0xB102  /// no mandate in that slot
 #define SW_VELA_EXPIRED       0xB103  /// the envelope has expired
-#define SW_VELA_SERVICE       0xB104  /// payee is not on the allowlist
+#define SW_VELA_PAYEE         0xB104  /// payee is not on the allowlist
 #define SW_VELA_PER_CALL      0xB105  /// over the per-call ceiling
 #define SW_VELA_BUDGET        0xB106  /// over what is left in the envelope
 #define SW_VELA_SETTLE_AMOUNT 0xB107  /// settling more than was authorised
