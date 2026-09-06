@@ -51,6 +51,17 @@
 #define AGENT_ID_LEN 20
 
 /**
+ * A human-readable name for the agent, including the terminator.
+ *
+ * The identifier is twenty bytes and reads as `a1a1a1a1...` on a screen,
+ * which tells the person holding the device nothing about which agent they
+ * are about to cut off. A fleet is only governable if its members are
+ * distinguishable, so the mandate carries a label the human chose when they
+ * granted it.
+ */
+#define MANDATE_LABEL_LEN 16
+
+/**
  * Marks NVRAM as initialised, and pins the layout it was written with.
  *
  * Bump the low byte whenever mandate_t changes shape. Without that, an app
@@ -61,8 +72,9 @@
  *   0x...01  services as 16-byte hashes
  *   0x...02  payees as Hedera account numbers
  *   0x...03  contract calls: callee allowlist, selectors, recipient binding
+ *   0x...04  a human-readable label per mandate
  */
-#define MANDATE_STORAGE_MAGIC 0x56454C03  // "VEL" + layout version
+#define MANDATE_STORAGE_MAGIC 0x56454C04  // "VEL" + layout version
 
 /** No mandate occupies this slot. */
 #define MANDATE_SLOT_FREE 0
@@ -82,6 +94,7 @@ typedef struct {
     uint8_t in_use;                                  /// MANDATE_SLOT_FREE or 1
     uint8_t n_payees;                                /// entries used in `payees`
     uint8_t agent_id[AGENT_ID_LEN];                  /// who this envelope is for
+    char label[MANDATE_LABEL_LEN];                   /// what the human calls it
     /// Hedera account numbers this envelope may pay. Not a hash supplied by
     /// the host: the chip reads the payee out of the transfer it is about to
     /// encode and matches it here, so the allowlist describes what is

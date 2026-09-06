@@ -100,7 +100,8 @@ int handler_get_mandate(uint8_t id) {
     // is gone — the host sees one stale byte and a success status, which
     // looks like a protocol mismatch rather than a dangling pointer.
     static uint8_t out[1 + AGENT_ID_LEN + 8 * 5 + 4 + 4 + 1 + 8 * MANDATE_MAX_PAYEES +
-                      1 + 8 * MANDATE_MAX_CONTRACTS + 1 + 4 * MANDATE_MAX_SELECTORS + 1];
+                      1 + 8 * MANDATE_MAX_CONTRACTS + 1 + 4 * MANDATE_MAX_SELECTORS + 1 +
+                      1 + MANDATE_LABEL_LEN];
     memset(out, 0, sizeof(out));
     size_t off = 0;
 
@@ -148,6 +149,13 @@ int handler_get_mandate(uint8_t id) {
     }
     out[off++] = m->recipient_arg;
 
+    // The label last, length-prefixed, so a reader built against any earlier
+    // layout finds every field it knew where it expects it.
+    uint8_t n_label = (uint8_t) strnlen(m->label, MANDATE_LABEL_LEN - 1);
+    out[off++] = n_label;
+    memcpy(out + off, m->label, n_label);
+    off += n_label;
+
     return io_send_response_pointer(out, off, SWO_SUCCESS);
 }
 
@@ -185,6 +193,36 @@ int handler_create_mandate(buffer_t *cdata) {
     if (m->budget_total == 0 || m->per_call_max == 0 ||
         m->per_call_max > m->budget_total) {
         return io_send_sw(SW_VELA_ARGS);
+    }
+
+    // --- label, optional --------------------------------------------------
+    //
+    // Read before the contract terms because it is the field most callers
+    // will set and fewest will omit. Absent means the screen falls back to
+    // the slot number, which is honest but useless for telling two agents
+    // apart — so the default is derived from the agent id rather than left
+    // blank.
+    uint8_t label_len = 0;
+    if (buffer_can_read(cdata, 1)) {
+        if (!buffer_read_u8(cdata, &label_len) || label_len >= MANDATE_LABEL_LEN) {
+            return io_send_sw(SW_VELA_ARGS);
+        }
+        if (label_len > 0 && !read_bytes(cdata, (uint8_t *) m->label, label_len)) {
+            return io_send_sw(SW_VELA_ARGS);
+        }
+        m->label[label_len] = '\0';
+        // Anything that is not plain printable ASCII is refused rather than
+        // rendered. A label is shown on a trusted display, and a trusted
+        // display that renders whatever it is handed is not one.
+        for (uint8_t i = 0; i < label_len; i++) {
+            if (m->label[i] < 0x20 || m->label[i] > 0x7e) {
+                return io_send_sw(SW_VELA_ARGS);
+            }
+        }
+    }
+    if (m->label[0] == '\0') {
+        snprintf(m->label, MANDATE_LABEL_LEN, "agent %02x%02x",
+                 m->agent_id[0], m->agent_id[1]);
     }
 
     // --- contract terms, optional -----------------------------------------

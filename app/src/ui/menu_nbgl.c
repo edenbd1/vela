@@ -96,11 +96,21 @@ static void home_controls(int token, uint8_t index, int page);
 static void detail_controls(int token, uint8_t index, int page);
 static void open_detail(uint8_t slot);
 
-/** "4.2 of 10 HBAR left" for a live slot, "Free" otherwise. */
+/**
+ * One row of the fleet.
+ *
+ * The name first, because a row is read in order to decide whether to cut
+ * that agent off, and "Mandate 1" answers none of that. Then what is left of
+ * its envelope, which is the other half of the same decision.
+ *
+ * Everything here comes out of NVRAM. The host is not consulted, and cannot
+ * be: an agent that reported its own state to this screen would be an agent
+ * describing itself to the one thing that is supposed to check it.
+ */
 static void format_slot_summary(uint8_t id, char *out, size_t out_len) {
     const mandate_t *m = mandate_get(id);
     if (m == NULL || m->in_use == MANDATE_SLOT_FREE) {
-        snprintf(out, out_len, "Mandate %u  -  Free", (unsigned) id);
+        snprintf(out, out_len, "Slot %u  -  free", (unsigned) id);
         return;
     }
 
@@ -108,10 +118,10 @@ static void format_slot_summary(uint8_t id, char *out, size_t out_len) {
     char total[24] = {0};
     if (!format_fpu64_trimmed(left, sizeof(left), mandate_available(id), HBAR_DECIMALS) ||
         !format_fpu64_trimmed(total, sizeof(total), m->budget_total, HBAR_DECIMALS)) {
-        snprintf(out, out_len, "Mandate %u", (unsigned) id);
+        snprintf(out, out_len, "%s", m->label);
         return;
     }
-    snprintf(out, out_len, "Mandate %u  -  %s/%s HBAR", (unsigned) id, left, total);
+    snprintf(out, out_len, "%s  -  %s/%s HBAR", m->label, left, total);
 }
 
 /**
@@ -170,11 +180,13 @@ static void refresh_detail(uint8_t id) {
         return;
     }
 
-    // First four bytes of the agent id are enough to tell agents apart on
-    // screen; the host holds the full identifier.
+    // The name the human gave it, then enough of the identifier to tie that
+    // name to something the host can look up. A name alone would be a label
+    // anyone could reuse; an identifier alone is unreadable.
     snprintf(detail_values[0],
              DETAIL_VALUE_LEN,
-             "%02x%02x%02x%02x...",
+             "%s  (%02x%02x%02x%02x)",
+             m->label,
              m->agent_id[0],
              m->agent_id[1],
              m->agent_id[2],
