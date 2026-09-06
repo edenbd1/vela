@@ -244,6 +244,52 @@ will reach for `buffer_move` first.
 
 ---
 
+## 10. `@ledgerhq/ledger-key-ring-protocol` cannot be installed from npm
+
+The SDK for the feature this track asks people to build on does not install.
+
+```
+npm error 404 Not Found - GET https://registry.npmjs.org/@ledgerhq%2flive-dmk-speculos
+npm error 404  '@ledgerhq/live-dmk-speculos@0.10.0' could not be found
+```
+
+The chain is `@ledgerhq/ledger-key-ring-protocol@0.15.2` →
+`@ledgerhq/speculos-transport@0.10.6` → `@ledgerhq/live-dmk-speculos@0.10.0`,
+and the last one is not on the registry at any version.
+
+**Workaround:** `@ledgerhq/hw-ledger-key-ring-protocol@0.10.7` installs
+cleanly on its own and is where the protocol lives — `AddMember`,
+`EditMember`, `PublishKey`, `Permissions`, `SoftwareDevice`, `CommandStream`.
+Building against it turned out to be the better choice anyway. But a
+developer following the obvious path hits a 404 on their first command.
+
+**Suggested fix:** publish `@ledgerhq/live-dmk-speculos`, or move
+`speculos-transport` to an optional/dev dependency. Nothing about a
+production key-ring integration needs an emulator transport at install time.
+
+---
+
+## 11. The ESM build of `hw-ledger-key-ring-protocol` does not load in Node
+
+`lib-es/` uses extensionless relative imports (`from "./Device"`), which
+bundlers resolve and native Node ESM does not:
+
+```
+ERR_MODULE_NOT_FOUND
+url: '.../hw-ledger-key-ring-protocol/lib-es/Device'
+```
+
+The failure names a path *inside the package*, which reads like a broken
+install rather than a packaging choice.
+
+**Workaround:** use the CommonJS build — drop `"type": "module"` and
+`require()` it.
+
+**Suggested fix:** emit extensions in the ESM build, or set `"exports"` so
+Node picks `lib/` automatically.
+
+---
+
 ## Tutorial we would have wanted
 
 Nothing linked from the "getting started" path covers the actual arc of writing
@@ -263,3 +309,5 @@ findings 1, 2, 6 and 7 would have saved this entire evening.
 5. Turn off device auto-lock while developing.
 6. Do not use `buffer_move` for anything but a trailing field.
 7. NVRAM is per app **name** — renaming your app wipes its persistent state.
+8. Depend on `@ledgerhq/hw-ledger-key-ring-protocol`, not the Live wrapper.
+9. Use its CommonJS build.

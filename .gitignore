@@ -20,3 +20,6 @@ out/
 
 # OS
 .DS_Store
+
+# Member private key for the Key Ring — never commit
+host/ring/.member.json

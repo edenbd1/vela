@@ -1,0 +1,7 @@
+{
+  "name": "vela-ring",
+  "private": true,
+  "dependencies": {
+    "@ledgerhq/hw-ledger-key-ring-protocol": "0.10.7"
+  }
+}
