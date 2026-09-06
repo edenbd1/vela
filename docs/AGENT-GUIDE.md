@@ -1,6 +1,8 @@
-# Recipe — Paying for things under a hardware mandate
+# Paying for things under a hardware mandate
 
-**Service:** Vela Gateway
+A guide for an agent — or for whoever is writing its system prompt — using the
+Vela Gateway (`hedera/gateway.mjs`).
+
 **When to reach for it:** you need to buy something and you do not hold a key.
 
 ---
@@ -73,6 +75,17 @@ The four terminal refusals, and the only sensible response to each:
 | `payee_not_allowed` | that account is not on the mandate | do not look for another route to it — there isn't one |
 | `expired` | the envelope ran out of time | stop; a human must grant a new one |
 | `no_mandate` | nothing granted | stop; a human must grant one on the device |
+
+One refusal is **not** terminal, and the difference matters:
+
+| `reason` | | |
+|---|---|---|
+| `advisor_denied` | a confidential workflow running in an enclave flagged this payee | try again later, or pick another counterparty — this is a live opinion about the world, not a fixed rule, and the next run may reverse it |
+
+The chip is deterministic: retrying its refusal is pure waste. The advisor is
+not. Treating them the same way in either direction is a mistake — retry the
+chip and you loop, abandon the advisor's verdict permanently and you drop a
+counterparty over a signal that was true for one afternoon.
 
 `over_budget` and `payee_not_allowed` in particular are worth reading as
 information about the world rather than obstacles. If a payee is not on the

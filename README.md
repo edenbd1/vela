@@ -192,8 +192,10 @@ way in the output too. A verifier that overclaims is worse than none.
 app/         BOLOS application for Ledger Flex — the mandate, the on-chip
              Hedera serialiser, the NBGL control panel  (~4.4k lines of C)
 hedera/      x402-gated seller, the Ledger-backed x402 signer, HCS anchoring,
-             the public verifier, the end-to-end demo, and the agent gateway
-bazantic/    the Recipe an agent reads, and the A/B test that measures it
+             the public verifier, the end-to-end demo, the agent gateway, and
+             the private risk feed the enclave screens against
+cre/         Chainlink CRE workflow — the confidential spend advisor, running
+             in an AWS Nitro enclave
 host/        APDU bridge, device probes, the software control arm, Key Ring
              enrolment
 scripts/     build, load, Speculos, the persistence test, the experiment
@@ -238,17 +240,76 @@ The rule that surface is built around: **a refusal comes back as a 200 with a
 reason and `"terminal": true`, never a 500.** An agent that receives a 500
 retries, and retrying a hardware refusal is the worst thing it can do here —
 the chip is deterministic, so the second attempt fails identically and a turn
-is gone. See [`bazantic/`](bazantic/).
+is gone. See [`docs/AGENT-GUIDE.md`](docs/AGENT-GUIDE.md).
 
 `./scripts/experiment.sh` runs the controlled experiment.
 `./scripts/persistence-test.sh` tears the app down and proves the envelope
 survived.
+`./scripts/advisor.sh` runs the confidential workflow and keeps its verdict.
+`./scripts/composition.sh` shows the enclave narrowing the mandate, and
+failing to widen it.
 
 Two things that will cost you an hour if nobody tells you: **quit Ledger
 Wallet** before touching the device (it holds the HID handle), and note that
 `scripts/build.sh` mounts the *repository root*, not `app/` — the Ledger SDK
 calls `git rev-parse --show-toplevel` and silently drops every source file if
 it does not find a git repository.
+
+## The second boundary
+
+The mandate in the chip is hard, and it is static. The Secure Element has no
+network and no clock beyond an expiry, so it cannot learn that an account which
+was reputable when the human granted the envelope is a drainer today. That is a
+real gap — and closing it on the host would close it in the one place this
+whole project argues you cannot trust.
+
+So it is closed in an enclave instead. [`cre/spend-advisor`](cre/spend-advisor)
+is a Chainlink CRE workflow declared with `handlerInTee` against AWS Nitro in
+`us-west-2`. It screens the mandate's payees against a private risk feed and
+returns a verdict.
+
+Two sensitive things meet in that handler, and the second is the one that is
+easy to miss:
+
+- **The feed's API key.** It belongs to the operator, not to whichever node
+  happens to pick up the trigger.
+- **The questions.** Even against a feed with public answers, asking about four
+  specific accounts tells a listener exactly which accounts an autonomous agent
+  is authorised to pay — the shortlist an attacker wants in order to know where
+  to aim. Confidential HTTP keeps the query pattern inside the enclave, not
+  just the key.
+
+**The composition is one-directional, and that is the whole point:**
+
+> The enclave can narrow what the chip allows. It can never widen it.
+
+`./scripts/composition.sh` tests both halves, because proving only the first
+would be marketing:
+
+```console
+A. The enclave turns against a payee the chip still allows.
+     enclave: deny 0.0.10388937: adverse media, under review (score 88)
+     the agent asks for the cheap tier, exactly as before:
+       advisor_denied
+     nothing changed on the device. Only what the enclave knows.
+
+B. The same request, once the enclave clears the payee.
+       paid, tx 0.0.7162784@1788702885.000000000
+
+C. The enclave blesses an account the chip has never heard of.
+     enclave: allow 0.0.77777777  no adverse signal (score 3)
+     chip:    0xb104  payee_not_allowed
+```
+
+C is the one that matters. A compromised advisor costs availability. It never
+costs authority — the mandate lives in NVRAM behind a hardware boundary, and
+nothing the enclave emits is an input to it.
+
+The gateway reports advisor refusals as `terminal: false`, unlike the chip's.
+The chip is deterministic and will refuse identically forever; the advisor
+holds a live opinion the next run may reverse. Marking it terminal would have
+an agent abandon a counterparty for good over a signal that was true for one
+afternoon.
 
 ## Notes for Ledger
 
@@ -274,6 +335,8 @@ shipping a false report.
 
 [Ledger](https://developers.ledger.com) BOLOS/NBGL and the Ledger Key Ring
 Protocol · [Hedera](https://hedera.com) for settlement and consensus ·
-[x402](https://x402.org) with the Blocky402 facilitator.
+[x402](https://x402.org) with the Blocky402 facilitator ·
+[Chainlink CRE](https://docs.chain.link/cre) Confidential Workflows for the
+enclave half.
 
 `app/` derives from [`LedgerHQ/app-boilerplate`](https://github.com/LedgerHQ/app-boilerplate), Apache-2.0.
