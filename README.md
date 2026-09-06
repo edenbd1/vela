@@ -131,7 +131,7 @@ Ledger Flex.
 |---|---|
 | Payment signed in the Secure Element | account [`0.0.10392125`](https://hashscan.io/testnet/account/0.0.10392125) — its private key exists on no disk here |
 | x402 settlement | Blocky402 facilitator, `CRYPTOTRANSFER`, `result: SUCCESS` |
-| Public audit log | topic [`0.0.10392143`](https://hashscan.io/testnet/topic/0.0.10392143) |
+| Public audit log | topic [`0.0.10392665`](https://hashscan.io/testnet/topic/0.0.10392665) |
 | On-chip refusals | `payee_not_allowed`, `over_per_call`, `over_budget` |
 | NVRAM persistence | *IDENTICAL — the envelope survived a full application restart* |
 
@@ -145,25 +145,32 @@ path to a signature runs through a mandate check in the chip.
 local state, no trust in this repo, no trust in the host that produced the log.
 
 ```console
-$ node hedera/verify.mjs 0.0.10392143
+$ node hedera/verify.mjs 0.0.10392665
 
-topic   0.0.10392143
+topic   0.0.10392665
 source  https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
 
-mandate 0f39b1086dbf4421…  granted 1788698798  3 draw(s)
+mandate 0f39b1086dbf4421…  granted 1788700159  4 draw(s)
   ok    seq 1 follows 0 with no gap
   ok    remaining 49000000 is not negative
   ok    seq 2 follows 1 with no gap
   ok    remaining 48000000 = 49000000 - 1000000
+  ok    remaining 48000000 is not negative
   ok    seq 3 follows 2 with no gap
   ok    remaining 40000000 = 48000000 - 8000000
+  ok    remaining 40000000 is not negative
+  ok    seq 4 follows 3 with no gap
+  ok    remaining 39000000 = 40000000 - 1000000
+  ok    remaining 39000000 is not negative
   ok    draw 1: 1000000 tinybars reached 0.0.10388937
   ok    draw 2: 1000000 tinybars reached 0.0.10388937
   ok    draw 3: 8000000 tinybars reached 0.0.10388937
+  ok    draw 4: 1000000 tinybars reached 0.0.10388937
   key   the debited account is under 0ce5cadc98d00e1b…
   ok    draw 1: signed by the device, and the numbers match
   ok    draw 2: signed by the device, and the numbers match
   ok    draw 3: signed by the device, and the numbers match
+  ok    draw 4: signed by the device, and the numbers match
   → complete and consistent
 ```
 
@@ -185,7 +192,8 @@ way in the output too. A verifier that overclaims is worse than none.
 app/         BOLOS application for Ledger Flex — the mandate, the on-chip
              Hedera serialiser, the NBGL control panel  (~4.4k lines of C)
 hedera/      x402-gated seller, the Ledger-backed x402 signer, HCS anchoring,
-             the public verifier, the end-to-end demo
+             the public verifier, the end-to-end demo, and the agent gateway
+bazantic/    the Recipe an agent reads, and the A/B test that measures it
 host/        APDU bridge, device probes, the software control arm, Key Ring
              enrolment
 scripts/     build, load, Speculos, the persistence test, the experiment
@@ -223,6 +231,14 @@ node hedera/demo.mjs                   # grant once on the device, then N
                                        # autonomous paid draws, each anchored
 node hedera/verify.mjs $HEDERA_TOPIC_ID   # check the log from the mirror node
 ```
+
+An agent does not run scripts, so `hedera/gateway.mjs` exposes the same thing
+as three tools it can call — `GET /envelope`, `POST /pay`, `GET /receipts`.
+The rule that surface is built around: **a refusal comes back as a 200 with a
+reason and `"terminal": true`, never a 500.** An agent that receives a 500
+retries, and retrying a hardware refusal is the worst thing it can do here —
+the chip is deterministic, so the second attempt fails identically and a turn
+is gone. See [`bazantic/`](bazantic/).
 
 `./scripts/experiment.sh` runs the controlled experiment.
 `./scripts/persistence-test.sh` tears the app down and proves the envelope

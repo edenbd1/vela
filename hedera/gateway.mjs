@@ -34,7 +34,7 @@ import { currentInstance } from "./instance.mjs";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
 
-const NETWORK = "hedera-testnet";
+const NETWORK = "hedera:testnet";
 const PORT = Number(process.env.GATEWAY_PORT ?? 4030);
 const SLOT = 0;
 const STATE_LEN = 69;

@@ -6,7 +6,7 @@
  *
  *   node topic.mjs
  */
-import { appendFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,7 +33,18 @@ const { topicId } = await (
 
 console.log(`topic     ${topicId.toString()}`);
 console.log(`hashscan  https://hashscan.io/testnet/topic/${topicId.toString()}`);
-appendFileSync(join(ROOT, ".env"), `\nHEDERA_TOPIC_ID=${topicId.toString()}\n`);
+// Replace, do not append. Two HEDERA_TOPIC_ID lines in one file is a coin
+// flip decided by dotenv's last-wins rule, and the loser is invisible: the
+// anchoring writes to one topic while a reader points at the other, and the
+// log looks empty rather than misrouted. The old value stays as a comment
+// because a topic that was written to is worth being able to find again.
+const envPath = join(ROOT, ".env");
+const env = readFileSync(envPath, "utf8");
+const line = `HEDERA_TOPIC_ID=${topicId.toString()}`;
+writeFileSync(envPath, /^HEDERA_TOPIC_ID=.*$/m.test(env)
+  ? env.replace(/^HEDERA_TOPIC_ID=.*$/m,
+      (m) => `# superseded, kept for provenance: ${m}\n${line}`)
+  : `${env.trimEnd()}\n${line}\n`);
 console.log("written to .env");
 
 client.close();
