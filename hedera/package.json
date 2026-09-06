@@ -1,0 +1,20 @@
+{
+  "name": "vela-hedera",
+  "private": true,
+  "type": "module",
+  "description": "x402-gated services on Hedera, and the agent that pays for them under a hardware mandate",
+  "scripts": {
+    "accounts": "node accounts.mjs",
+    "seller": "node seller.mjs",
+    "buy": "node buy.mjs"
+  },
+  "dependencies": {
+    "@hiero-ledger/sdk": "2.85.0",
+    "@x402/core": "2.24.0",
+    "@x402/express": "2.24.0",
+    "@x402/fetch": "2.24.0",
+    "@x402/hedera": "2.24.0",
+    "dotenv": "^16.4.5",
+    "express": "^5.0.1"
+  }
+}

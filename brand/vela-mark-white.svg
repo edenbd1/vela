@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Vela">
+  <title>Vela</title>
+  <!--
+    Four chevrons, apex at the centre, opening outward.
+    One arm, rotated four times. Everything is one path so the mark scales
+    down to a 40px device icon without losing its silhouette.
+  -->
+  <defs>
+    <path id="vela-arm" d="M 44,18 L 74,18 L 100,54 L 126,18 L 156,18 L 100,110 Z"/>
+  </defs>
+  <g fill="#ffffff">
+    <use href="#vela-arm"/>
+    <use href="#vela-arm" transform="rotate(90 100 100)"/>
+    <use href="#vela-arm" transform="rotate(180 100 100)"/>
+    <use href="#vela-arm" transform="rotate(270 100 100)"/>
+  </g>
+</svg>
