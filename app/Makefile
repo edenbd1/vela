@@ -96,7 +96,18 @@ DEBUG = 1
 ########################################
 # Application communication interfaces #
 ########################################
-ENABLE_BLUETOOTH = 1
+# Off, and not by preference.
+#
+# The boilerplate ships this as 1. On Flex, Makefile.standard_app turns it
+# into HAVE_APPLICATION_FLAG_BOLOS_SETTINGS, which reaches the loader as
+# --appFlags 0x200 — permission to modify the OS's own settings. Installing
+# an app that asks for that, without a Ledger-issued certificate, onto a
+# device holding a seed, factory-resets the device. It did, twice, and
+# nothing in the build or the load said a word.
+#
+# Vela talks over USB and has never used Bluetooth. See scripts/load.sh,
+# which now refuses to load anything asking for a privileged flag.
+ENABLE_BLUETOOTH = 0
 #ENABLE_NFC = 1
 ENABLE_NBGL_FOR_NANO_DEVICES = 1
 

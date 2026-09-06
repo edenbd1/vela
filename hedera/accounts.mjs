@@ -9,7 +9,7 @@
  *   node accounts.mjs                    # software key, for wiring the pipeline
  *   node accounts.mjs <ed25519-pubkey>   # the Ledger's key, for the real thing
  */
-import { appendFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -69,7 +69,23 @@ const lines = [`\n${prefix}_ID=${id}`, `${prefix}_PUBKEY=${publicKey.toStringRaw
 if (softwareKey) {
   lines.push(`${prefix}_KEY=${softwareKey.toStringRaw()}`);
 }
-appendFileSync(join(ROOT, ".env"), lines.join("\n") + "\n");
+// Replace, do not append. dotenv keeps the last assignment, so a stale pair
+// left above a fresh one is invisible until something signs with the wrong
+// key and Hedera answers INVALID_SIGNATURE a long way from the cause. The
+// old value stays as a comment: an account that was funded is worth being
+// able to find again.
+const envPath = join(ROOT, ".env");
+let env = readFileSync(envPath, "utf8");
+for (const line of lines) {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith("#")) continue;
+  const key = trimmed.split("=")[0];
+  const re = new RegExp(`^${key}=.*$`, "m");
+  env = re.test(env)
+    ? env.replace(re, (m) => `# superseded: ${m}\n${trimmed}`)
+    : `${env.trimEnd()}\n${trimmed}\n`;
+}
+writeFileSync(envPath, env);
 console.log("\nwritten to .env");
 
 client.close();

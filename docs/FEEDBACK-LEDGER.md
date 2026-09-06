@@ -22,11 +22,17 @@ Every problem we hit falls into one pattern:
 > **The failure surfaces far away from its cause, and the message points
 > somewhere else.**
 
-Twelve times, the tooling knew exactly what was wrong and told us something
+Thirteen times, the tooling knew exactly what was wrong and told us something
 unrelated — or nothing at all. Most are a small fix, often one error string.
-Three are real bugs: \#10 writes past the end of a correctly sized buffer,
-\#7 copies the wrong number of bytes, and \#12 is a documented build option
-the SDK stopped reading, which kills the application at runtime with no
+
+**Read \#13 first.** The boilerplate's default configuration factory-resets a
+Flex on every sideload, in silence. It cost us a seed twice before we thought
+to look at a number the loader prints without comment. Everything else in this
+document is a papercut by comparison.
+
+Three others are real bugs: \#10 writes past the end of a correctly sized
+buffer, \#7 copies the wrong number of bytes, and \#12 is a documented build
+option the SDK stopped reading, which kills the application at runtime with no
 diagnostic anywhere.
 
 ---
@@ -408,6 +414,95 @@ duplicate is visible at build time, and the runtime failure is not.
 signature and the attestation, and a second command returns the body. It
 costs a round trip, and it is safe: the signature is over the body, so a body
 that does not match will not verify.
+
+## 13. The default boilerplate config factory-resets a Flex on every sideload
+
+This one cost a seed. Twice.
+
+`ledger-app-boilerplate` ships with:
+
+```make
+ENABLE_BLUETOOTH = 1
+```
+
+On Flex, `Makefile.standard_app` turns that into a privilege:
+
+```make
+ifeq ($(ENABLE_BLUETOOTH), 1)
+ifeq ($(TARGET_NAME),$(filter $(TARGET_NAME),TARGET_NANOX TARGET_STAX TARGET_FLEX TARGET_APEX_P))
+    HAVE_APPLICATION_FLAG_BOLOS_SETTINGS = 1
+```
+
+which reaches the loader as `--appFlags 0x200` — `APPLICATION_FLAG_BOLOS_SETTINGS`,
+permission to modify the operating system's own settings. It is a one-line
+change to demonstrate:
+
+```console
+$ grep '^ENABLE_BLUETOOTH' Makefile
+ENABLE_BLUETOOTH = 1
+$ make -n load | tr ' ' '\n' | grep -A1 -- --appFlags
+--appFlags
+0x200
+
+$ sed -i 's/^ENABLE_BLUETOOTH = 1/ENABLE_BLUETOOTH = 0/' Makefile
+$ make -n load | tr ' ' '\n' | grep -A1 -- --appFlags
+--appFlags
+0x0
+```
+
+Installing an unsigned application that requests a privileged flag onto an
+onboarded device wipes it. That is a defensible security decision — a seed
+should not survive granting OS privileges to uncertified code. What is not
+defensible is arriving there by default, in silence.
+
+**What it costs.** The device comes back showing *"Welcome to Ledger Flex,
+your digital signer"*. Twenty-four words gone. Ledger Wallet reports a
+brand-new device that passes its genuine check, because it is genuine — and
+empty.
+
+**Why it took two devices to find.** Nothing connects the cause to the
+effect at any point in the chain:
+
+- The app never asked for the privilege. It came from a Bluetooth option
+  the app does not use, and the app was talking over USB the whole time.
+- `make load` prints `--appFlags 0x200` with no comment, among a dozen other
+  numeric parameters. There is nothing to make it stand out.
+- `ledgerblue.loadApp` prints `Broken certificate chain - loading from user
+  key` and `Application full hash: ...`, then succeeds. No warning.
+- The device says nothing on the way down and shows the welcome screen on the
+  way up, which reads like the device broke rather than like the load
+  did it.
+- The failure lands on the *device*, so the first hypothesis is anything but
+  the build configuration. We suspected a wedged USB pipe, our own APDU
+  handler, and RAM pressure first.
+
+We ran the same load command a dozen times over two days before the number
+was worth looking at. The first wipe was written off as the device being
+strange.
+
+**Suggested fixes**, in the order we would want them:
+
+1. **`ledgerblue.loadApp` should refuse, or at minimum warn, when
+   `--appFlags` carries a privileged bit and the device is onboarded.** One
+   line of output — *"this will erase the device's seed"* — would have saved
+   both wipes. It already knows the flags and it already talks to the device.
+2. **`ENABLE_BLUETOOTH` should not imply `BOLOS_SETTINGS` silently.** If BLE
+   genuinely needs it, say so where the option is set, in the boilerplate
+   Makefile, next to the line every new app inherits.
+3. **Do not ship `ENABLE_BLUETOOTH = 1` as the boilerplate default.** Most
+   apps start on USB. An option that is on by default and grants a privilege
+   is a trap for exactly the developer least able to see it — the new one.
+
+**Workaround.** `ENABLE_BLUETOOTH = 0`, and a loader that checks before it
+loads:
+
+```bash
+APP_FLAGS=$(make -n load | tr ' ' '\n' | grep -A1 -- '--appFlags' | tail -1)
+if [ $(( $APP_FLAGS & 0xA50 )) -ne 0 ]; then
+  echo "REFUSING — privileged flags ($APP_FLAGS) will factory-reset the device" >&2
+  exit 1
+fi
+```
 
 ## Tutorial we would have wanted
 
