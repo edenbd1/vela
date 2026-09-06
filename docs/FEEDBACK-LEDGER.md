@@ -574,6 +574,13 @@ app all day is doing, repeatedly and legitimately, the shape of thing the
 protection exists to catch, and the only feedback is a wiped device some hours
 later.
 
+The full reconstruction — every action taken, ranked hypotheses, and what
+would test each — is in
+[`docs/PROTECTION-MODE.md`](PROTECTION-MODE.md). We have also instrumented
+our own tooling, because the honest position after three resets is that we do
+not know, and the next occurrence should produce evidence rather than a fourth
+guess.
+
 **Suggested fixes:**
 
 1. **Name the event.** The device classified something. One line on the

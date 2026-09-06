@@ -23,6 +23,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import journal
 from transport import open_device, where
 
 PORT = int(os.environ.get("VELA_BRIDGE_PORT", "8099"))
@@ -58,19 +59,29 @@ def exchange(apdu: bytes):
         if apdu[:2] != bytes.fromhex("b001"):
             app = running_app(device)
             if app != "Vela":
+                # Worth a journal line: the app vanishing between two commands
+                # is how a crash looks from here, and a crash is one of the
+                # things protection mode may be reacting to.
+                journal.record("app_not_running", saw=app, ins=apdu[1])
                 raise RuntimeError(
                     f"the device is on '{app}', not Vela — open the app and stay on it"
                 )
 
         try:
-            return bytes(device.exchange(apdu, timeout=APPROVAL_TIMEOUT_MS)), 0x9000
+            r = bytes(device.exchange(apdu, timeout=APPROVAL_TIMEOUT_MS)), 0x9000
+            journal.record("apdu", cla=apdu[0], ins=apdu[1], lc=len(apdu) - 5, sw="9000")
+            return r
         except Exception as e:
             sw = getattr(e, "sw", None)
             if sw is None:
                 # The pipe went bad; drop it so the next call reconnects
                 # rather than inheriting a wedged handle.
+                journal.record("transport_error", cla=apdu[0], ins=apdu[1],
+                               error=str(e)[:120])
                 device = None
                 raise
+            journal.record("apdu", cla=apdu[0], ins=apdu[1], lc=len(apdu) - 5,
+                           sw=f"{sw:04x}")
             return getattr(e, "data", b"") or b"", sw
 
 

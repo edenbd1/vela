@@ -30,3 +30,6 @@ host/ring/node_modules/
 
 # host bookkeeping: which grant epoch the live mandate belongs to
 .vela-instance
+
+# Device interaction journal: local evidence, not source.
+.vela-journal.jsonl

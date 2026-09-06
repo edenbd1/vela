@@ -70,6 +70,21 @@ fi
 
 echo "appFlags=$APP_FLAGS"
 
+# Every load opens a secure channel with a freshly generated root key, which
+# the device reports as a broken certificate chain. That is the leading
+# suspect for what put this Flex into protection mode three times, so each one
+# gets a line on disk — see docs/PROTECTION-MODE.md.
+python3 - "$APP_FLAGS" <<'JOURNAL'
+import sys, os
+sys.path.insert(0, os.path.join(os.getcwd(), "..", "host"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.getcwd()), "host"))
+try:
+    import journal
+    journal.record("load_app", app_flags=sys.argv[1], via="ledgerblue.loadApp")
+except Exception:
+    pass
+JOURNAL
+
 python3 -m ledgerblue.loadApp \
   --targetId 0x33300004 --targetVersion="" --apiLevel 26 \
   --fileName bin/app.hex --appName "Vela" --appFlags "$APP_FLAGS" --tlv \
