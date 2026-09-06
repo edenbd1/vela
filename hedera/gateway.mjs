@@ -36,6 +36,30 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
 
 const NETWORK = "hedera:testnet";
+
+/**
+ * What may be bought, and where it lives.
+ *
+ * The broker refuses to take a URL from an agent, because a service that
+ * attaches a credential to an address someone else chose is a confused
+ * deputy. The same argument applies here with the same force: an agent that
+ * names the endpoint is an agent choosing who gets paid, and "who gets paid"
+ * is the one field the mandate exists to control.
+ *
+ * It also happens to be the only shape that works. The agent runs in a
+ * container and sees the seller at host.docker.internal; this gateway runs on
+ * the host and does not. An agent's view of the network is not a fact about
+ * the network.
+ *
+ * So services are named here and invoked by name. A raw URL is still accepted
+ * from an operator on the loopback path, which is what the local console uses.
+ */
+const SELLER = `http://127.0.0.1:${process.env.SELLER_PORT ?? 4021}`;
+const SERVICES = {
+  triage: `${SELLER}/infer/triage`,
+  synthesis: `${SELLER}/infer/synthesis`,
+  exhaustive: `${SELLER}/infer/exhaustive`,
+};
 const PORT = Number(process.env.GATEWAY_PORT ?? 4030);
 const SLOT = 0;
 const STATE_LEN = 69;
@@ -264,7 +288,19 @@ const routes = {
 
   "POST /pay": async (req, res) => {
     const body = await readBody(req);
-    if (!body?.url) return json(res, 400, { error: "give me {\"url\": \"…\"}" });
+
+    // A named service resolves here; a raw URL is the operator path. An agent
+    // should use the name, and the catalogue is published at /services so it
+    // can discover what there is without guessing.
+    const target = body?.service ? SERVICES[body.service] : body?.url;
+    if (!target) {
+      return json(res, 400, {
+        error: body?.service
+          ? `no service named '${body.service}'`
+          : 'give me {"service": "triage"}',
+        services: Object.keys(SERVICES),
+      });
+    }
 
     const before = await envelope();
     if (!before) {
@@ -294,8 +330,8 @@ const routes = {
     client.setSpendControls({ allowedAssets: true });
     const http = new x402HTTPClient(client);
 
-    const first = await fetch(body.url).catch(() => null);
-    if (!first) return json(res, 502, { error: `could not reach ${body.url}` });
+    const first = await fetch(target).catch(() => null);
+    if (!first) return json(res, 502, { error: `could not reach ${target}` });
 
     const required = http.getPaymentRequiredResponse(
       (n) => first.headers.get(n),
@@ -350,7 +386,7 @@ const routes = {
       return json(res, 500, { error: String(e?.message ?? e) });
     }
 
-    const paid = await fetch(body.url, { headers: http.encodePaymentSignatureHeader(payload) });
+    const paid = await fetch(target, { headers: http.encodePaymentSignatureHeader(payload) });
     const result = await http.processResponse(paid);
     if (result.paymentStatus !== "settled") {
       // The chip already authorised this, which burned a sequence number and
@@ -454,6 +490,15 @@ const routes = {
       }
       return json(res, 500, { error: String(e?.message ?? e) });
     }
+  },
+
+  "GET /services": (_req, res) => {
+    json(res, 200, {
+      services: Object.keys(SERVICES),
+      note: "invoke one by name with POST /pay {\"service\": \"triage\"}. " +
+            "Naming the endpoint yourself would mean choosing who gets paid, " +
+            "which is the field the mandate exists to control.",
+    });
   },
 
   "GET /receipts": async (_req, res) => {

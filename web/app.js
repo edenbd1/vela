@@ -172,13 +172,12 @@ async function buy(tier) {
   $("hint").textContent = "asking the chip…";
   paintTiers(await api("envelope").then((d) => d.mandate));
 
-  const url = `${CONFIG.seller}${tier.path}`;
   let d;
   try {
     d = await api("pay", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ service: tier.label }),
     });
   } catch (e) {
     busy = false;
