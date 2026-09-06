@@ -76,7 +76,13 @@ int handler_get_mandate(uint8_t id) {
 
     // in_use (1) || agent_id (20) || budget (8) || reserved (8) || spent (8)
     // || per_call_max (8) || available (8) || expiry (4) || seq (4)
-    uint8_t out[1 + AGENT_ID_LEN + 8 * 5 + 4 + 4] = {0};
+    //
+    // Static, not stack. io_send_response_pointer keeps the pointer rather
+    // than copying, so a buffer that dies with this frame is read after it
+    // is gone — the host sees one stale byte and a success status, which
+    // looks like a protocol mismatch rather than a dangling pointer.
+    static uint8_t out[1 + AGENT_ID_LEN + 8 * 5 + 4 + 4];
+    memset(out, 0, sizeof(out));
     size_t off = 0;
 
     out[off++] = m->in_use;
@@ -102,40 +108,42 @@ int handler_get_mandate(uint8_t id) {
 }
 
 int handler_create_mandate(buffer_t *cdata) {
-    mandate_t m;
-    memset(&m, 0, sizeof(m));
+    // Parse straight into the pending slot rather than a local. A mandate_t
+    // is 96 bytes, and this frame is still live when NBGL is called — enough,
+    // on the physical device, to take the app down. Speculos tolerated it,
+    // which is exactly the kind of divergence that costs an evening.
+    mandate_t *m = &G_context.pending_mandate;
+    memset(m, 0, sizeof(*m));
 
-    if (!read_bytes(cdata, m.agent_id, AGENT_ID_LEN)) {
+    if (!read_bytes(cdata, m->agent_id, AGENT_ID_LEN)) {
         return io_send_sw(SW_VELA_ARGS);
     }
-    if (!buffer_read_u8(cdata, &m.n_payees)) {
+    if (!buffer_read_u8(cdata, &m->n_payees)) {
         return io_send_sw(SW_VELA_ARGS);
     }
-    if (m.n_payees == 0 || m.n_payees > MANDATE_MAX_PAYEES) {
+    if (m->n_payees == 0 || m->n_payees > MANDATE_MAX_PAYEES) {
         return io_send_sw(SW_VELA_ARGS);
     }
-    for (uint8_t i = 0; i < m.n_payees; i++) {
-        if (!buffer_read_u64(cdata, &m.payees[i], BE)) {
+    for (uint8_t i = 0; i < m->n_payees; i++) {
+        if (!buffer_read_u64(cdata, &m->payees[i], BE)) {
             return io_send_sw(SW_VELA_ARGS);
         }
     }
-    if (!buffer_read_u64(cdata, &m.budget_total, BE)) {
+    if (!buffer_read_u64(cdata, &m->budget_total, BE)) {
         return io_send_sw(SW_VELA_ARGS);
     }
-    if (!buffer_read_u64(cdata, &m.per_call_max, BE)) {
+    if (!buffer_read_u64(cdata, &m->per_call_max, BE)) {
         return io_send_sw(SW_VELA_ARGS);
     }
-    if (!buffer_read_u32(cdata, &m.expiry, BE)) {
+    if (!buffer_read_u32(cdata, &m->expiry, BE)) {
         return io_send_sw(SW_VELA_ARGS);
     }
-    if (m.budget_total == 0 || m.per_call_max == 0 || m.per_call_max > m.budget_total) {
+    if (m->budget_total == 0 || m->per_call_max == 0 ||
+        m->per_call_max > m->budget_total) {
         return io_send_sw(SW_VELA_ARGS);
     }
 
-    // Park it in RAM. It reaches NVRAM only if the user taps.
-    memcpy(&G_context.pending_mandate, &m, sizeof(m));
-    explicit_bzero(&m, sizeof(m));
-
+    // It reaches NVRAM only if the user taps.
     return ui_display_create_mandate();
 }
 
@@ -242,7 +250,8 @@ int handler_settle_confirm(buffer_t *cdata) {
     }
 
     const mandate_t *m = mandate_get(id);
-    uint8_t out[16] = {0};
+    static uint8_t out[16];
+    memset(out, 0, sizeof(out));
     write_u64_be(out, 0, m->spent);
     write_u64_be(out, 8, mandate_available(id));
 
@@ -278,7 +287,11 @@ void validate_revoke_mandate(bool approved) {
 }
 
 int handler_get_pubkey(uint8_t index) {
-    uint8_t pk[HEDERA_PUBKEY_LEN];
+    // Static, like every other response buffer here. io_send_response_pointer
+    // keeps the pointer rather than copying it, so a buffer that dies with
+    // this frame is read after it is gone — the reply looks plausible, and
+    // the app falls over shortly afterwards.
+    static uint8_t pk[HEDERA_PUBKEY_LEN];
     if (!hedera_pubkey(index, pk)) {
         return io_send_sw(SWO_SECURITY_ISSUE);
     }

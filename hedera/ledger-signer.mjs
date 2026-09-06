@@ -125,23 +125,32 @@ class SpeculosTransport {
  * exits with it, which makes a multi-command flow — grant, draw, settle —
  * impossible to run against the emulator.
  */
-export class UsbTransport {
-  async open() {
-    const { default: TransportNodeHid } = await import("@ledgerhq/hw-transport-node-hid");
-    this.t = await TransportNodeHid.create();
+export class BridgeTransport {
+  constructor(url = process.env.VELA_BRIDGE ?? "http://127.0.0.1:8099") {
+    this.url = url;
   }
 
-  async close() {
-    await this.t?.close();
+  async open() {
+    const r = await fetch(`${this.url}/health`).catch(() => null);
+    if (!r?.ok) {
+      throw new Error(`no device bridge at ${this.url} — start host/bridge.py`);
+    }
   }
+
+  close() {}
 
   async exchange(apdu) {
-    const r = await this.t.exchange(apdu);
-    const sw = r.readUInt16BE(r.length - 2);
-    if (sw !== 0x9000) {
-      throw Object.assign(new Error(`device refused: 0x${sw.toString(16)}`), { sw });
+    const r = await fetch(`${this.url}/apdu`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ apdu: Buffer.from(apdu).toString("hex") }),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error ?? `bridge failed: ${r.status}`);
+    if (body.sw !== 0x9000) {
+      throw Object.assign(new Error(`device refused: 0x${body.sw.toString(16)}`), { sw: body.sw });
     }
-    return r.subarray(0, r.length - 2);
+    return Buffer.from(body.data, "hex");
   }
 }
 
@@ -163,7 +172,7 @@ export async function createLedgerHederaSigner({
   accountId,
   slot = 0,
   feePayerFallback = "0.0.7162784",
-  transport = process.env.VELA_SPECULOS ? new SpeculosTransport() : new UsbTransport(),
+  transport = new BridgeTransport(),
   onDraw = () => {},
 }) {
   await transport.open();
