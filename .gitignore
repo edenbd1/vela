@@ -33,3 +33,6 @@ host/ring/node_modules/
 
 # Device interaction journal: local evidence, not source.
 .vela-journal.jsonl
+
+# Broker secrets: ciphertext is fine to commit, plaintext is not.
+broker/secrets/*.dev

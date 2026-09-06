@@ -1,0 +1,23 @@
+{
+  "risk.screen": {
+    "description": "Screen one Hedera account against the private risk feed",
+    "secret": "vela.risk-feed",
+    "method": "GET",
+    "url": "http://127.0.0.1:4040/risk/{account}",
+    "header": "x-api-key",
+    "params": {
+      "account": "^0\\.0\\.[0-9]{1,12}$"
+    },
+    "limit": 50
+  },
+
+  "infer.triage": {
+    "description": "Buy one triage inference. The price is quoted by the seller.",
+    "secret": "vela.seller-token",
+    "method": "GET",
+    "url": "http://127.0.0.1:4021/infer/triage",
+    "header": "x-client-token",
+    "params": {},
+    "limit": 20
+  }
+}
