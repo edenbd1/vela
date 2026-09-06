@@ -87,6 +87,14 @@ async function readTopic(topic) {
 
 /** Did this transfer really happen, exactly as the log claims? */
 async function checkTransfer(record) {
+  // A release claims the opposite: that nothing moved. There is no
+  // transaction to look up, and proving a negative against a mirror node is
+  // not something this can do honestly. What makes the claim checkable is
+  // the arithmetic in checkChain — the chip signs the remaining balance on
+  // the *next* draw, and it only adds up if the headroom really came back.
+  if (record.r) {
+    return [true, `draw ${record.seq}: released, nothing paid`];
+  }
   if (!record.tx) return [false, `draw ${record.seq} names no transaction`];
   const d = await json(`${MIRROR}/transactions/${mirrorId(record.tx)}`);
   const t = d.transactions?.[0];
@@ -150,7 +158,7 @@ for (const [key, draws] of byMandate) {
     const [pass, why] = await checkTransfer(r);
     console.log(`  ${pass ? "ok  " : "FAIL"}  ${why}`);
     ok &&= pass;
-    if (pass && !deviceKey && r.payer) deviceKey = await deviceKeyOf(r.payer);
+    if (pass && !r.r && !deviceKey && r.payer) deviceKey = await deviceKeyOf(r.payer);
   }
 
   if (deviceKey) {

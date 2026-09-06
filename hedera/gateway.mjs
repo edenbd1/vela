@@ -28,7 +28,7 @@ import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { ExactHederaScheme } from "@x402/hedera/exact/client";
 
 import { createLedgerHederaSigner } from "./ledger-signer.mjs";
-import { drawRecord, makeAnchor, mandateDigest } from "./anchor.mjs";
+import { drawRecord, makeAnchor, mandateDigest, releaseRecord } from "./anchor.mjs";
 import { currentInstance } from "./instance.mjs";
 import { readFileSync, existsSync } from "node:fs";
 
@@ -129,6 +129,55 @@ async function envelope() {
     payees: payeesFrom(state),
     asset: "HBAR, in tinybars",
   };
+}
+
+/**
+ * The fields every anchored record shares, all of them read back from the
+ * chip rather than from local configuration — a digest built from config
+ * would name an envelope the chip may never have held.
+ */
+function recordFields(envelopeBefore, accepts, price) {
+  return {
+    mandateHash: mandateDigest({
+      agentId: Buffer.from(envelopeBefore.agent, "hex"),
+      payees: envelopeBefore.payees.map((p) => BigInt(p.split(".")[2])),
+      budgetTotal: envelopeBefore.budget_total,
+      perCallMax: envelopeBefore.per_call_max,
+      expiry: envelopeBefore.expiry,
+    }),
+    instance: currentInstance().id,
+    seq: lastDraw.seq,
+    payee: BigInt(accepts.payTo.split(".")[2]),
+    amount: price,
+    remaining: lastDraw.available,
+    anchor: lastDraw.anchor,
+    anchorSig: lastDraw.anchorSig,
+  };
+}
+
+async function submit(record) {
+  const anchor = makeAnchor({
+    topicId: process.env.HEDERA_TOPIC_ID,
+    operatorId: process.env.HEDERA_TREASURY_ID,
+    operatorKey: process.env.HEDERA_TREASURY_KEY,
+  });
+  try {
+    return await anchor.submit(record);
+  } finally {
+    anchor.close();
+  }
+}
+
+const publishable = (e) => process.env.HEDERA_TOPIC_ID && lastDraw && e?.payees;
+
+async function publishDraw(before, accepts, price, tx) {
+  if (!publishable(before)) return null;
+  return submit(drawRecord({ ...recordFields(before, accepts, price), tx }));
+}
+
+async function publishRelease(before, accepts, price) {
+  if (!publishable(before)) return null;
+  return submit(releaseRecord(recordFields(before, accepts, price)));
 }
 
 const routes = {
@@ -251,8 +300,16 @@ const routes = {
     const paid = await fetch(body.url, { headers: http.encodePaymentSignatureHeader(payload) });
     const result = await http.processResponse(paid);
     if (result.paymentStatus !== "settled") {
+      // The chip already authorised this, which burned a sequence number and
+      // reserved the amount. Give both back, and say so publicly: an
+      // unexplained gap in the log is indistinguishable from a payment
+      // somebody chose not to publish, and silence here would put one there.
+      await signer.settle(0n).catch(() => {});
+      const released = await publishRelease(before, accepts, price)
+        .catch(() => null);
       return json(res, 200, { paid: false, refused: false, reason: "not_settled",
-                              terminal: false, detail: result });
+                              terminal: false, detail: result,
+                              released_as_message: released });
     }
 
     // Release the difference between what was reserved and what was actually
@@ -261,35 +318,7 @@ const routes = {
     const after = await envelope();
     const tx = result.header.transaction;
 
-    let anchored = null;
-    if (process.env.HEDERA_TOPIC_ID && lastDraw && before.payees) {
-      const anchor = makeAnchor({
-        topicId: process.env.HEDERA_TOPIC_ID,
-        operatorId: process.env.HEDERA_TREASURY_ID,
-        operatorKey: process.env.HEDERA_TREASURY_KEY,
-      });
-      const record = drawRecord({
-        mandateHash: mandateDigest({
-          agentId: Buffer.from(before.agent, "hex"),
-          // From the chip. Deriving this from local config instead would let
-          // the host publish a digest for an envelope the chip never held.
-          payees: before.payees.map((p) => BigInt(p.split(".")[2])),
-          budgetTotal: before.budget_total,
-          perCallMax: before.per_call_max,
-          expiry: before.expiry,
-        }),
-        instance: currentInstance().id,
-        seq: lastDraw.seq,
-        payee: BigInt(accepts.payTo.split(".")[2]),
-        amount: price,
-        remaining: lastDraw.available,
-        tx,
-        anchor: lastDraw.anchor,
-        anchorSig: lastDraw.anchorSig,
-      });
-      anchored = await anchor.submit(record);
-      anchor.close();
-    }
+    const anchored = await publishDraw(before, accepts, price, tx).catch(() => null);
 
     json(res, 200, {
       paid: true,

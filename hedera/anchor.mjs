@@ -52,6 +52,20 @@ export function mandateDigest({ agentId, payees, budgetTotal, perCallMax, expiry
  * instance rather than across all of them. A host that anchors nothing
  * proves nothing, which was always true.
  */
+/**
+ * A draw the chip authorised and the host then abandoned.
+ *
+ * Every AUTHORIZE burns a sequence number, whether or not a payment follows.
+ * A host that reserves and then walks away — a crash, a settlement that never
+ * came, a refusal downstream — leaves a hole in the log, and from outside a
+ * hole is indistinguishable from a payment somebody chose not to publish. So
+ * the hole gets filled: same chip-signed statement, no transaction, and an
+ * explicit claim that nothing moved.
+ */
+export function releaseRecord(fields) {
+  return { ...drawRecord({ ...fields, tx: null }), r: true };
+}
+
 export function drawRecord({ mandateHash, instance, seq, payee, amount,
                              remaining, tx, anchor, anchorSig }) {
   return {
@@ -143,7 +157,17 @@ export function checkChain(records) {
       out.push([remaining === expected,
                 `remaining ${remaining} = ${prevRemaining} - ${amount}`]);
     }
-    prevRemaining = remaining;
+
+    // A released draw consumed a sequence number and then gave the headroom
+    // back, so the next draw starts from where this one did rather than from
+    // the reserved figure the chip signed at the time.
+    //
+    // Nothing here takes the host's word for that. If the host had quietly
+    // paid instead of releasing, spent would have risen, and the *next*
+    // draw's remaining — a number the chip signs, not the host — would come
+    // back lower than this check expects. The release is only believable
+    // because the following signature has to agree with it.
+    if (!r.r) prevRemaining = remaining;
 
     out.push([remaining >= 0n, `remaining ${remaining} is not negative`]);
   }
