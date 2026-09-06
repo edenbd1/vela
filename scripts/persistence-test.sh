@@ -29,12 +29,14 @@ for s in range(3):
         print(f"slot{s} " + ("free" if ex.sw==0xB102 else f"sw=0x{ex.sw:04x}"))
 d.close()'
 
+# QUIT_APP never answers: os_sched_exit() tears the app down mid-exchange,
+# so there is no reply to read and exchange() would block forever. Bound it.
 QUIT='
+import signal, sys
+signal.signal(signal.SIGALRM, lambda *a: sys.exit(0))
+signal.alarm(5)
 from ledgerblue.comm import getDongle
-d=getDongle(False)
-try: d.exchange(bytes([0xE0,0x15,0,0,0]))
-except Exception: pass
-try: d.close()
+try: getDongle(False).exchange(bytes([0xE0,0x15,0,0,0]))
 except Exception: pass'
 
 echo "device is running: $(q "$WHO")"
