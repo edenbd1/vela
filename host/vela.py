@@ -13,10 +13,13 @@ Usage:
 """
 import hashlib
 import struct
+import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import time
 
-from ledgerblue.comm import getDongle
+from transport import open_device
 from ledgerblue.commException import CommException
 
 CLA = 0xE0
@@ -60,7 +63,7 @@ def hbar(tinybars: int) -> str:
 
 class Device:
     def __init__(self):
-        self.dongle = getDongle(False)
+        self.dongle = open_device()
 
     def send(self, ins: int, data: bytes = b"", p1: int = 0, p2: int = 0) -> bytes:
         apdu = bytes([CLA, ins, p1, p2, len(data)]) + data

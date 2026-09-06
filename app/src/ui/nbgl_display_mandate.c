@@ -31,7 +31,7 @@
 static char g_agent[2 * AGENT_ID_LEN + 1];
 static char g_budget[32];
 static char g_per_call[32];
-static char g_services[24];
+static char g_payees[80];
 static char g_expiry[32];
 
 static nbgl_contentTagValue_t pairs[5];
@@ -57,7 +57,7 @@ int ui_display_create_mandate(void) {
     explicit_bzero(g_agent, sizeof(g_agent));
     explicit_bzero(g_budget, sizeof(g_budget));
     explicit_bzero(g_per_call, sizeof(g_per_call));
-    explicit_bzero(g_services, sizeof(g_services));
+    explicit_bzero(g_payees, sizeof(g_payees));
     explicit_bzero(g_expiry, sizeof(g_expiry));
 
     if (format_hex(m->agent_id, AGENT_ID_LEN, g_agent, sizeof(g_agent)) == -1) {
@@ -75,7 +75,21 @@ int ui_display_create_mandate(void) {
     }
     snprintf(g_per_call, sizeof(g_per_call), "%s HBAR", amount);
 
-    snprintf(g_services, sizeof(g_services), "%u account(s)", (unsigned) m->n_payees);
+    // Spell the accounts out. "2 accounts allowed" tells the user nothing
+    // they can check; the whole purpose of this screen is that they see
+    // which accounts the agent will be able to pay.
+    size_t off = 0;
+    for (uint8_t i = 0; i < m->n_payees && i < MANDATE_MAX_PAYEES; i++) {
+        int n = snprintf(g_payees + off,
+                         sizeof(g_payees) - off,
+                         "%s0.0.%u",
+                         i ? "\n" : "",
+                         (unsigned) m->payees[i]);
+        if (n <= 0 || (size_t) n >= sizeof(g_payees) - off) {
+            break;
+        }
+        off += (size_t) n;
+    }
 
     if (m->expiry == 0) {
         snprintf(g_expiry, sizeof(g_expiry), "Never");
@@ -90,7 +104,7 @@ int ui_display_create_mandate(void) {
     pairs[2].item = "Max per draw";
     pairs[2].value = g_per_call;
     pairs[3].item = "May pay";
-    pairs[3].value = g_services;
+    pairs[3].value = g_payees;
     pairs[4].item = "Expires";
     pairs[4].value = g_expiry;
 

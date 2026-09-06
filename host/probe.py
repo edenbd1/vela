@@ -5,7 +5,7 @@ import signal, struct, subprocess, sys
 signal.signal(signal.SIGALRM, lambda *a: (print("TIMEOUT"), sys.exit(2)))
 signal.alarm(15)
 
-from ledgerblue.comm import getDongle
+from transport import open_device
 from ledgerblue.commException import CommException
 
 cmd = sys.argv[1] if len(sys.argv) > 1 else "who"
@@ -16,7 +16,7 @@ if cmd == "run":
     print("run issued")
     sys.exit(0)
 
-d = getDongle(False)
+d = open_device()
 
 if cmd == "who":
     r = bytes(d.exchange(bytes.fromhex("b001000000")))

@@ -14,14 +14,17 @@ was asked to authorise, which is the one bug this project cannot survive.
 """
 import signal
 import struct
+import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 signal.signal(signal.SIGALRM, lambda *a: (print("TIMEOUT"), sys.exit(2)))
 signal.alarm(30)
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from ledgerblue.comm import getDongle
+from transport import open_device
 from ledgerblue.commException import CommException
 
 CLA = 0xE0
@@ -97,7 +100,7 @@ def main():
     amount = 1_000_000  # 0.01 HBAR in tinybars
     slot = int(sys.argv[1]) if len(sys.argv) > 1 else 1
 
-    d = getDongle(False)
+    d = open_device()
 
     # Grant a fresh envelope on the chosen slot, so the check does not depend
     # on whatever a previous run left behind. Needs a tap.
