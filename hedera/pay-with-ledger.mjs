@@ -11,6 +11,7 @@
  *   python3 host/bridge.py &        # in another shell
  *   node hedera/pay-with-ledger.mjs
  */
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -73,6 +74,9 @@ const MANDATE = {
   expiry: 0,
 };
 const mandateHash = mandateDigest(MANDATE);
+// One instance per grant. Reused across runs while the same envelope lives
+// in the chip; a fresh grant gets a fresh one.
+const instanceFile = join(ROOT, ".vela-instance");
 
 // An empty Buffer is truthy, so `if (!state)` quietly falls through to the
 // branch that reads offsets out of it. Check the length.
@@ -98,6 +102,7 @@ if (!state || state.length < MANDATE_STATE_LEN) {
   const slot = await signer.transport.exchange(
     Buffer.concat([Buffer.from([0xe0, 0x11, 0, 0, body.length]), body]),
   );
+  writeFileSync(instanceFile, String(Math.floor(Date.now() / 1000)));
   console.log(`   granted in slot ${slot[0]}\n`);
 } else {
   const budget = state.readBigUInt64BE(21);
@@ -155,6 +160,7 @@ if (process.env.HEDERA_TOPIC_ID && lastDraw) {
   });
   const record = drawRecord({
     mandateHash,
+    instance: existsSync(instanceFile) ? readFileSync(instanceFile, "utf8").trim() : "0",
     seq: lastDraw.seq,
     payee: MANDATE.payees[0],
     amount: BigInt(accepts.amount),

@@ -77,16 +77,28 @@ if (records.length === 0) {
   process.exit(1);
 }
 
+// Group by envelope *instance*: the same terms granted twice share a digest,
+// and each grant restarts the chip's sequence at 1.
 const byMandate = new Map();
 for (const r of records) {
-  if (!byMandate.has(r.m)) byMandate.set(r.m, []);
-  byMandate.get(r.m).push(r);
+  const key = `${r.m}#${r.i ?? "0"}`;
+  if (!byMandate.has(key)) byMandate.set(key, []);
+  byMandate.get(key).push(r);
 }
 
-let ok = true;
-for (const [hash, draws] of byMandate) {
-  console.log(`mandate ${hash.slice(0, 16)}…  ${draws.length} draw(s)`);
+// A verdict per envelope, not one for the whole topic. Anyone may write to
+// a public topic, and one bad instance says nothing about the others.
+const only = process.argv[3];
+const verdicts = [];
 
+for (const [key, draws] of byMandate) {
+  const [hash, instance] = key.split("#");
+  if (only && instance !== only) continue;
+
+  console.log(`mandate ${hash.slice(0, 16)}…  granted ${instance}  ` +
+              `${draws.length} draw(s)`);
+
+  let ok = true;
   for (const [pass, why] of checkChain(draws)) {
     console.log(`  ${pass ? "ok  " : "FAIL"}  ${why}`);
     ok &&= pass;
@@ -96,9 +108,12 @@ for (const [hash, draws] of byMandate) {
     console.log(`  ${pass ? "ok  " : "FAIL"}  ${why}`);
     ok &&= pass;
   }
-  console.log();
+  console.log(`  → ${ok ? "complete and consistent" : "incomplete"}\n`);
+  verdicts.push([instance, ok]);
 }
 
-console.log(ok ? "every check passed." : "SOMETHING DOES NOT ADD UP.");
+const good = verdicts.filter(([, v]) => v).length;
+console.log(`${good} of ${verdicts.length} envelope(s) verify.`);
+const ok = good === verdicts.length;
 console.log(STATEMENT);
 process.exit(ok ? 0 : 1);

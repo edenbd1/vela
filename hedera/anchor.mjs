@@ -41,10 +41,22 @@ export function mandateDigest({ agentId, payees, budgetTotal, perCallMax, expiry
   return createHash("sha256").update(body).digest("hex");
 }
 
-export function drawRecord({ mandateHash, seq, payee, amount, remaining, tx }) {
+/**
+ * Distinguish one grant from the next.
+ *
+ * The digest commits to the envelope's *terms*, so granting the same terms
+ * twice produces the same digest — and the chip's sequence restarts at 1,
+ * which reads as a hole in the chain. The instance separates them.
+ *
+ * It is chosen by the host, and the chain proves completeness within an
+ * instance rather than across all of them. A host that anchors nothing
+ * proves nothing, which was always true.
+ */
+export function drawRecord({ mandateHash, instance, seq, payee, amount, remaining, tx }) {
   return {
     v: SCHEMA,
     m: mandateHash,
+    i: String(instance),
     seq,
     payee: String(payee),
     amount: String(amount),
