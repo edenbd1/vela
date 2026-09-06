@@ -1,0 +1,254 @@
+/**
+ * Vela as a service an agent can use.
+ *
+ * The rest of this repo is a demo: one script grants, draws, anchors, and
+ * narrates. An agent does not run scripts. It calls tools, reads what came
+ * back, and decides what to do next — so the mandate has to be legible to it,
+ * and a refusal has to arrive as a fact it can act on rather than a stack
+ * trace.
+ *
+ * Three tools:
+ *
+ *   GET  /envelope   what may I spend, and on what
+ *   POST /pay        buy this URL, if the chip agrees
+ *   GET  /receipts   what the chip says it authorised, from the mirror node
+ *
+ * The design rule throughout: a refusal is a 200 with a reason, not a 500.
+ * An agent that receives a 500 retries. Retrying a refusal is the one thing
+ * it must never do — the chip will refuse identically every time, and the
+ * agent burns its context discovering a ceiling that was published at
+ * /envelope all along.
+ */
+import { createServer } from "node:http";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import dotenv from "dotenv";
+import { x402Client, x402HTTPClient } from "@x402/core/client";
+import { ExactHederaScheme } from "@x402/hedera/exact/client";
+
+import { createLedgerHederaSigner } from "./ledger-signer.mjs";
+import { drawRecord, makeAnchor, mandateDigest } from "./anchor.mjs";
+import { currentInstance } from "./instance.mjs";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+dotenv.config({ path: join(ROOT, ".env") });
+
+const NETWORK = "hedera-testnet";
+const PORT = Number(process.env.GATEWAY_PORT ?? 4030);
+const SLOT = 0;
+const STATE_LEN = 69;
+
+/** The chip's status words, as things an agent can reason about. */
+const REFUSALS = {
+  0xb103: { reason: "expired", terminal: true,
+            advice: "the envelope has run out of time; a human must grant a new one" },
+  0xb104: { reason: "payee_not_allowed", terminal: true,
+            advice: "this account is not on the mandate; no amount will make it pass" },
+  0xb105: { reason: "over_per_call", terminal: true,
+            advice: "this single payment exceeds per_call_max; a cheaper tier may fit" },
+  0xb106: { reason: "over_budget", terminal: true,
+            advice: "the envelope has less left than this costs; check /envelope for available" },
+};
+
+let signer;
+let lastDraw = null;
+
+const json = (res, code, body) => {
+  const s = JSON.stringify(body, (_k, v) => (typeof v === "bigint" ? String(v) : v), 2);
+  res.writeHead(code, { "content-type": "application/json" });
+  res.end(s);
+};
+
+const readBody = (req) =>
+  new Promise((resolve) => {
+    let b = "";
+    req.on("data", (c) => (b += c));
+    req.on("end", () => { try { resolve(JSON.parse(b || "{}")); } catch { resolve(null); } });
+  });
+
+/** The mandate, read from the chip on every call — it can be revoked mid-run. */
+async function envelope() {
+  const state = await signer.transport
+    .exchange(Buffer.from([0xe0, 0x10, 0, 0, 0]))
+    .catch((e) => (e.sw === 0xb102 ? null : Promise.reject(e)));
+
+  if (!state || state.length < STATE_LEN) return null;
+
+  return {
+    agent: state.subarray(1, 21).toString("hex"),
+    budget_total: state.readBigUInt64BE(21),
+    reserved: state.readBigUInt64BE(29),
+    spent: state.readBigUInt64BE(37),
+    per_call_max: state.readBigUInt64BE(45),
+    available: state.readBigUInt64BE(53),
+    expiry: state.readUInt32BE(61),
+    draws_so_far: state.readUInt32BE(65),
+    asset: "HBAR, in tinybars",
+  };
+}
+
+const routes = {
+  "GET /envelope": async (_req, res) => {
+    const e = await envelope();
+    if (!e) {
+      return json(res, 200, {
+        mandate: null,
+        note: "no mandate in the chip. Nothing can be paid until a human grants " +
+              "one on the device. This is not an error you can retry past.",
+      });
+    }
+    json(res, 200, {
+      mandate: e,
+      note: "these numbers come from the Secure Element, not from this host. " +
+            "Plan against available and per_call_max before choosing what to buy.",
+    });
+  },
+
+  "POST /pay": async (req, res) => {
+    const body = await readBody(req);
+    if (!body?.url) return json(res, 400, { error: "give me {\"url\": \"…\"}" });
+
+    const before = await envelope();
+    if (!before) {
+      return json(res, 200, {
+        paid: false, refused: true, reason: "no_mandate", terminal: true,
+        advice: "a human must grant an envelope on the device first",
+      });
+    }
+
+    const client = new x402Client().register(NETWORK, new ExactHederaScheme(signer));
+    client.setSpendControls({
+      allowedAssets: [{ network: NETWORK, asset: "0.0.0",
+                        maxAmountPerPayment: String(before.per_call_max) }],
+    });
+    const http = new x402HTTPClient(client);
+
+    const first = await fetch(body.url).catch(() => null);
+    if (!first) return json(res, 502, { error: `could not reach ${body.url}` });
+
+    const required = http.getPaymentRequiredResponse(
+      (n) => first.headers.get(n),
+      await first.clone().json().catch(() => undefined),
+    );
+    if (!required) {
+      return json(res, 200, { paid: false, free: true,
+                              body: await first.json().catch(() => null),
+                              note: "the service did not ask to be paid" });
+    }
+
+    const accepts = required.accepts[0];
+    const price = BigInt(accepts.amount);
+
+    // Ask the chip. A refusal here is the point of the whole project, so it
+    // is reported as an outcome with a reason, not raised as a failure.
+    let payload;
+    try {
+      payload = await http.createPaymentPayload(required);
+    } catch (e) {
+      const r = REFUSALS[e?.sw ?? e?.cause?.sw];
+      if (r) {
+        return json(res, 200, {
+          paid: false, refused: true, ...r,
+          asked_for: String(price), envelope: before,
+        });
+      }
+      return json(res, 500, { error: String(e?.message ?? e) });
+    }
+
+    const paid = await fetch(body.url, { headers: http.encodePaymentSignatureHeader(payload) });
+    const result = await http.processResponse(paid);
+    if (result.paymentStatus !== "settled") {
+      return json(res, 200, { paid: false, refused: false, reason: "not_settled",
+                              terminal: false, detail: result });
+    }
+
+    // Release the difference between what was reserved and what was actually
+    // spent. Skipping this leaks budget: the chip reserved before signing.
+    await signer.settle(price);
+    const after = await envelope();
+    const tx = result.header.transaction;
+
+    let anchored = null;
+    if (process.env.HEDERA_TOPIC_ID && lastDraw) {
+      const anchor = makeAnchor({
+        topicId: process.env.HEDERA_TOPIC_ID,
+        operatorId: process.env.HEDERA_TREASURY_ID,
+        operatorKey: process.env.HEDERA_TREASURY_KEY,
+      });
+      const record = drawRecord({
+        mandateHash: mandateDigest({
+          agentId: Buffer.from(before.agent, "hex"),
+          payees: [BigInt(process.env.HEDERA_TREASURY_ID.split(".")[2])],
+          budgetTotal: before.budget_total,
+          perCallMax: before.per_call_max,
+          expiry: before.expiry,
+        }),
+        instance: currentInstance().id,
+        seq: lastDraw.seq,
+        payee: BigInt(accepts.payTo.split(".")[2]),
+        amount: price,
+        remaining: lastDraw.available,
+        tx,
+        anchor: lastDraw.anchor,
+        anchorSig: lastDraw.anchorSig,
+      });
+      anchored = await anchor.submit(record);
+      anchor.close();
+    }
+
+    json(res, 200, {
+      paid: true,
+      spent: String(price),
+      tx,
+      response: result.body ?? (await paid.json().catch(() => null)),
+      remaining: after ? String(after.available) : null,
+      anchored_as_message: anchored,
+      note: "signed inside the Secure Element after the chip checked this " +
+            "payee and this amount against the mandate",
+    });
+  },
+
+  "GET /receipts": async (_req, res) => {
+    const topic = process.env.HEDERA_TOPIC_ID;
+    if (!topic) return json(res, 200, { receipts: [], note: "no topic configured" });
+    const url = `${process.env.HEDERA_MIRROR}/topics/${topic}/messages?limit=25&order=desc`;
+    const r = await fetch(url).then((x) => x.json()).catch(() => null);
+    if (!r) return json(res, 502, { error: "mirror node unreachable" });
+    json(res, 200, {
+      topic,
+      receipts: (r.messages ?? []).map((m) => {
+        try { return JSON.parse(Buffer.from(m.message, "base64").toString("utf8")); }
+        catch { return null; }
+      }).filter(Boolean),
+      note: "public, and checkable without this host: node verify.mjs " + topic,
+    });
+  },
+};
+
+const server = createServer(async (req, res) => {
+  const key = `${req.method} ${req.url.split("?")[0]}`;
+  const handler = routes[key];
+  if (!handler) {
+    return json(res, 404, { error: "no such tool", tools: Object.keys(routes) });
+  }
+  try {
+    await handler(req, res);
+  } catch (e) {
+    json(res, 500, { error: String(e?.message ?? e) });
+  }
+});
+
+signer = await createLedgerHederaSigner({
+  accountId: process.env.HEDERA_BUYER_ID,
+  slot: SLOT,
+  onDraw: (d) => { lastDraw = d; },
+});
+
+server.listen(PORT, () => {
+  console.log(`vela gateway on :${PORT}`);
+  console.log(`  GET  /envelope   what the chip will allow`);
+  console.log(`  POST /pay        {"url": "..."} — buy it, if the chip agrees`);
+  console.log(`  GET  /receipts   the public log`);
+  console.log(`\nbuyer ${process.env.HEDERA_BUYER_ID}, key in the Secure Element`);
+});
