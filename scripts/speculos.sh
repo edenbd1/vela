@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Run Vela in the emulator.
+#
+# The inner development loop belongs here: boot is instant, APDUs go over TCP
+# on 9999, the screen is served on 5000, and nothing can wedge a USB pipe.
+#
+# What does NOT belong here: anything about NVRAM persistence. Speculos
+# emulates nvm_write, but whether the store survives a restart depends on how
+# the emulator is launched — and persistence is the one claim Vela cannot
+# take on faith. Verify that on the Flex.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+exec docker run --rm -it \
+  -v "$ROOT/app":/app \
+  -p 5000:5000 -p 9999:9999 \
+  ghcr.io/ledgerhq/speculos:latest \
+  --model flex --display headless --apdu-port 9999 --api-port 5000 \
+  /app/bin/app.elf "$@"

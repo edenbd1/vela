@@ -25,6 +25,13 @@ INS_CREATE_MANDATE = 0x11
 INS_AUTHORIZE_SPEND = 0x12
 INS_SETTLE_CONFIRM = 0x13
 INS_REVOKE_MANDATE = 0x14
+INS_QUIT_APP = 0x15
+INS_GET_PUBKEY = 0x16
+
+# Testnet accounts from the Blocky402 spike; the payer is ours.
+PAYER = 10365982
+PAYEE = 10365984
+NODE = 3
 
 TINYBAR = 100_000_000  # 1 HBAR
 
@@ -34,18 +41,13 @@ REFUSALS = {
     0xB101: ("no_slot", "every mandate slot is occupied"),
     0xB102: ("not_found", "no mandate in that slot"),
     0xB103: ("expired", "the envelope has expired"),
-    0xB104: ("service_not_allowed", "payee is not on the allowlist"),
+    0xB104: ("payee_not_allowed", "payee is not on the allowlist"),
     0xB105: ("over_per_call", "over the per-call ceiling"),
     0xB106: ("over_budget", "over what is left in the envelope"),
     0xB107: ("bad_settle_amount", "settling more than was authorised"),
     0xB108: ("bad_request", "malformed request"),
     0x6985: ("user_declined", "refused on the device"),
 }
-
-
-def service_id(name: str) -> bytes:
-    """A service is identified by the first 16 bytes of sha256(its name)."""
-    return hashlib.sha256(name.encode()).digest()[:16]
 
 
 def agent_id(name: str) -> bytes:
@@ -64,18 +66,27 @@ class Device:
         apdu = bytes([CLA, ins, p1, p2, len(data)]) + data
         return self.dongle.exchange(apdu)
 
-    def create_mandate(self, agent: str, services, budget, per_call, expiry=0) -> int:
-        ids = [service_id(s) for s in services]
-        data = agent_id(agent) + bytes([len(ids)]) + b"".join(ids)
+    def create_mandate(self, agent: str, payees, budget, per_call, expiry=0) -> int:
+        data = agent_id(agent) + bytes([len(payees)])
+        data += b"".join(struct.pack(">Q", p) for p in payees)
         data += struct.pack(">QQI", budget, per_call, expiry)
         return self.send(INS_CREATE_MANDATE, data)[0]
 
-    def authorize(self, slot: int, service: str, amount: int, now=None):
+    def pubkey(self, index: int = 0) -> bytes:
+        return self.send(INS_GET_PUBKEY, p1=index)
+
+    def authorize(self, slot: int, payee: int, amount: int, payer=PAYER,
+                  node=NODE, fee=100_000_000, now=None):
+        """Ask the chip to authorise and sign one transfer."""
         now = int(time.time()) if now is None else now
-        data = bytes([slot]) + service_id(service) + struct.pack(">QI", amount, now)
+        data = bytes([slot]) + struct.pack(
+            ">QQQQQQIII", payer, payee, node, amount, fee, now, 0, 120, now)
         r = self.send(INS_AUTHORIZE_SPEND, data)
-        seq, available = struct.unpack(">IQ", r)
-        return seq, available
+        seq, available = struct.unpack(">IQ", r[:12])
+        body_len = r[12]
+        body = r[13:13 + body_len]
+        sig = r[13 + body_len:13 + body_len + 64]
+        return seq, available, body, sig
 
     def settle(self, slot: int, quoted: int, actual: int):
         data = bytes([slot]) + struct.pack(">QQ", quoted, actual)
@@ -115,29 +126,30 @@ def cmd_list(dev: Device):
 def cmd_demo(dev: Device):
     print("\n1. Granting a mandate — approve it on the device.")
     print("   agent 'analyst', 1 HBAR total, 0.2 HBAR max per draw,")
-    print("   allowed: api.inference.dev, api.data.dev\n")
-    slot = dev.create_mandate("analyst", ["api.inference.dev", "api.data.dev"],
+    print("   may pay: account 0.0." + str(PAYEE) + "\n")
+    slot = dev.create_mandate("analyst", [PAYEE],
                               budget=1 * TINYBAR, per_call=TINYBAR // 5)
     print(f"   granted in slot {slot}\n")
 
     print("2. Drawing against it — no tap, that is what the mandate authorised.")
     for i in range(3):
-        seq, available = dev.authorize(slot, "api.inference.dev", TINYBAR // 10)
-        print(f"   draw {seq}: 0.1 HBAR reserved, {hbar(available)} HBAR left on chip")
+        seq, available, body, sig = dev.authorize(slot, PAYEE, TINYBAR // 10)
+        print(f"   draw {seq}: 0.1 HBAR, {hbar(available)} HBAR left on chip, "
+              f"{len(body)}-byte body signed on device")
         dev.settle(slot, TINYBAR // 10, TINYBAR // 10)
 
     print("\n3. Now the refusals. Each one is decided inside the chip.\n")
 
-    print("   a) a service that is not on the allowlist")
+    print("   a) an account that is not on the allowlist")
     try:
-        dev.authorize(slot, "api.attacker.dev", TINYBAR // 100)
+        dev.authorize(slot, 99999999, TINYBAR // 100)
         print("      !! it went through — that is a bug")
     except CommException as e:
         print(f"      {explain(e)}")
 
     print("   b) a draw above the per-call ceiling")
     try:
-        dev.authorize(slot, "api.inference.dev", TINYBAR // 2)
+        dev.authorize(slot, PAYEE, TINYBAR // 2)
         print("      !! it went through — that is a bug")
     except CommException as e:
         print(f"      {explain(e)}")
@@ -146,7 +158,7 @@ def cmd_demo(dev: Device):
     drained = 0
     while True:
         try:
-            seq, available = dev.authorize(slot, "api.inference.dev", TINYBAR // 10)
+            seq, available, _, _ = dev.authorize(slot, PAYEE, TINYBAR // 10)
             dev.settle(slot, TINYBAR // 10, TINYBAR // 10)
             drained += 1
         except CommException as e:

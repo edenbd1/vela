@@ -17,8 +17,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/** Enough for a two-party HBAR transfer body with an empty memo. */
-#define HEDERA_BODY_MAX 192
+/**
+ * Enough for a two-party HBAR transfer body with an empty memo.
+ *
+ * Real ones come out at 62 bytes; the margin covers large account numbers
+ * and a far-future timestamp. Kept tight because this sits in a response
+ * buffer on a device with very little room.
+ */
+#define HEDERA_BODY_MAX 128
 
 /**
  * A single HBAR transfer, in the only shape Vela signs.

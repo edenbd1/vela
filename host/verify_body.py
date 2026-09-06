@@ -95,9 +95,23 @@ def decode_transfer(body):
 def main():
     payer, payee, node = 10365982, 10365984, 3
     amount = 1_000_000  # 0.01 HBAR in tinybars
-    slot = 0
+    slot = int(sys.argv[1]) if len(sys.argv) > 1 else 1
 
     d = getDongle(False)
+
+    # Grant a fresh envelope on the chosen slot, so the check does not depend
+    # on whatever a previous run left behind. Needs a tap.
+    import hashlib
+    agent = hashlib.sha256(b"verifier").digest()[:20]
+    grant = agent + bytes([1]) + struct.pack(">Q", payee)
+    grant += struct.pack(">QQI", 10_000_000, 5_000_000, 0)
+    try:
+        got = bytes(d.exchange(bytes([CLA, 0x11, 0, 0, len(grant)]) + grant))
+        slot = got[0]
+        print(f"granted a fresh mandate in slot {slot}")
+    except CommException as e:
+        print(f"could not grant: 0x{e.sw:04x}")
+        return 1
 
     pk = bytes(d.exchange(bytes([CLA, INS_PUBKEY, 0, 0, 0])))
     print(f"device key   : {pk.hex()}")

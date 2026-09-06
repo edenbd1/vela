@@ -201,7 +201,12 @@ int handler_authorize_spend(buffer_t *cdata) {
     // The body travels back with the signature because the host must submit
     // exactly these bytes. It never built them and cannot alter them without
     // the signature ceasing to match.
-    uint8_t out[4 + 8 + 1 + HEDERA_BODY_MAX + HEDERA_SIG_LEN];
+    //
+    // Static, not stack: a couple of hundred bytes of locals is enough to
+    // trip the stack protector here, which surfaces as EXCEPTION_OVERFLOW
+    // (0x5303) from a handler that looks perfectly innocent.
+    static uint8_t out[4 + 8 + 1 + HEDERA_BODY_MAX + HEDERA_SIG_LEN];
+    memset(out, 0, sizeof(out));
     size_t off = 0;
     write_u32_be(out, off, seq);
     off += 4;
