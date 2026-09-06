@@ -67,6 +67,22 @@ const readBody = (req) =>
     req.on("end", () => { try { resolve(JSON.parse(b || "{}")); } catch { resolve(null); } });
   });
 
+/**
+ * The allowlist, appended after the fixed fields by the chip.
+ *
+ * Older firmware stopped at seq, so the tail may be absent. Returning null
+ * rather than [] keeps "the chip did not tell me" distinct from "the chip
+ * told me nobody" — an agent should treat those differently, and so should
+ * the digest reconstruction below.
+ */
+function payeesFrom(state) {
+  if (state.length < 70) return null;
+  const n = state.readUInt8(69);
+  if (state.length < 70 + n * 8) return null;
+  return Array.from({ length: n }, (_, i) =>
+    `0.0.${state.readBigUInt64BE(70 + i * 8)}`);
+}
+
 /** The mandate, read from the chip on every call — it can be revoked mid-run. */
 async function envelope() {
   const state = await signer.transport
@@ -84,6 +100,7 @@ async function envelope() {
     available: state.readBigUInt64BE(53),
     expiry: state.readUInt32BE(61),
     draws_so_far: state.readUInt32BE(65),
+    payees: payeesFrom(state),
     asset: "HBAR, in tinybars",
   };
 }
@@ -170,7 +187,7 @@ const routes = {
     const tx = result.header.transaction;
 
     let anchored = null;
-    if (process.env.HEDERA_TOPIC_ID && lastDraw) {
+    if (process.env.HEDERA_TOPIC_ID && lastDraw && before.payees) {
       const anchor = makeAnchor({
         topicId: process.env.HEDERA_TOPIC_ID,
         operatorId: process.env.HEDERA_TREASURY_ID,
@@ -179,7 +196,9 @@ const routes = {
       const record = drawRecord({
         mandateHash: mandateDigest({
           agentId: Buffer.from(before.agent, "hex"),
-          payees: [BigInt(process.env.HEDERA_TREASURY_ID.split(".")[2])],
+          // From the chip. Deriving this from local config instead would let
+          // the host publish a digest for an envelope the chip never held.
+          payees: before.payees.map((p) => BigInt(p.split(".")[2])),
           budgetTotal: before.budget_total,
           perCallMax: before.per_call_max,
           expiry: before.expiry,

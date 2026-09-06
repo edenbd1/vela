@@ -76,12 +76,20 @@ int handler_get_mandate(uint8_t id) {
 
     // in_use (1) || agent_id (20) || budget (8) || reserved (8) || spent (8)
     // || per_call_max (8) || available (8) || expiry (4) || seq (4)
+    // || n_payees (1) || payees (8 each)
+    //
+    // The allowlist is appended last, so a host built against the earlier
+    // fixed-size layout still reads every field it knew about at the same
+    // offset. An agent cannot plan against a ceiling it cannot see, and it
+    // cannot reconstruct the envelope's digest without the payees — so the
+    // chip publishes them rather than making the host keep a second copy
+    // that could disagree.
     //
     // Static, not stack. io_send_response_pointer keeps the pointer rather
     // than copying, so a buffer that dies with this frame is read after it
     // is gone — the host sees one stale byte and a success status, which
     // looks like a protocol mismatch rather than a dangling pointer.
-    static uint8_t out[1 + AGENT_ID_LEN + 8 * 5 + 4 + 4];
+    static uint8_t out[1 + AGENT_ID_LEN + 8 * 5 + 4 + 4 + 1 + 8 * MANDATE_MAX_PAYEES];
     memset(out, 0, sizeof(out));
     size_t off = 0;
 
@@ -103,6 +111,12 @@ int handler_get_mandate(uint8_t id) {
     off += 4;
     write_u32_be(out, off, m->seq);
     off += 4;
+
+    out[off++] = m->n_payees;
+    for (uint8_t i = 0; i < m->n_payees && i < MANDATE_MAX_PAYEES; i++) {
+        write_u64_be(out, off, m->payees[i]);
+        off += 8;
+    }
 
     return io_send_response_pointer(out, off, SWO_SUCCESS);
 }

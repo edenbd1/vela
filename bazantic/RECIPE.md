@@ -26,11 +26,16 @@ GET /envelope
 → { "mandate": { "available": "38000000",
                  "per_call_max": "5000000",
                  "budget_total": "50000000",
+                 "payees": ["0.0.10388937"],
                  "draws_so_far": 6 } }
 ```
 
 Amounts are **tinybars**: 100,000,000 tinybars = 1 HBAR. So the envelope above
 has 0.38 HBAR left and will not sign any single payment above 0.05 HBAR.
+
+`payees` is the whole list of accounts this envelope may pay. It comes from the
+chip, not from the host's configuration, so it is the same list the refusals
+are decided against.
 
 Read this first. It is one call, and it tells you which options are actually
 open to you. A service offering a 0.01 tier and a 0.08 tier is offering you one
