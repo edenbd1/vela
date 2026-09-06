@@ -81,9 +81,12 @@ console.log(`   granted. instance ${instance}\n`);
 
 // --- draw -----------------------------------------------------------------
 const client = new x402Client().register(NETWORK, new ExactHederaScheme(signer));
-client.setSpendControls({
-  allowedAssets: [{ network: NETWORK, asset: "0.0.0", maxAmountPerPayment: "20000000" }],
-});
+// allowedAssets: true, with no cap. A host-side ceiling here would shadow the
+// one in the chip: whichever is lower refuses first, and if it is this one the
+// demo proves nothing except that a number in a JavaScript object can be
+// compared. x402 applies spend controls by default and HBAR is not a default
+// asset, so this line is what gets out of the way rather than what adds a rule.
+client.setSpendControls({ allowedAssets: true });
 const http = new x402HTTPClient(client);
 const anchor = makeAnchor({
   topicId: process.env.HEDERA_TOPIC_ID,
