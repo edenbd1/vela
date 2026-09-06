@@ -143,7 +143,10 @@ export function makeAnchor({ topicId, operatorId, operatorKey, network = "testne
 export function checkChain(records) {
   const out = [];
   let prevSeq = 0;
-  let prevRemaining = null;
+
+  // The balance after the last draw that actually paid. Releases are measured
+  // against it rather than against each other.
+  let lastPaidRemaining = null;
 
   for (const r of records) {
     const amount = BigInt(r.amount);
@@ -152,22 +155,34 @@ export function checkChain(records) {
     out.push([r.seq === prevSeq + 1, `seq ${r.seq} follows ${prevSeq} with no gap`]);
     prevSeq = r.seq;
 
-    if (prevRemaining !== null) {
-      const expected = prevRemaining - amount;
+    if (r.r) {
+      // A release only has to have reserved something the envelope could
+      // cover at the time. Pinning it to an exact figure would mean encoding
+      // *when* the host settled — reservations stack while they are held, so
+      // four consecutive releases walk the signed balance down to zero before
+      // any of it comes back — and the log does not record settlement timing.
+      // Guessing at it produces false failures on honest chains.
+      //
+      // The property that matters is not checked here anyway. It is checked
+      // by the next draw that pays.
+      if (lastPaidRemaining !== null) {
+        out.push([remaining <= lastPaidRemaining,
+                  `draw ${r.seq} released within the envelope ` +
+                  `(${remaining} <= ${lastPaidRemaining})`]);
+      }
+    } else if (lastPaidRemaining !== null) {
+      // Here is the whole guarantee. A released draw must give its headroom
+      // back, so the next paying draw starts from where the last paying draw
+      // left off — as if the releases had never happened. If a host said
+      // "released" and quietly paid, spent would have risen, and this number
+      // — signed by the chip, not asserted by the host — comes back lower
+      // than the arithmetic allows.
+      const expected = lastPaidRemaining - amount;
       out.push([remaining === expected,
-                `remaining ${remaining} = ${prevRemaining} - ${amount}`]);
+                `remaining ${remaining} = ${lastPaidRemaining} - ${amount}`]);
     }
 
-    // A released draw consumed a sequence number and then gave the headroom
-    // back, so the next draw starts from where this one did rather than from
-    // the reserved figure the chip signed at the time.
-    //
-    // Nothing here takes the host's word for that. If the host had quietly
-    // paid instead of releasing, spent would have risen, and the *next*
-    // draw's remaining — a number the chip signs, not the host — would come
-    // back lower than this check expects. The release is only believable
-    // because the following signature has to agree with it.
-    if (!r.r) prevRemaining = remaining;
+    if (!r.r) lastPaidRemaining = remaining;
 
     out.push([remaining >= 0n, `remaining ${remaining} is not negative`]);
   }

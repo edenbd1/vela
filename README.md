@@ -131,7 +131,7 @@ Ledger Flex.
 |---|---|
 | Payment signed in the Secure Element | account [`0.0.10392125`](https://hashscan.io/testnet/account/0.0.10392125) — its private key exists on no disk here |
 | x402 settlement | Blocky402 facilitator, `CRYPTOTRANSFER`, `result: SUCCESS` |
-| Public audit log | topic [`0.0.10393467`](https://hashscan.io/testnet/topic/0.0.10393467) |
+| Public audit log | topic [`0.0.10393818`](https://hashscan.io/testnet/topic/0.0.10393818) |
 | On-chip refusals | `payee_not_allowed`, `over_per_call`, `over_budget` |
 | NVRAM persistence | *IDENTICAL — the envelope survived a full application restart* |
 
@@ -145,12 +145,12 @@ path to a signature runs through a mandate check in the chip.
 local state, no trust in this repo, no trust in the host that produced the log.
 
 ```console
-$ node hedera/verify.mjs 0.0.10393467
+$ node hedera/verify.mjs 0.0.10393818
 
-topic   0.0.10393467
+topic   0.0.10393818
 source  https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
 
-mandate 0f39b1086dbf4421…  granted 1788706672  3 draw(s)
+mandate 0f39b1086dbf4421…  granted 1788707364  8 draw(s)
   ok    seq 1 follows 0 with no gap
   ok    remaining 49000000 is not negative
   ok    seq 2 follows 1 with no gap
@@ -159,13 +159,15 @@ mandate 0f39b1086dbf4421…  granted 1788706672  3 draw(s)
   ok    seq 3 follows 2 with no gap
   ok    remaining 40000000 = 48000000 - 8000000
   ok    remaining 40000000 is not negative
-  ok    draw 1: 1000000 tinybars reached 0.0.10388937
-  ok    draw 2: 1000000 tinybars reached 0.0.10388937
-  ok    draw 3: 8000000 tinybars reached 0.0.10388937
-  key   the debited account is under 0ce5cadc98d00e1b…
-  ok    draw 1: signed by the device, and the numbers match
-  ok    draw 2: signed by the device, and the numbers match
-  ok    draw 3: signed by the device, and the numbers match
+  ok    seq 4 follows 3 with no gap
+  ok    draw 4 released within the envelope (30000000 <= 40000000)
+  ok    remaining 30000000 is not negative
+  ok    seq 5 follows 4 with no gap
+  ok    draw 5 released within the envelope (20000000 <= 40000000)
+  ok    remaining 20000000 is not negative
+  ok    seq 6 follows 5 with no gap
+  ok    draw 6 released within the envelope (10000000 <= 40000000)
+  …
   → complete and consistent
 ```
 
@@ -191,6 +193,8 @@ hedera/      x402-gated seller, the Ledger-backed x402 signer, HCS anchoring,
              the private risk feed the enclave screens against
 cre/         Chainlink CRE workflow — the confidential spend advisor, running
              in an AWS Nitro enclave
+web/         a page where you can press the button yourself and watch the
+             chip refuse
 host/        APDU bridge, device probes, the software control arm, Key Ring
              enrolment
 scripts/     build, load, Speculos, the persistence test, the experiment
@@ -241,6 +245,14 @@ is gone. See [`docs/AGENT-GUIDE.md`](docs/AGENT-GUIDE.md).
 `./scripts/experiment.sh` runs the controlled experiment.
 `./scripts/persistence-test.sh` tears the app down and proves the envelope
 survived.
+`node web/server.mjs` serves the interface on :4050. Everything this project
+argues happens either inside a Secure Element or in a terminal, and neither is
+watchable — so the page exists to let someone press *buy the 0.15 tier* against
+a 0.10 ceiling and watch the hardware say no.
+
+`node hedera/refusals.mjs` exercises all four refusals without damaging the
+audit log: the reservations it needs to reach `over_budget` are released and
+the releases are published, so the envelope ends where it started.
 `./scripts/advisor.sh` runs the confidential workflow and keeps its verdict.
 `./scripts/composition.sh` shows the enclave narrowing the mandate, and
 failing to widen it.

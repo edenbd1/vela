@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vela — a spending limit your agent cannot argue with</title>
+<link rel="icon" href="/brand/vela-mark-64.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <img src="/brand/vela-mark-white.svg" alt="" class="mark">
+  <div class="title">
+    <h1>Vela</h1>
+    <p>A spending mandate that lives inside a Ledger Secure Element.</p>
+  </div>
+  <div class="device" id="device">
+    <span class="dot" id="dot"></span>
+    <span id="device-text">connecting…</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= the envelope ================= -->
+  <section class="card envelope">
+    <h2>The envelope <span class="src">read from the chip</span></h2>
+
+    <div class="numbers">
+      <div><b id="available">—</b><span>available</span></div>
+      <div><b id="percall">—</b><span>max per draw</span></div>
+      <div><b id="draws">—</b><span>draws</span></div>
+    </div>
+
+    <div class="bar" id="bar" title="spent / reserved / available">
+      <i class="spent"></i><i class="reserved"></i><i class="left"></i>
+    </div>
+    <div class="legend">
+      <span><i class="k spent"></i> spent <b id="spent">—</b></span>
+      <span><i class="k reserved"></i> reserved <b id="reserved">—</b></span>
+      <span><i class="k left"></i> available</span>
+    </div>
+
+    <h3>May pay <span class="src">hardware boundary</span></h3>
+    <ul class="payees" id="payees"></ul>
+
+    <h3>Currently advised against <span class="src">enclave, advisory</span></h3>
+    <ul class="denied" id="denied"><li class="none">nothing flagged</li></ul>
+  </section>
+
+  <!-- ================= try it ================= -->
+  <section class="card try">
+    <h2>Spend it</h2>
+    <p class="lede">
+      The agent decides what to buy. The chip decides whether it may.
+      Press a tier and watch which one answers.
+    </p>
+    <div class="tiers" id="tiers"></div>
+    <p class="hint" id="hint"></p>
+  </section>
+
+  <!-- ================= the feed ================= -->
+  <section class="card feed">
+    <h2>What happened</h2>
+    <ol id="events"><li class="none">nothing yet</li></ol>
+  </section>
+
+  <!-- ================= the proof ================= -->
+  <section class="card proof">
+    <h2>The public log <span class="src" id="topic">—</span></h2>
+    <p class="lede">
+      Every draw is anchored on Hedera with a statement the chip signed.
+      Anyone can check it without trusting this page.
+    </p>
+    <button id="load-receipts">Read the log from the mirror node</button>
+    <ol id="receipts"></ol>
+  </section>
+
+</main>
+
+<footer>
+  <span>The agent holds no key. The host holds no key.</span>
+  <a href="https://github.com/edenbd1/vela">github.com/edenbd1/vela</a>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
