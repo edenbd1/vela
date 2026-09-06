@@ -134,11 +134,24 @@ const routes = {
       });
     }
 
+    // No client-side spend cap here, and that is deliberate.
+    //
+    // Mirroring per_call_max into x402's own spendControls looks like defence
+    // in depth and is the opposite. The client refuses first, the chip is
+    // never asked, and what comes back is the SDK's message about its own
+    // configuration — so the refusal an operator sees is a host-side one,
+    // produced by exactly the kind of control this project exists to argue
+    // against. Worse, it is silent about the disagreement: raise the host cap
+    // above the mandate and nothing warns you which one is actually holding.
+    //
+    // The ceiling that matters is in the Secure Element. Let the request
+    // reach it and let it answer.
     const client = new x402Client().register(NETWORK, new ExactHederaScheme(signer));
-    client.setSpendControls({
-      allowedAssets: [{ network: NETWORK, asset: "0.0.0",
-                        maxAmountPerPayment: String(before.per_call_max) }],
-    });
+    // allowedAssets: true, not a cap. x402 applies spend controls by default
+    // and HBAR is not one of its default assets, so leaving this unset does
+    // not mean "no host-side limit" — it means every payment is rejected by
+    // the client before the chip sees it.
+    client.setSpendControls({ allowedAssets: true });
     const http = new x402HTTPClient(client);
 
     const first = await fetch(body.url).catch(() => null);

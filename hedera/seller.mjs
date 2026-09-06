@@ -33,9 +33,14 @@ const HBAR = "0.0.0";
 const PAY_TO = process.env.HEDERA_TREASURY_ID;
 const FACILITATOR_URL = process.env.X402_FACILITATOR_URL;
 
+// Three tiers, spanning a mandate's per-payment ceiling rather than sitting
+// under it. Two tiers that both fit never make an agent choose anything; a
+// tier it cannot afford is what turns "check your envelope first" from
+// advice into the difference between finishing and looping.
 const TIER = {
   triage: { tinybars: "1000000", label: "0.01 HBAR", model: "triage" },
   synthesis: { tinybars: "8000000", label: "0.08 HBAR", model: "synthesis" },
+  exhaustive: { tinybars: "15000000", label: "0.15 HBAR", model: "exhaustive" },
 };
 
 const facilitator = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
@@ -74,6 +79,17 @@ app.use(
         description: "Deep pass — eight times the price of triage",
         mimeType: "application/json",
       },
+      "GET /infer/exhaustive": {
+        accepts: {
+          scheme: "exact",
+          network: NETWORK,
+          payTo: PAY_TO,
+          price: { asset: HBAR, amount: TIER.exhaustive.tinybars },
+          maxTimeoutSeconds: 120,
+        },
+        description: "Everything we have — the most thorough answer available",
+        mimeType: "application/json",
+      },
     },
     resourceServer,
   ),
@@ -84,7 +100,9 @@ app.get("/infer/:tier", (req, res) => {
   res.json({
     model: tier.model,
     price: tier.label,
-    verdict: tier.model === "triage" ? "nothing unusual" : "elevated funding risk on two venues",
+    verdict: tier.model === "triage"
+      ? "nothing unusual"
+      : "elevated funding risk on two venues",
     at: new Date().toISOString(),
   });
 });
@@ -98,4 +116,5 @@ app.listen(PORT, () => {
   console.log(`  facilitator  ${FACILITATOR_URL}`);
   console.log(`  triage       ${TIER.triage.label}`);
   console.log(`  synthesis    ${TIER.synthesis.label}`);
+  console.log(`  exhaustive   ${TIER.exhaustive.label}`);
 });

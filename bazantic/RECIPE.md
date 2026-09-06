@@ -45,11 +45,17 @@ spend a turn finding out.
 ## Refusals are answers, not errors
 
 ```
-POST /pay  {"url": "https://…/infer/synthesis"}
+POST /pay  {"url": "https://…/infer/exhaustive"}
 → { "paid": false, "refused": true,
     "reason": "over_per_call", "terminal": true,
-    "advice": "this single payment exceeds per_call_max; a cheaper tier may fit" }
+    "advice": "this single payment exceeds per_call_max; a cheaper tier may fit",
+    "asked_for": "15000000",
+    "envelope": { "per_call_max": "10000000", "available": "39000000", … } }
 ```
+
+The envelope comes back with the refusal, so the next move needs no extra
+call: 0.15 HBAR did not fit under a 0.10 ceiling, 0.08 does, and the tier below
+is right there in the service's own listing.
 
 This returns HTTP 200. It is not a failure of the service; it is the service
 working. `"terminal": true` means exactly what it says:
@@ -110,7 +116,9 @@ GET /receipts
 ```
 
 Every draw is anchored on a public Hedera topic with a statement the chip
-itself signed. If you are asked to justify what you spent, this is the answer,
+itself signed. Refusals are not in it — the chip signs nothing when it refuses,
+so there is nothing for it to attest. The log is what was authorised, not what
+was attempted. If you are asked to justify what you spent, this is the answer,
 and it does not depend on your account of events being believed — anyone can
 check it against the mirror node with `node verify.mjs <topic>`.
 
