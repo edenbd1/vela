@@ -30,6 +30,7 @@ import { ExactHederaScheme } from "@x402/hedera/exact/client";
 import { createLedgerHederaSigner } from "./ledger-signer.mjs";
 import { drawRecord, makeAnchor, mandateDigest } from "./anchor.mjs";
 import { currentInstance } from "./instance.mjs";
+import { readFileSync, existsSync } from "node:fs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
@@ -53,6 +54,31 @@ const REFUSALS = {
 
 let signer;
 let lastDraw = null;
+
+/**
+ * The confidential advisor's latest verdict.
+ *
+ * Produced by a Chainlink CRE workflow running in an AWS Nitro enclave
+ * (cre/spend-advisor). It exists because the chip's mandate is hard but
+ * static: the Secure Element has no network and no clock beyond an expiry, so
+ * it cannot learn that an account which was reputable when the human granted
+ * the envelope is a drainer today.
+ *
+ * The composition is one-directional and that is the whole point. This can
+ * only remove payees from consideration. It cannot add one, raise a ceiling,
+ * or extend an envelope — those live in NVRAM behind a hardware boundary, and
+ * nothing here is an input to them. A compromised advisor costs availability,
+ * never authority.
+ */
+function advice() {
+  const file = join(ROOT, "cre", "advice.json");
+  if (!existsSync(file)) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
 
 const json = (res, code, body) => {
   const s = JSON.stringify(body, (_k, v) => (typeof v === "bigint" ? String(v) : v), 2);
@@ -115,10 +141,22 @@ const routes = {
               "one on the device. This is not an error you can retry past.",
       });
     }
+    const a = advice();
     json(res, 200, {
       mandate: e,
-      note: "these numbers come from the Secure Element, not from this host. " +
-            "Plan against available and per_call_max before choosing what to buy.",
+      // Kept as a separate object rather than folded into the mandate. They
+      // are not the same kind of fact: one is enforced in silicon and cannot
+      // be talked around, the other is a current opinion that may change by
+      // the next run. Merging them would let a reader mistake advice for
+      // authority.
+      advisory: a
+        ? { denied: a.deny.map((d) => ({ payee: d.payee, reason: d.reason })),
+            at: a.at,
+            source: "chainlink cre confidential workflow, aws nitro" }
+        : null,
+      note: "the mandate comes from the Secure Element, not from this host. " +
+            "Plan against available and per_call_max before choosing what to buy. " +
+            "advisory narrows the mandate; it never widens it.",
     });
   },
 
@@ -169,6 +207,30 @@ const routes = {
 
     const accepts = required.accepts[0];
     const price = BigInt(accepts.amount);
+
+    // Consulted here because this is the first point where the payee is
+    // known, and still before anything is signed. Checked before the chip,
+    // not instead of it: declining now saves a pointless round trip to a
+    // device that would have said yes, and if this check were skipped or
+    // subverted the payment would still have to survive the mandate. That
+    // asymmetry is what makes it safe to run this part on the host at all.
+    const a = advice();
+    const flagged = a?.deny.find((d) => d.payee === accepts.payTo);
+    if (flagged) {
+      return json(res, 200, {
+        paid: false, refused: true, reason: "advisor_denied",
+        // Not terminal. Unlike the chip's refusals this is a live opinion
+        // about the world, and the next enclave run may clear it. Calling it
+        // terminal would have an agent abandon a counterparty for good over
+        // a signal that was true for an afternoon.
+        terminal: false,
+        advice: `the confidential advisor flagged this payee: ${flagged.reason}`,
+        score: flagged.score,
+        payee: accepts.payTo,
+        note: "this narrows the mandate. The chip would have allowed it; an " +
+              "enclave in aws nitro said it is a bad idea right now.",
+      });
+    }
 
     // Ask the chip. A refusal here is the point of the whole project, so it
     // is reported as an outcome with a reason, not raised as a failure.

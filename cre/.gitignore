@@ -1,0 +1,7 @@
+*.env
+node_modules/
+.cre_build_tmp.*
+# The enclave's latest verdict is runtime state, not source: it is a snapshot
+# of what a risk feed thought at one moment, and committing it would let a
+# stale opinion look like configuration.
+advice.json
