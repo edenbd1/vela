@@ -21,6 +21,7 @@ import { ExactHederaScheme } from "@x402/hedera/exact/client";
 
 import { createLedgerHederaSigner } from "./ledger-signer.mjs";
 import { drawRecord, makeAnchor, mandateDigest } from "./anchor.mjs";
+import { currentInstance, openInstance } from "./instance.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
@@ -74,10 +75,7 @@ const MANDATE = {
   expiry: 0,
 };
 const mandateHash = mandateDigest(MANDATE);
-// One instance per grant. Reused across runs while the same envelope lives
-// in the chip; a fresh grant gets a fresh one.
-const instanceFile = join(ROOT, ".vela-instance");
-
+let instance;
 // An empty Buffer is truthy, so `if (!state)` quietly falls through to the
 // branch that reads offsets out of it. Check the length.
 const state = await signer.transport
@@ -102,13 +100,21 @@ if (!state || state.length < MANDATE_STATE_LEN) {
   const slot = await signer.transport.exchange(
     Buffer.concat([Buffer.from([0xe0, 0x11, 0, 0, body.length]), body]),
   );
-  writeFileSync(instanceFile, String(Math.floor(Date.now() / 1000)));
-  console.log(`   granted in slot ${slot[0]}\n`);
+  instance = openInstance();
+  console.log(`   granted in slot ${slot[0]}, instance ${instance}\n`);
 } else {
   const budget = state.readBigUInt64BE(21);
   const available = state.readBigUInt64BE(53);
+  const cur = currentInstance();
+  instance = cur.id;
   console.log(`1. mandate already in slot 0: ${hbar(available)} of ` +
-              `${hbar(budget)} left\n`);
+              `${hbar(budget)} left`);
+  if (cur.minted) {
+    console.log(`   no grant epoch on file for it — opening ${instance}, so ` +
+                `these draws\n   get their own chain instead of joining one ` +
+                `they do not belong to`);
+  }
+  console.log("");
 }
 
 // --- pay ------------------------------------------------------------------
@@ -160,12 +166,14 @@ if (process.env.HEDERA_TOPIC_ID && lastDraw) {
   });
   const record = drawRecord({
     mandateHash,
-    instance: existsSync(instanceFile) ? readFileSync(instanceFile, "utf8").trim() : "0",
+    instance,
     seq: lastDraw.seq,
     payee: MANDATE.payees[0],
     amount: BigInt(accepts.amount),
     remaining: lastDraw.available,
     tx,
+    anchor: lastDraw.anchor,
+    anchorSig: lastDraw.anchorSig,
   });
   const n = await anchor.submit(record);
   anchor.close();

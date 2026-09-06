@@ -27,3 +27,6 @@ host/ring/.member.json
 # Node
 hedera/node_modules/
 host/ring/node_modules/
+
+# host bookkeeping: which grant epoch the live mandate belongs to
+.vela-instance

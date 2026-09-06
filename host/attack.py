@@ -92,14 +92,17 @@ def attack_device():
 
     now = int(time.time())
     step(3, f"paying {BIG/1e8:g} HBAR to 0.0.{ATTACKER}")
+    # slot | fee_payer | from | payee | node | amount | fee | valid_start
+    #      | nanos | duration | now
     req = bytes([slot]) + struct.pack(
-        ">QQQQQQIII", 10365982, ATTACKER, 3, BIG, 100_000_000, now, 0, 120, now)
+        ">QQQQQQQIII", 7162784, 10392125, ATTACKER, 3, BIG, 100_000_000, now, 0, 120, now)
     try:
         d.exchange(bytes([0xE0, 0x12, 0, 0, len(req)]) + req)
         print("SETTLED — this is a bug")
         return 1
     except CommException as e:
-        codes = {0xB102: "not_found", 0xB104: "payee_not_allowed", 0xB106: "over_budget"}
+        codes = {0xB102: "not_found", 0xB103: "expired", 0xB104: "payee_not_allowed",
+                 0xB105: "over_per_call", 0xB106: "over_budget", 0xB108: "bad_request"}
         print(f"REFUSED ({codes.get(e.sw, hex(e.sw))})")
 
     print("\n  I have root on this machine and it changed nothing. The chip")

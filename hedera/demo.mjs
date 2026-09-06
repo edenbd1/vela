@@ -17,6 +17,7 @@ import { ExactHederaScheme } from "@x402/hedera/exact/client";
 
 import { createLedgerHederaSigner } from "./ledger-signer.mjs";
 import { drawRecord, makeAnchor, mandateDigest } from "./anchor.mjs";
+import { openInstance } from "./instance.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
@@ -73,7 +74,9 @@ body.writeUInt32BE(MANDATE.expiry, 45);
 await signer.transport.exchange(
   Buffer.concat([Buffer.from([0xe0, 0x11, 0, 0, body.length]), body]),
 );
-const instance = String(Math.floor(Date.now() / 1000));
+// Recorded on disk, not just held here: a later `pay-with-ledger.mjs` run
+// draws on this same mandate and must anchor under this same epoch.
+const instance = openInstance();
 console.log(`   granted. instance ${instance}\n`);
 
 // --- draw -----------------------------------------------------------------
