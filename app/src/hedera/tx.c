@@ -221,6 +221,21 @@ int hedera_build_transfer_body(const hedera_transfer_t *t, uint8_t *out, size_t 
     return (int) body.len;
 }
 
+/** Bytes a varint occupies, so a sub-message length can be known before writing. */
+static size_t varint_len(uint64_t v) {
+    size_t n = 1;
+    while (v >= 0x80) {
+        v >>= 7;
+        n++;
+    }
+    return n;
+}
+
+/** Bytes pb_uint would write. Zero writes nothing, as proto3 omits defaults. */
+static size_t uint_len(uint32_t field, uint64_t v) {
+    return v == 0 ? 0 : varint_len(((uint64_t) field << 3) | WIRE_VARINT) + varint_len(v);
+}
+
 int hedera_encode_call(const hedera_call_t *c, uint8_t *out, size_t out_len) {
     if (c == NULL || out == NULL || c->calldata == NULL) {
         return -1;
@@ -232,11 +247,19 @@ int hedera_encode_call(const hedera_call_t *c, uint8_t *out, size_t out_len) {
         return -1;
     }
 
-    // Static, not stack. A 224-byte body plus scratch is more than this
-    // frame should hold: the stack protector fires on far less, and it
-    // reports as EXCEPTION_OVERFLOW a long way from the cause.
-    static uint8_t scratch[HEDERA_CALL_BODY_MAX];
-    static uint8_t inner[64];
+    // Small stack buffers only, as the transfer encoder does.
+    //
+    // The first version staged the ContractCall in a 224-byte scratch array
+    // so it could be measured before being framed. That array, plus the body
+    // buffer the response needs, pushed the app's static data into the stack
+    // and the application faulted on a write that had succeeded moments
+    // earlier — which reads as memory corruption and sends you looking at the
+    // wrong code entirely.
+    //
+    // A length-prefixed sub-message does not need staging: its length is
+    // computable from the parts. So the parts are measured, the frame is
+    // written, and each part goes straight into the output.
+    uint8_t inner[64];
     int n;
 
     // --- TransactionID ----------------------------------------------------
@@ -246,7 +269,8 @@ int hedera_encode_call(const hedera_call_t *c, uint8_t *out, size_t out_len) {
         return -1;
     }
 
-    pb_t txid = {scratch, sizeof(scratch), 0};
+    uint8_t txbuf[48];
+    pb_t txid = {txbuf, sizeof(txbuf), 0};
     if (!pb_submsg(&txid, F_TXID_START, inner, ts.len)) {
         return -1;
     }
@@ -256,7 +280,7 @@ int hedera_encode_call(const hedera_call_t *c, uint8_t *out, size_t out_len) {
     }
 
     pb_t body = {out, out_len, 0};
-    if (!pb_submsg(&body, F_BODY_TX_ID, scratch, txid.len)) {
+    if (!pb_submsg(&body, F_BODY_TX_ID, txbuf, txid.len)) {
         return -1;
     }
 
@@ -274,31 +298,46 @@ int hedera_encode_call(const hedera_call_t *c, uint8_t *out, size_t out_len) {
         return -1;
     }
 
-    // --- contractCall -----------------------------------------------------
-    n = account_id(inner, sizeof(inner), c->contract);   // ContractID.contractNum
-    if (n < 0) {
+    // --- contractCall, measured then streamed -----------------------------
+    uint8_t cid[24];
+    int cid_len = account_id(cid, sizeof(cid), c->contract);  // ContractID.contractNum
+    if (cid_len < 0) {
         return -1;
     }
-    pb_t call = {scratch, sizeof(scratch), 0};
-    if (!pb_submsg(&call, F_CC_CONTRACT_ID, inner, (size_t) n) ||
-        !pb_uint(&call, F_CC_GAS, c->gas) ||
-        !pb_uint(&call, F_CC_AMOUNT, c->amount)) {
+
+    size_t call_len = varint_len(((uint64_t) F_CC_CONTRACT_ID << 3) | WIRE_LEN) +
+                      varint_len((uint64_t) cid_len) + (size_t) cid_len +
+                      uint_len(F_CC_GAS, c->gas) +
+                      uint_len(F_CC_AMOUNT, c->amount) +
+                      varint_len(((uint64_t) F_CC_PARAMS << 3) | WIRE_LEN) +
+                      varint_len(c->calldata_len) + c->calldata_len;
+
+    if (!pb_tag(&body, F_BODY_CONTRACT_CALL, WIRE_LEN) ||
+        !pb_varint(&body, call_len)) {
         return -1;
     }
-    // The calldata goes in byte for byte. Every claim about where this call
-    // sends value was made by mandate_authorize_call() reading these same
-    // bytes; nothing here re-interprets them.
-    if (!pb_tag(&call, F_CC_PARAMS, WIRE_LEN) ||
-        !pb_varint(&call, c->calldata_len)) {
+    size_t call_start = body.len;
+
+    if (!pb_submsg(&body, F_CC_CONTRACT_ID, cid, (size_t) cid_len) ||
+        !pb_uint(&body, F_CC_GAS, c->gas) ||
+        !pb_uint(&body, F_CC_AMOUNT, c->amount) ||
+        !pb_tag(&body, F_CC_PARAMS, WIRE_LEN) ||
+        !pb_varint(&body, c->calldata_len)) {
         return -1;
     }
+    // Byte for byte. Every claim about where this call sends value was made
+    // by mandate_authorize_call() reading these same bytes; nothing here
+    // re-interprets them.
     for (uint16_t i = 0; i < c->calldata_len; i++) {
-        if (!pb_byte(&call, c->calldata[i])) {
+        if (!pb_byte(&body, c->calldata[i])) {
             return -1;
         }
     }
 
-    if (!pb_submsg(&body, F_BODY_CONTRACT_CALL, scratch, call.len)) {
+    // The length was written before the contents. If they disagree the body
+    // is malformed, and a malformed body that carries a valid signature is
+    // worse than no body at all.
+    if (body.len - call_start != call_len) {
         return -1;
     }
     return (int) body.len;

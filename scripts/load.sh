@@ -22,8 +22,21 @@ echo "dataSize=$DATA_SIZE installparamsSize=$PARAMS_SIZE"
 
 # Ask the SDK what flags this build actually wants, rather than carrying a
 # hardcoded copy that drifts from the Makefile.
-APP_FLAGS=$(make -n load 2>/dev/null | tr ' ' '\n' | grep -A1 -- '--appFlags' | tail -1)
-APP_FLAGS=${APP_FLAGS:-0x0}
+#
+# In the builder image, not on the host: `make -n load` needs BOLOS_SDK and the
+# ARM toolchain, and on macOS it simply fails. A first version of this check
+# ran it here, got nothing, and defaulted to 0x0 — which is the safe value, so
+# it looked like it worked while checking nothing at all. A guard that cannot
+# fail is not a guard.
+IMAGE="ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:latest"
+APP_FLAGS=$(docker run --rm -v "$ROOT":/repo -w /repo/app -e BOLOS_SDK=/opt/flex-secure-sdk \
+              "$IMAGE" bash -c "make -n load 2>/dev/null" 2>/dev/null \
+            | tr ' ' '\n' | grep -A1 -- '--appFlags' | tail -1)
+
+if [ -z "$APP_FLAGS" ]; then
+  echo "could not read --appFlags from the SDK — refusing to guess" >&2
+  exit 1
+fi
 
 # Refuse privileged flags, loudly.
 #
