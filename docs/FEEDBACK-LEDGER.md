@@ -11,9 +11,9 @@ device. No exotic cryptography, no unusual configuration, and no privileged
 capability the app asked for.
 
 **Cost, before the list starts:** one Ledger Flex factory-reset three times
-and a seed restored twice — from a depleted battery nothing told us about
-(finding 14), after most of a day spent confidently investigating the wrong
-cause.
+and a seed restored twice, by a protection mode that never said what it was
+protecting against (finding 14) — after two days spent confidently
+investigating two different wrong causes.
 
 ---
 
@@ -32,11 +32,13 @@ Every problem we hit falls into one pattern:
 Fourteen times, the tooling knew exactly what was wrong and told us something
 unrelated — or nothing at all. Most are a small fix, often one error string.
 
-**Read \#14 first.** A Flex that resets itself does not say why. Ours did it
-three times, and the reason — a depleted battery on a hub that carried data
-but not power — appeared only on a transient device screen we happened to
-photograph. Everything about that failure is invisible from the terminal, and
-the device that comes back passes its genuine check.
+**Read \#14 first.** A Flex enters protection mode when it interprets an event
+as an attack, and factory-resets itself. Ours did it three times. The device
+knows what it classified; it never says, and neither does the loader that is
+talking to it. A development loop — repeated sideloads over an untrusted
+channel, crashing apps, wedged USB — looks a great deal like the thing the
+protection exists to catch, and the only feedback is a wiped device hours
+later.
 
 Three findings are real bugs: \#10 writes past the end of a correctly sized
 buffer, \#7 copies the wrong number of bytes, and \#12 is a documented build
@@ -51,7 +53,7 @@ Ordered by what it costs the developer, not by the order we hit them.
 
 | | finding | what it costs | where the fix is |
 |---|---|---|---|
-| 🔴 | [14 — a device that resets itself does not say why](#14-a-device-that-resets-itself-does-not-say-why-until-it-is-too-late) | three wipes, two seeds, a day on the wrong cause | surface protection mode in Wallet and `ledgerblue` |
+| 🔴 | [14 — protection mode does not say what it protected against](#14-protection-mode-does-not-say-what-it-protected-against) | three wipes, two seeds, two days on two wrong causes | name the event on screen and in `ledgerblue` |
 | 🟡 | [13 — an app is granted OS privileges it never asked for](#13-an-app-is-granted-os-privileges-it-never-asked-for) | invisible `BOLOS_SETTINGS` from a Bluetooth option | a comment · name the flags in words |
 | 🟠 | [10 — `bip32_derive_..._pubkey_256` writes 65 bytes for Ed25519](#10-bip32_derive_with_seed_get_pubkey_256-writes-65-bytes-for-ed25519) | stack overrun and a wrong key, failing far away | SDK, or one line of doc |
 | 🟠 | [12 — the APDU buffer knob is no longer read](#12-the-makefile-knob-for-the-apdu-buffer-is-no-longer-read) | app dies at runtime, no status word | honour the variable or delete the line |
@@ -66,10 +68,11 @@ Ordered by what it costs the developer, not by the order we hit them.
 | ⚪ | [5 — nothing says to quit Ledger Wallet](#5-nothing-says-to-quit-ledger-wallet-first) | drifting status words | detect the process |
 | ⚪ | [6 — `ledgerctl run` has no inverse](#6-ledgerctl-run-app-has-no-inverse) | no way back to the dashboard | a dashboard command |
 
-**If only one thing changes:** the device knows it is in protection mode and
-knows it reset itself to protect the keys. One line, anywhere a developer
-looks — Ledger Wallet, `ledgerblue`, or the welcome screen afterwards — would
-have saved two days and two seeds.
+**If only one thing changes:** the device classified some event as an attack.
+It knows which. One line naming it, on the protection-mode screen or through
+the loader already talking to the device, would have saved two days and two
+seeds — and would have stopped us publishing two confident wrong diagnoses on
+the way.
 
 ---
 
@@ -515,52 +518,84 @@ device, wipe. It was a good story and it was wrong. See finding 14.
 
 ---
 
-## 14. A device that resets itself does not say why until it is too late
+## 14. Protection mode does not say what it protected against
 
 Our Flex factory-reset itself three times in two days, taking the seed each
-time. There is nothing in `ledgerblue`, in Ledger Wallet, or on the device at
-the moment it happens that explains it.
+time. We now know the mechanism and still do not know the trigger, which is
+the finding.
 
-The actual cause, which we found only because the device happened to show
-this screen while we were photographing it for an unrelated reason:
+The device eventually showed this:
 
-> **Protection mode — 1%**
+> **Protection mode — 16%**
 > For security, this Ledger device will reset once protection mode is at
 > 100%. Keep it charged till then.
 
-The battery had been running down. The device was plugged into a hub that
-carried data and not enough power, so it read as connected the entire time.
+[Support article E6](https://support.ledger.com/article/8632894981149-zd)
+explains it:
 
-**What the developer sees instead.** The device comes back showing *"Welcome
-to Ledger Flex, your digital signer"*. Ledger Wallet reports a brand-new
-device that passes its genuine check — because it is genuine, and empty.
-Nothing anywhere says the words "battery" or "protection mode". The screen
-that explains it appears on the device, transiently, and is trivially missed
-by someone whose attention is on a terminal.
+> *Whenever your Ledger interprets an event as an attack, it enters Protection
+> mode. In rare cases, events that don't necessarily pose safety risks can be
+> interpreted as attacks.*
 
-**What it cost.** Three wipes, two seed restorations, and most of a day spent
-confidently investigating the wrong cause. We wrote up finding 13 as the
-culprit — privileged app flags — with a reproduction, a suggested fix and a
-severity marker, before the real reason showed up on the screen. That finding
-is still worth reading; it is simply not what erased anything.
+and the procedure is to charge until the counter reaches 100%, at which point
+the device resets and the recovery phrase is re-entered. So the percentage is
+**the recovery**, not a countdown to be prevented — which is the opposite of
+what the on-device text reads like. *"Keep it charged till then"* sounds like
+an instruction to avert something.
+
+**The gap.** The device knows which event it classified as an attack. It never
+says. Neither does `ledgerblue`, which is talking to it, nor Ledger Wallet,
+which reports a device that passes its genuine check afterwards — because it
+is genuine, and empty.
+
+**Why that matters more for developers than for users.** Ledger's own wording
+admits false positives. A BOLOS development loop is a stream of things that
+resemble an attack from the silicon's point of view:
+
+- `ledgerblue.loadApp` opens a secure channel with a freshly generated root
+  key on every invocation — `Broken certificate chain - loading from user key`
+  is printed each time and means the host is not trusted
+- delete/install cycles, dozens of them in a day
+- applications that crash, because that is what happens while writing one
+- USB pipes that wedge and disconnect mid-exchange
+
+We cannot prove which of these did it, and this document is not going to
+guess a third time — see the note below. But a developer sideloading their own
+app all day is doing, repeatedly and legitimately, the shape of thing the
+protection exists to catch, and the only feedback is a wiped device some hours
+later.
 
 **Suggested fixes:**
 
-1. **Surface protection mode where the developer is looking.** Ledger Wallet
-   knows the battery level and the protection-mode counter. A banner is
-   enough.
+1. **Name the event.** The device classified something. One line on the
+   protection-mode screen — *"triggered by: repeated unauthenticated manager
+   sessions"* — turns two lost days into two minutes.
 2. **Say it in the manager protocol.** `ledgerblue` talks to the device on
-   every load and could print one line: *"device is in protection mode
-   (N%) — it will factory-reset if this reaches 100%"*.
-3. **Make the on-device screen persistent, not transient**, once the counter
-   has started. A warning that has to be caught in the act is not a warning.
-4. **Say it afterwards.** The device knows it reset itself and why. The
-   welcome screen could carry one line — *"this device reset to protect your
-   keys after its battery was depleted"* — and would have saved us two days
-   and two seeds.
+   every load. It could report that the device is in protection mode, and at
+   what percentage, instead of the developer discovering it by looking at the
+   device at the right moment.
+3. **Fix the on-device wording.** *"Keep it charged till then"* reads as
+   prevention. The support article says the reset is the remedy. Those should
+   not disagree.
+4. **Document the developer case.** If a normal sideload loop can trigger
+   this, developer-mode devices should either be more tolerant or the
+   documentation should say plainly that it can happen and why.
 
-**Note for anyone developing on a Flex:** a USB hub that enumerates the
-device is not necessarily charging it. Check the battery, not the connection.
+**Two wrong conclusions, recorded because the reasoning is the lesson.**
+
+We first blamed `--appFlags 0x200` (finding 13). The resets correlated with
+the loads because the loads were most of what we were doing; a privileged flag
+looked like a plausible mechanism; we stopped looking. Then a load that did
+*not* wipe the device was read as confirmation — when the counter simply had
+not reached 100% yet.
+
+We then blamed battery depletion, because the protection-mode screen mentions
+charging and the device was on a hub. Also wrong, and wrong in the same way:
+a plausible mechanism, accepted too quickly, from a screen read too fast.
+
+The actual answer is that the device is not saying, and the honest position is
+that we still do not know which event tripped it. That is precisely why the
+first suggested fix is the one that matters.
 
 ## Tutorial we would have wanted
 
@@ -585,9 +620,10 @@ findings 1, 2, 6 and 7 would have saved this entire evening.
 9. Use its CommonJS build.
 10. Response buffers must be static — never a local.
 11. Ed25519 public keys come back as 65-byte uncompressed points.
-12. **Watch the battery, not the connection.** A hub that enumerates a Flex
-    is not necessarily charging it. A depleted Flex factory-resets itself,
-    and nothing outside the device says so.
+12. **If you see protection mode, let it finish.** The percentage is the
+    recovery procedure, not a countdown to avert: charge to 100%, the device
+    resets, restore from the recovery phrase. Have your 24 words to hand
+    before you start developing.
 13. **Know your `--appFlags`.** `make -n load | grep -A1 appFlags`. Anything
     but `0x0` means the build asks for an OS privilege. `ENABLE_BLUETOOTH=1`
     — the boilerplate default — grants `BOLOS_SETTINGS` on Flex.

@@ -325,14 +325,16 @@ Building this surfaced fourteen concrete developer-experience problems,
 written up with reproductions in
 [`docs/FEEDBACK-LEDGER.md`](docs/FEEDBACK-LEDGER.md).
 
-**The one that cost the most was invisible.** The Flex factory-reset itself
-three times over two days, taking the seed with it. Nothing in the loader, in
-Ledger Wallet, or on the device at the moment it happens says why — the device
-comes back showing *"Welcome to Ledger Flex"* and passes its genuine check,
-because it is genuine and empty. The cause was a depleted battery on a hub
-that carried data but not power, and it surfaced only on a transient
-device screen. We spent most of a day confidently investigating the wrong
-cause first, and the write-up says so.
+**The one that cost the most is still unexplained, and that is the finding.**
+The Flex factory-reset itself three times over two days, taking the seed with
+it. It was protection mode: the device interprets some event as an attack and
+resets. It knows which event. It never says, and neither does the loader
+talking to it — the device comes back showing *"Welcome to Ledger Flex"* and
+passes its genuine check, because it is genuine and empty. A development loop
+of repeated sideloads over an untrusted channel, crashing apps and wedged USB
+pipes resembles the thing that protection exists to catch. We diagnosed it
+wrong twice before reading the device's own screen, and the write-up records
+both wrong answers because the reasoning is the lesson.
 
 Most of the rest are one error string away from being fine. Three more are
 real bugs:
