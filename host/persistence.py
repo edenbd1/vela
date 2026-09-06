@@ -21,6 +21,16 @@ CLA, INS_GET, INS_QUIT = 0xE0, 0x10, 0x15
 TINYBAR = 100_000_000
 
 
+def running_app():
+    """Which application is answering. 'BOLOS' means the dashboard."""
+    d = getDongle(False)
+    try:
+        r = bytes(d.exchange(bytes.fromhex("b001000000")))
+        return r[2:2 + r[1]].decode("ascii", "replace")
+    finally:
+        d.close()
+
+
 def read_slots():
     """Snapshot every slot, then let go of the device."""
     d = getDongle(False)
@@ -73,6 +83,17 @@ def run_app():
 
 
 def main():
+    # Without this the dashboard answers our APDUs and returns nonsense that
+    # only fails later, while unpacking. Ask who is listening first.
+    app = running_app()
+    if app != "Vela":
+        print(f"the device is running '{app}', not Vela — starting it")
+        run_app()
+        time.sleep(3)
+        if running_app() != "Vela":
+            print("could not start Vela on the device")
+            return 1
+
     before = read_slots()
     show("before — counters as the chip holds them:", before)
 
