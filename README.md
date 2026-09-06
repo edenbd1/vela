@@ -195,7 +195,8 @@ host/        APDU bridge, device probes, the software control arm, Key Ring
              enrolment
 scripts/     build, load, Speculos, the persistence test, the experiment
 brand/       the mark, and the four device glyphs generated from it
-docs/        developer-experience feedback for Ledger
+docs/        developer-experience feedback for Ledger, the agent
+             integration guide, and the Lean Canvas
 ```
 
 ### On-device control panel
