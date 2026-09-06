@@ -163,7 +163,8 @@ int handler_authorize_spend(buffer_t *cdata) {
     uint32_t now = 0;
 
     if (!buffer_read_u8(cdata, &id) ||                        //
-        !buffer_read_u64(cdata, &t.payer, BE) ||              //
+        !buffer_read_u64(cdata, &t.fee_payer, BE) ||          //
+        !buffer_read_u64(cdata, &t.from, BE) ||               //
         !buffer_read_u64(cdata, &t.payee, BE) ||              //
         !buffer_read_u64(cdata, &t.node, BE) ||               //
         !buffer_read_u64(cdata, &t.amount, BE) ||             //

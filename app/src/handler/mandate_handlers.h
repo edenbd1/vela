@@ -38,7 +38,8 @@ int handler_create_mandate(buffer_t *cdata);
  * Skipping it here is exactly what that mandate authorised — and it is the
  * chip, not the host, that holds the bounds.
  *
- * data = mandate_id (1) || payer (8) || payee (8) || node (8) || amount (8) ||
+ * data = mandate_id (1) || fee_payer (8) || from (8) || payee (8) ||
+ *        node (8) || amount (8) ||
  *        fee (8) || valid_start_sec (8) || valid_start_nanos (4) ||
  *        valid_duration_sec (4) || now (4)   — all big endian
  *

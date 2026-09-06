@@ -35,7 +35,14 @@
  * talk it into signing a contract call or a token operation.
  */
 typedef struct {
-    uint64_t payer;             /// account debited, and the transaction's payer
+    /**
+     * The account named in the transaction id, which pays Hedera's network
+     * fee. Under x402 that is the facilitator, not the buyer — the paying
+     * agent never has to reason about gas. It is distinct from `from`, and
+     * conflating the two produces a transaction the network rejects.
+     */
+    uint64_t fee_payer;
+    uint64_t from;              /// account debited — the one this device controls
     uint64_t payee;             /// account credited
     uint64_t node;              /// consensus node the transaction is submitted to
     uint64_t amount;            /// tinybars moved

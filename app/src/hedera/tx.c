@@ -161,7 +161,7 @@ int hedera_build_transfer_body(const hedera_transfer_t *t, uint8_t *out, size_t 
     if (!pb_submsg(&txid, F_TXID_START, inner, ts.len)) {
         return -1;
     }
-    n = account_id(inner, sizeof(inner), t->payer);
+    n = account_id(inner, sizeof(inner), t->fee_payer);
     if (n < 0 || !pb_submsg(&txid, F_TXID_ACCOUNT, inner, (size_t) n)) {
         return -1;
     }
@@ -188,7 +188,7 @@ int hedera_build_transfer_body(const hedera_transfer_t *t, uint8_t *out, size_t 
 
     // --- cryptoTransfer: two legs that sum to zero ------------------------
     pb_t legs = {scratch, sizeof(scratch), 0};
-    n = account_amount(inner, sizeof(inner), t->payer, -(int64_t) t->amount);
+    n = account_amount(inner, sizeof(inner), t->from, -(int64_t) t->amount);
     if (n < 0 || !pb_submsg(&legs, F_TL_AMOUNTS, inner, (size_t) n)) {
         return -1;
     }
