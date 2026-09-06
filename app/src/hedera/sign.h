@@ -41,3 +41,19 @@ bool hedera_sign_body(uint32_t index,
                       const uint8_t *body,
                       size_t body_len,
                       uint8_t out[HEDERA_SIG_LEN]);
+
+/**
+ * Sign an audit record.
+ *
+ * The chip's own statement about a draw it just authorised, so the public
+ * log is not something the host asserts about the chip — the host only
+ * carries it.
+ *
+ * The payload is built here from values the chip already holds, never taken
+ * from the request, and it is domain-separated from a transaction body so
+ * this can never be turned into a way to sign a transfer.
+ */
+bool hedera_sign_anchor(uint32_t index,
+                        const uint8_t *record,
+                        size_t record_len,
+                        uint8_t out[HEDERA_SIG_LEN]);

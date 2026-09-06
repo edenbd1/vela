@@ -52,7 +52,8 @@ export function mandateDigest({ agentId, payees, budgetTotal, perCallMax, expiry
  * instance rather than across all of them. A host that anchors nothing
  * proves nothing, which was always true.
  */
-export function drawRecord({ mandateHash, instance, seq, payee, amount, remaining, tx }) {
+export function drawRecord({ mandateHash, instance, seq, payee, amount,
+                             remaining, tx, anchor, anchorSig }) {
   return {
     v: SCHEMA,
     m: mandateHash,
@@ -62,7 +63,43 @@ export function drawRecord({ mandateHash, instance, seq, payee, amount, remainin
     amount: String(amount),
     remaining: String(remaining),
     tx: tx ?? null,
+    // The chip's statement and its signature over it. Without these the log
+    // is the host's account of what the chip decided; with them it is the
+    // chip's own, and the host is only the courier.
+    a: anchor ? Buffer.from(anchor).toString("hex") : null,
+    s: anchorSig ? Buffer.from(anchorSig).toString("hex") : null,
   };
+}
+
+/** Domain separator, matching the app. A transaction body never starts here. */
+export const ANCHOR_TAG = Buffer.from("vela.anchor.v1\0", "latin1");
+
+/**
+ * Does the chip's statement match what the record claims, and is it signed?
+ *
+ *   mandate_id (1) || seq (4) || payee (8) || amount (8) || remaining (8)
+ */
+export function checkAnchor(record, publicKey, verifyEd25519) {
+  if (!record.a || !record.s) return [false, `draw ${record.seq}: not signed by a device`];
+
+  const a = Buffer.from(record.a, "hex");
+  if (a.length !== 29) return [false, `draw ${record.seq}: malformed statement`];
+
+  const seq = a.readUInt32BE(1);
+  const payee = a.readBigUInt64BE(5);
+  const amount = a.readBigUInt64BE(13);
+  const remaining = a.readBigUInt64BE(21);
+
+  if (seq !== record.seq || String(payee) !== record.payee ||
+      String(amount) !== record.amount || String(remaining) !== record.remaining) {
+    return [false, `draw ${record.seq}: the log disagrees with the chip's statement`];
+  }
+
+  const ok = verifyEd25519(publicKey, Buffer.from(record.s, "hex"),
+                           Buffer.concat([ANCHOR_TAG, a]));
+  return ok
+    ? [true, `draw ${record.seq}: signed by the device, and the numbers match`]
+    : [false, `draw ${record.seq}: signature does not verify`];
 }
 
 export function makeAnchor({ topicId, operatorId, operatorKey, network = "testnet" }) {

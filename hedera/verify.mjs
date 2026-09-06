@@ -12,13 +12,37 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import dotenv from "dotenv";
-import { checkChain, SCHEMA, STATEMENT } from "./anchor.mjs";
+import { createPublicKey, verify as nodeVerify } from "node:crypto";
+
+import { checkAnchor, checkChain, SCHEMA, STATEMENT } from "./anchor.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
 
 const MIRROR = process.env.HEDERA_MIRROR;
 const TOPIC = process.argv[2] ?? process.env.HEDERA_TOPIC_ID;
+
+/**
+ * Ed25519 verification from a raw 32-byte key.
+ *
+ * Node wants SPKI DER, so wrap the raw key in the fixed 12-byte prefix that
+ * says "this is an Ed25519 public key". No dependency needed for the check,
+ * which matters: a verifier nobody can run proves nothing.
+ */
+const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
+
+function verifyEd25519(rawPubkey, signature, message) {
+  try {
+    const key = createPublicKey({
+      key: Buffer.concat([SPKI_ED25519, Buffer.from(rawPubkey)]),
+      format: "der",
+      type: "spki",
+    });
+    return nodeVerify(null, message, key, signature);
+  } catch {
+    return false;
+  }
+}
 
 /** The facilitator reports 0.0.X@sec.nanos; the mirror node keys on dashes. */
 const mirrorId = (tx) => tx.replace("@", "-").replace(/\.(\d+)$/, "-$1");
@@ -27,6 +51,20 @@ async function json(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${r.status} on ${url}`);
   return r.json();
+}
+
+/**
+ * The device's public key, read off the account it controls.
+ *
+ * The verifier is given nothing but a topic id: it learns which account was
+ * debited from the log's own transactions, then asks the mirror node what
+ * key that account is under. Nobody has to hand it a key to trust.
+ */
+async function deviceKeyOf(accountId) {
+  const d = await json(`${MIRROR}/accounts/${accountId}`);
+  const k = d.key;
+  if (!k || k._type !== "ED25519") return null;
+  return Buffer.from(k.key, "hex");
 }
 
 async function readTopic(topic) {
@@ -54,6 +92,9 @@ async function checkTransfer(record) {
   const t = d.transactions?.[0];
   if (!t) return [false, `draw ${record.seq}: ${record.tx} is not on chain`];
   if (t.result !== "SUCCESS") return [false, `draw ${record.seq}: ${t.result}`];
+
+  const debited = t.transfers.find((x) => String(x.amount) === `-${record.amount}`);
+  if (debited) record.payer = debited.account;
 
   const credited = t.transfers.find(
     (x) => x.account.endsWith(`.${record.payee}`) && String(x.amount) === record.amount,
@@ -103,10 +144,24 @@ for (const [key, draws] of byMandate) {
     console.log(`  ${pass ? "ok  " : "FAIL"}  ${why}`);
     ok &&= pass;
   }
+  // Who was debited? The log does not say directly; the settled transfers do.
+  let deviceKey = null;
   for (const r of draws) {
     const [pass, why] = await checkTransfer(r);
     console.log(`  ${pass ? "ok  " : "FAIL"}  ${why}`);
     ok &&= pass;
+    if (pass && !deviceKey && r.payer) deviceKey = await deviceKeyOf(r.payer);
+  }
+
+  if (deviceKey) {
+    console.log(`  key   the debited account is under ${deviceKey.toString("hex").slice(0, 16)}…`);
+    for (const r of draws) {
+      const [pass, why] = checkAnchor(r, deviceKey, verifyEd25519);
+      console.log(`  ${pass ? "ok  " : "FAIL"}  ${why}`);
+      ok &&= pass;
+    }
+  } else {
+    console.log("  --    no device key found; the chip's own statements are unchecked");
   }
   console.log(`  → ${ok ? "complete and consistent" : "incomplete"}\n`);
   verdicts.push([instance, ok]);

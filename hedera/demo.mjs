@@ -119,6 +119,8 @@ for (let i = 1; i <= DRAWS; i++) {
     amount: BigInt(accepts.amount),
     remaining: last.available,
     tx: result.header.transaction,
+    anchor: last.anchor,
+    anchorSig: last.anchorSig,
   });
   const n = await anchor.submit(record);
 

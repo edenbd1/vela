@@ -208,7 +208,25 @@ int handler_authorize_spend(buffer_t *cdata) {
         return io_send_sw(SWO_SECURITY_ISSUE);
     }
 
+    // The chip's own statement about this draw, so the public log is not
+    // something the host asserts about the chip. Built from values the chip
+    // holds, never from the request.
+    //
+    //   mandate_id (1) || seq (4) || payee (8) || amount (8) || remaining (8)
+    static uint8_t anchor[29];
+    anchor[0] = id;
+    write_u32_be(anchor, 1, seq);
+    write_u64_be(anchor, 5, t.payee);
+    write_u64_be(anchor, 13, t.amount);
+    write_u64_be(anchor, 21, mandate_available(id));
+
+    static uint8_t anchor_sig[HEDERA_SIG_LEN];
+    if (!hedera_sign_anchor(0, anchor, sizeof(anchor), anchor_sig)) {
+        return io_send_sw(SWO_SECURITY_ISSUE);
+    }
+
     // seq (4) || available (8) || body_len (1) || body || signature (64)
+    //         || anchor (29) || anchor signature (64)
     //
     // The body travels back with the signature because the host must submit
     // exactly these bytes. It never built them and cannot alter them without
@@ -217,7 +235,7 @@ int handler_authorize_spend(buffer_t *cdata) {
     // Static, not stack: a couple of hundred bytes of locals is enough to
     // trip the stack protector here, which surfaces as EXCEPTION_OVERFLOW
     // (0x5303) from a handler that looks perfectly innocent.
-    static uint8_t out[4 + 8 + 1 + HEDERA_BODY_MAX + HEDERA_SIG_LEN];
+    static uint8_t out[4 + 8 + 1 + HEDERA_BODY_MAX + HEDERA_SIG_LEN + 29 + HEDERA_SIG_LEN];
     memset(out, 0, sizeof(out));
     size_t off = 0;
     write_u32_be(out, off, seq);
@@ -228,6 +246,10 @@ int handler_authorize_spend(buffer_t *cdata) {
     memcpy(out + off, body, (size_t) body_len);
     off += (size_t) body_len;
     memcpy(out + off, sig, HEDERA_SIG_LEN);
+    off += HEDERA_SIG_LEN;
+    memcpy(out + off, anchor, sizeof(anchor));
+    off += sizeof(anchor);
+    memcpy(out + off, anchor_sig, HEDERA_SIG_LEN);
     off += HEDERA_SIG_LEN;
 
     return io_send_response_pointer(out, off, SWO_SUCCESS);

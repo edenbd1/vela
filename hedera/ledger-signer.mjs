@@ -235,7 +235,13 @@ export async function createLedgerHederaSigner({
       const bodyBytes = reply.subarray(13, 13 + bodyLen);
       const signature = reply.subarray(13 + bodyLen, 13 + bodyLen + 64);
 
-      onDraw({ seq, available, bodyLen, amount });
+      // The chip's own statement about this draw, and its signature over it.
+      // The host carries these to the public log; it does not compose them.
+      const anchorAt = 13 + bodyLen + 64;
+      const anchor = reply.subarray(anchorAt, anchorAt + 29);
+      const anchorSig = reply.subarray(anchorAt + 29, anchorAt + 29 + 64);
+
+      onDraw({ seq, available, bodyLen, amount, anchor, anchorSig });
 
       this.lastDraw = { seq, quoted: amount };
       return wrapTransaction(bodyBytes, publicKey, signature).toString("base64");

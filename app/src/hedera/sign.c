@@ -88,3 +88,28 @@ bool hedera_sign_body(uint32_t index,
                                                                NULL,
                                                                0);
 }
+
+/**
+ * Domain separator.
+ *
+ * A Hedera transaction body never starts with these bytes, so a signature
+ * made here cannot be replayed as one over a transfer. Without it, an
+ * anchor-signing instruction would be a general signing oracle wearing a
+ * different name.
+ */
+static const uint8_t ANCHOR_TAG[] = "vela.anchor.v1";
+
+bool hedera_sign_anchor(uint32_t index,
+                        const uint8_t *record,
+                        size_t record_len,
+                        uint8_t out[HEDERA_SIG_LEN]) {
+    static uint8_t tagged[16 + 64];
+
+    if (record_len > sizeof(tagged) - sizeof(ANCHOR_TAG)) {
+        return false;
+    }
+    memcpy(tagged, ANCHOR_TAG, sizeof(ANCHOR_TAG));
+    memcpy(tagged + sizeof(ANCHOR_TAG), record, record_len);
+
+    return hedera_sign_body(index, tagged, sizeof(ANCHOR_TAG) + record_len, out);
+}
