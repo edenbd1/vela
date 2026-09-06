@@ -23,3 +23,7 @@ out/
 
 # Member private key for the Key Ring — never commit
 host/ring/.member.json
+
+# Node
+hedera/node_modules/
+host/ring/node_modules/
