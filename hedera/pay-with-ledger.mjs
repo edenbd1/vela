@@ -19,6 +19,7 @@ import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { ExactHederaScheme } from "@x402/hedera/exact/client";
 
 import { createLedgerHederaSigner } from "./ledger-signer.mjs";
+import { drawRecord, makeAnchor, mandateDigest } from "./anchor.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
@@ -44,12 +45,15 @@ const hbar = (n) => `${Number(n) / 1e8} HBAR`;
   }
 }
 
+let lastDraw = null;
 const signer = await createLedgerHederaSigner({
   accountId: BUYER,
   slot: 0,
-  onDraw: ({ seq, available, bodyLen }) =>
-    console.log(`   chip signed a ${bodyLen}-byte transfer for draw #${seq}; ` +
-                `${hbar(available)} left in the envelope`),
+  onDraw: (d) => {
+    lastDraw = d;
+    console.log(`   chip signed a ${d.bodyLen}-byte transfer for draw #${d.seq}; ` +
+                `${hbar(d.available)} left in the envelope`);
+  },
 });
 
 console.log(`buyer     ${BUYER}`);
@@ -58,6 +62,17 @@ console.log(`           this machine holds no private key for that account\n`);
 
 // --- grant, if the slot is empty -----------------------------------------
 const MANDATE_STATE_LEN = 69;
+
+// The envelope, kept here so its digest can be published without publishing
+// the envelope itself.
+const MANDATE = {
+  agentId: Buffer.alloc(20, 0xa1),
+  payees: [BigInt(process.env.HEDERA_TREASURY_ID.split(".").pop())],
+  budgetTotal: HBAR / 2n,
+  perCallMax: HBAR / 10n,
+  expiry: 0,
+};
+const mandateHash = mandateDigest(MANDATE);
 
 // An empty Buffer is truthy, so `if (!state)` quietly falls through to the
 // branch that reads offsets out of it. Check the length.
@@ -71,13 +86,13 @@ if (!state || state.length < MANDATE_STATE_LEN) {
               `${process.env.HEDERA_TREASURY_ID}`);
   console.log("\n   >>> approve it on the device <<<\n");
 
-  const payee = BigInt(process.env.HEDERA_TREASURY_ID.split(".").pop());
+  const payee = MANDATE.payees[0];
   const body = Buffer.alloc(20 + 1 + 8 + 8 + 8 + 4);
   body.fill(0xa1, 0, 20);            // agent id
   body.writeUInt8(1, 20);            // one payee
   body.writeBigUInt64BE(payee, 21);
-  body.writeBigUInt64BE(HBAR / 2n, 29);   // total
-  body.writeBigUInt64BE(HBAR / 10n, 37);  // per draw
+  body.writeBigUInt64BE(MANDATE.budgetTotal, 29);
+  body.writeBigUInt64BE(MANDATE.perCallMax, 37);
   body.writeUInt32BE(0, 45);              // never expires
 
   const slot = await signer.transport.exchange(
@@ -130,3 +145,26 @@ console.log(`   mirror  ${process.env.HEDERA_MIRROR}/transactions/` +
 console.log(`\n   That signature was produced inside the Secure Element, after`);
 console.log(`   the chip checked the payee and the amount against a mandate`);
 console.log(`   this host cannot read and cannot change.`);
+
+// --- anchor -------------------------------------------------------------
+if (process.env.HEDERA_TOPIC_ID && lastDraw) {
+  const anchor = makeAnchor({
+    topicId: process.env.HEDERA_TOPIC_ID,
+    operatorId: process.env.HEDERA_TREASURY_ID,
+    operatorKey: process.env.HEDERA_TREASURY_KEY,
+  });
+  const record = drawRecord({
+    mandateHash,
+    seq: lastDraw.seq,
+    payee: MANDATE.payees[0],
+    amount: BigInt(accepts.amount),
+    remaining: lastDraw.available,
+    tx,
+  });
+  const n = await anchor.submit(record);
+  anchor.close();
+
+  console.log(`\n4. anchored as message #${n} on topic ${process.env.HEDERA_TOPIC_ID}`);
+  console.log(`   ${JSON.stringify(record)}`);
+  console.log(`   https://hashscan.io/testnet/topic/${process.env.HEDERA_TOPIC_ID}`);
+}
