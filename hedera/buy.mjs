@@ -27,8 +27,8 @@ const TIER = process.argv[2] ?? "triage";
 const URL = `http://127.0.0.1:${process.env.SELLER_PORT ?? 4021}/infer/${TIER}`;
 
 const signer = createClientHederaSigner(
-  process.env.HEDERA_BUYER_ID,
-  PrivateKey.fromStringED25519(process.env.HEDERA_BUYER_KEY),
+  process.env.HEDERA_SOFTWARE_BUYER_ID,
+  PrivateKey.fromStringED25519(process.env.HEDERA_SOFTWARE_BUYER_KEY),
 );
 
 const client = new x402Client().register(NETWORK, new ExactHederaScheme(signer));

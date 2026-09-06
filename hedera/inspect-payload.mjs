@@ -9,8 +9,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
 
 const signer = createClientHederaSigner(
-  process.env.HEDERA_BUYER_ID,
-  PrivateKey.fromStringED25519(process.env.HEDERA_BUYER_KEY),
+  process.env.HEDERA_SOFTWARE_BUYER_ID,
+  PrivateKey.fromStringED25519(process.env.HEDERA_SOFTWARE_BUYER_KEY),
 );
 
 const requirements = {

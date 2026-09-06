@@ -60,10 +60,14 @@ console.log(`key       ${publicKey.toStringRaw()}`);
 console.log(`balance   50 HBAR`);
 console.log(`hashscan  https://hashscan.io/testnet/account/${id}`);
 
-const lines = [`\nHEDERA_BUYER_ID=${id}`, `HEDERA_BUYER_PUBKEY=${publicKey.toStringRaw()}`];
+// A software account and a device account are different roles, so they get
+// different names. Sharing the HEDERA_BUYER_ prefix once left a software
+// key sitting next to a device account id, which signs nothing Hedera will
+// accept and fails as INVALID_SIGNATURE far from the cause.
+const prefix = softwareKey ? "HEDERA_SOFTWARE_BUYER" : "HEDERA_BUYER";
+const lines = [`\n${prefix}_ID=${id}`, `${prefix}_PUBKEY=${publicKey.toStringRaw()}`];
 if (softwareKey) {
-  lines.push(`HEDERA_BUYER_KEY=${softwareKey.toStringRaw()}`);
-  lines.push(`# software key: replace this account once the device key is readable`);
+  lines.push(`${prefix}_KEY=${softwareKey.toStringRaw()}`);
 }
 appendFileSync(join(ROOT, ".env"), lines.join("\n") + "\n");
 console.log("\nwritten to .env");

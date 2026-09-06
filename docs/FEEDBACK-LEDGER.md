@@ -22,8 +22,10 @@ Every problem we hit falls into one pattern:
 > **The failure surfaces far away from its cause, and the message points
 > somewhere else.**
 
-Seven times in one evening, the tooling knew exactly what was wrong and told us
-something unrelated. Each one is a small fix — usually one error string.
+Eleven times, the tooling knew exactly what was wrong and told us something
+unrelated. Most are a small fix — often one error string. Two are real bugs:
+\#10 writes past the end of a correctly sized buffer, and \#7 copies the wrong
+number of bytes.
 
 ---
 
@@ -244,7 +246,7 @@ will reach for `buffer_move` first.
 
 ---
 
-## 10. `@ledgerhq/ledger-key-ring-protocol` cannot be installed from npm
+## 8. `@ledgerhq/ledger-key-ring-protocol` cannot be installed from npm
 
 The SDK for the feature this track asks people to build on does not install.
 
@@ -269,7 +271,7 @@ production key-ring integration needs an emulator transport at install time.
 
 ---
 
-## 11. The ESM build of `hw-ledger-key-ring-protocol` does not load in Node
+## 9. The ESM build of `hw-ledger-key-ring-protocol` does not load in Node
 
 `lib-es/` uses extensionless relative imports (`from "./Device"`), which
 bundlers resolve and native Node ESM does not:
@@ -290,7 +292,7 @@ Node picks `lib/` automatically.
 
 ---
 
-## 12. `bip32_derive_with_seed_get_pubkey_256` writes 65 bytes for Ed25519
+## 10. `bip32_derive_with_seed_get_pubkey_256` writes 65 bytes for Ed25519
 
 The obvious destination for an Ed25519 public key is 32 bytes. The SDK writes
 an **uncompressed point** — `0x04 || x || y` — so a 32-byte buffer is a
@@ -327,7 +329,7 @@ mainnet.
 
 ---
 
-## 13. `io_send_response_pointer` keeps the pointer
+## 11. `io_send_response_pointer` keeps the pointer
 
 The name is honest, and the consequence is not written down anywhere: the
 buffer must outlive the handler. A response built in a local array is read
