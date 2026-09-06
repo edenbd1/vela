@@ -94,6 +94,19 @@ DEBUG = 1
 #HAVE_APPLICATION_FLAG_LIBRARY = 1
 
 ########################################
+#           I/O buffer size            #
+########################################
+# The SDK gives Flex a 272-byte APDU buffer. A contract-call response does
+# not fit: sequence, balance, the encoded body, its signature, and the chip's
+# own anchor statement with its signature come to nearly four hundred bytes.
+# Splitting it across two commands would mean the host holds a signature for
+# a body it has not been given yet, which is a worse shape than a bigger
+# buffer.
+DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE = 1
+DEFINES += OS_IO_SEPH_BUFFER_SIZE=512
+DEFINES += CUSTOM_IO_APDU_BUFFER_SIZE=512
+
+########################################
 # Application communication interfaces #
 ########################################
 ENABLE_BLUETOOTH = 1

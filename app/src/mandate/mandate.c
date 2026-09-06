@@ -25,6 +25,62 @@ static bool payee_allowed(const mandate_t *m, uint64_t payee) {
     return false;
 }
 
+static bool contract_allowed(const mandate_t *m, uint64_t contract) {
+    for (uint8_t i = 0; i < m->n_contracts && i < MANDATE_MAX_CONTRACTS; i++) {
+        if (m->contracts[i] == contract) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool selector_allowed(const mandate_t *m, uint32_t selector) {
+    for (uint8_t i = 0; i < m->n_selectors && i < MANDATE_MAX_SELECTORS; i++) {
+        if (m->selectors[i] == selector) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Is the address in argument `idx` this device's own account?
+ *
+ * Hedera renders an account as a long-zero EVM address: twenty-four zero
+ * bytes then the eight-byte account number, left-padded again to the
+ * thirty-two byte ABI word. So the word is twenty-four zeros followed by the
+ * number, and anything else — a real EVM address, an attacker's account,
+ * padding games — fails the zero check before the comparison is reached.
+ *
+ * This is the whole anti-exfiltration rule. The agent may pick the contract,
+ * the function and the amount; it may not pick who ends up holding the
+ * proceeds. Under prompt injection that is the parameter the attacker
+ * reaches for, and it is the one the chip will not sign away.
+ */
+static bool recipient_is_self(const uint8_t *calldata,
+                              size_t len,
+                              uint8_t idx,
+                              uint64_t self_account) {
+    if (idx == MANDATE_ARG_NONE) {
+        return false;
+    }
+    // 4-byte selector, then 32-byte words.
+    size_t off = 4 + (size_t) idx * 32;
+    if (len < off + 32) {
+        return false;
+    }
+    for (size_t i = 0; i < 24; i++) {
+        if (calldata[off + i] != 0) {
+            return false;
+        }
+    }
+    uint64_t got = 0;
+    for (size_t i = 0; i < 8; i++) {
+        got = (got << 8) | calldata[off + 24 + i];
+    }
+    return got == self_account;
+}
+
 bool mandate_storage_init(void) {
     if (N_storage.magic == MANDATE_STORAGE_MAGIC) {
         return false;
@@ -140,6 +196,70 @@ mandate_status_t mandate_authorize(uint8_t id,
     // Commit the reservation before returning. The caller signs only after
     // this write has landed, so a crash in between loses the draw rather
     // than letting the same headroom be spent twice.
+    uint64_t reserved = m->reserved + amount;
+    uint32_t seq = m->seq + 1;
+    nvm_write((void *) &N_storage.mandates[id].reserved, (void *) &reserved, sizeof(reserved));
+    nvm_write((void *) &N_storage.mandates[id].seq, (void *) &seq, sizeof(seq));
+
+    *out_seq = seq;
+    return MANDATE_OK;
+}
+
+/**
+ * Authorise a contract call.
+ *
+ * Deliberately a separate entry point rather than a flag on
+ * mandate_authorize(). The two are not the same question. A transfer asks
+ * "may I pay this account this much"; a call asks "may I hand this contract
+ * this much and let its arguments decide where it lands", and answering the
+ * second with the first's checks is how blank cheques get signed.
+ *
+ * Order matters, as it does for transfers: the most specific refusal first,
+ * so the agent is told the thing it can act on.
+ */
+mandate_status_t mandate_authorize_call(uint8_t id,
+                                        uint64_t contract,
+                                        uint64_t self_account,
+                                        const uint8_t *calldata,
+                                        size_t calldata_len,
+                                        uint64_t amount,
+                                        uint32_t now,
+                                        uint32_t *out_seq) {
+    if (out_seq == NULL || calldata == NULL || calldata_len < 4) {
+        return MANDATE_ERR_ARGS;
+    }
+
+    const mandate_t *m = mandate_get(id);
+    if (m == NULL || m->in_use == MANDATE_SLOT_FREE) {
+        return MANDATE_ERR_NOT_FOUND;
+    }
+    if (m->expiry != 0 && now >= m->expiry) {
+        return MANDATE_ERR_EXPIRED;
+    }
+    if (!contract_allowed(m, contract)) {
+        return MANDATE_ERR_CONTRACT;
+    }
+
+    uint32_t selector = ((uint32_t) calldata[0] << 24) | ((uint32_t) calldata[1] << 16) |
+                        ((uint32_t) calldata[2] << 8) | (uint32_t) calldata[3];
+    if (!selector_allowed(m, selector)) {
+        return MANDATE_ERR_SELECTOR;
+    }
+
+    // The check that makes the rest worth having.
+    if (!recipient_is_self(calldata, calldata_len, m->recipient_arg, self_account)) {
+        return MANDATE_ERR_RECIPIENT;
+    }
+
+    // A call with no value attached still consumes a sequence number, because
+    // it still moved the agent's authority; it just does not draw budget.
+    if (amount > m->per_call_max) {
+        return MANDATE_ERR_PER_CALL;
+    }
+    if (amount > mandate_available(id)) {
+        return MANDATE_ERR_BUDGET;
+    }
+
     uint64_t reserved = m->reserved + amount;
     uint32_t seq = m->seq + 1;
     nvm_write((void *) &N_storage.mandates[id].reserved, (void *) &reserved, sizeof(reserved));

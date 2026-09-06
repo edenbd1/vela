@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -28,6 +29,24 @@
 /** Payees a single mandate may pay. */
 #define MANDATE_MAX_PAYEES 4
 
+/** Contracts a single mandate may call. */
+#define MANDATE_MAX_CONTRACTS 2
+
+/** Function selectors a single mandate may invoke on those contracts. */
+#define MANDATE_MAX_SELECTORS 4
+
+/**
+ * Every address a call could hand value to must be one the chip was told
+ * about. For a plain transfer that is the payee. For a contract call it is
+ * whatever the calldata names — the `recipient` of a swap, the `to` of a
+ * transfer, the `spender` of an approval — and those live inside an
+ * ABI-encoded argument, not in a protobuf field.
+ *
+ * So the mandate says where to look: which 32-byte argument word carries the
+ * address, and what the chip must find there.
+ */
+#define MANDATE_ARG_NONE 0xFF
+
 /** Length of an agent identifier (ERC-8004 / HCS-14 digest, truncated). */
 #define AGENT_ID_LEN 20
 
@@ -41,8 +60,9 @@
  *
  *   0x...01  services as 16-byte hashes
  *   0x...02  payees as Hedera account numbers
+ *   0x...03  contract calls: callee allowlist, selectors, recipient binding
  */
-#define MANDATE_STORAGE_MAGIC 0x56454C02  // "VEL" + layout version
+#define MANDATE_STORAGE_MAGIC 0x56454C03  // "VEL" + layout version
 
 /** No mandate occupies this slot. */
 #define MANDATE_SLOT_FREE 0
@@ -73,6 +93,25 @@ typedef struct {
     uint64_t per_call_max;                                     /// ceiling for a single draw
     uint32_t expiry;                                           /// unix seconds, 0 = never
     uint32_t seq;                                              /// monotonic, anchors the audit log
+
+    /// --- contract calls -------------------------------------------------
+    ///
+    /// A transfer moves value to one place and the protobuf names it. A
+    /// contract call moves value wherever its arguments say, and the
+    /// protobuf names only the contract. Signing one on the strength of the
+    /// callee alone is signing a blank cheque with the payee filled in by
+    /// whoever wrote the calldata — which, for an agent under prompt
+    /// injection, is the attacker.
+    uint8_t n_contracts;                             /// entries used in `contracts`
+    uint8_t n_selectors;                             /// entries used in `selectors`
+    /// Index of the 32-byte ABI argument holding the address that receives
+    /// value, or MANDATE_ARG_NONE if this mandate allows no calls.
+    uint8_t recipient_arg;
+    uint8_t pad;
+    uint64_t contracts[MANDATE_MAX_CONTRACTS];       /// Hedera contract numbers
+    /// Big-endian 4-byte function selectors. A callee allowlist without one
+    /// of these is far too coarse: the same router that swaps also approves.
+    uint32_t selectors[MANDATE_MAX_SELECTORS];
 } mandate_t;
 
 /**
@@ -92,6 +131,9 @@ typedef enum {
     MANDATE_ERR_BUDGET,         /// amount exceeds what is left in the envelope
     MANDATE_ERR_SETTLE_AMOUNT,  /// settling more than was authorised
     MANDATE_ERR_ARGS,           /// malformed request
+    MANDATE_ERR_CONTRACT,       /// callee is not on the allowlist
+    MANDATE_ERR_SELECTOR,       /// that function is not allowed on it
+    MANDATE_ERR_RECIPIENT,      /// the call would hand value to someone else
 } mandate_status_t;
 
 /**
@@ -101,6 +143,23 @@ typedef enum {
  *         valid layout from a previous boot.
  */
 bool mandate_storage_init(void);
+
+/**
+ * Authorise a contract call under a mandate.
+ *
+ * Separate from mandate_authorize() on purpose: a transfer names its payee
+ * in the protobuf, a call names only the contract and lets the calldata
+ * decide where value lands. `self_account` is the device's own account, and
+ * the call is refused unless the argument the mandate points at holds it.
+ */
+mandate_status_t mandate_authorize_call(uint8_t id,
+                                        uint64_t contract,
+                                        uint64_t self_account,
+                                        const uint8_t *calldata,
+                                        size_t calldata_len,
+                                        uint64_t amount,
+                                        uint32_t now,
+                                        uint32_t *out_seq);
 
 /** Read-only view of a slot, or NULL if the id is out of range. */
 const mandate_t *mandate_get(uint8_t id);

@@ -28,7 +28,8 @@ typedef enum {
     VELA_SETTLE_CONFIRM = 0x13,   /// release the unused headroom
     VELA_REVOKE_MANDATE = 0x14,   /// kill switch (requires approval)
     VELA_QUIT_APP = 0x15,         /// return to the dashboard, so a host can reload
-    VELA_GET_PUBKEY = 0x16        /// the buyer's Ed25519 key, to derive its account
+    VELA_GET_PUBKEY = 0x16,       /// the buyer's Ed25519 key, to derive its account
+    VELA_AUTHORIZE_CALL = 0x18    /// the DeFi path: a contract call, bound to this account
 } command_e;
 /**
  * Enumeration with parsing state.

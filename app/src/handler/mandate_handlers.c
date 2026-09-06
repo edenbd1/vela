@@ -60,6 +60,12 @@ static uint16_t sw_for(mandate_status_t st) {
             return SW_VELA_BUDGET;
         case MANDATE_ERR_SETTLE_AMOUNT:
             return SW_VELA_SETTLE_AMOUNT;
+        case MANDATE_ERR_CONTRACT:
+            return SW_VELA_CONTRACT;
+        case MANDATE_ERR_SELECTOR:
+            return SW_VELA_SELECTOR;
+        case MANDATE_ERR_RECIPIENT:
+            return SW_VELA_RECIPIENT;
         default:
             return SW_VELA_ARGS;
     }
@@ -155,6 +161,43 @@ int handler_create_mandate(buffer_t *cdata) {
     if (m->budget_total == 0 || m->per_call_max == 0 ||
         m->per_call_max > m->budget_total) {
         return io_send_sw(SW_VELA_ARGS);
+    }
+
+    // --- contract terms, optional -----------------------------------------
+    //
+    // Absent means this envelope allows transfers only, which is what every
+    // mandate written before this layout existed meant. Present means the
+    // agent may also call contracts — and then the recipient argument is not
+    // optional, because a contract allowlist without it permits any of those
+    // contracts to send the proceeds anywhere.
+    m->recipient_arg = MANDATE_ARG_NONE;
+    if (buffer_can_read(cdata, 1)) {
+        if (!buffer_read_u8(cdata, &m->n_contracts) ||
+            m->n_contracts > MANDATE_MAX_CONTRACTS) {
+            return io_send_sw(SW_VELA_ARGS);
+        }
+        for (uint8_t i = 0; i < m->n_contracts; i++) {
+            if (!buffer_read_u64(cdata, &m->contracts[i], BE)) {
+                return io_send_sw(SW_VELA_ARGS);
+            }
+        }
+        if (!buffer_read_u8(cdata, &m->n_selectors) ||
+            m->n_selectors > MANDATE_MAX_SELECTORS) {
+            return io_send_sw(SW_VELA_ARGS);
+        }
+        for (uint8_t i = 0; i < m->n_selectors; i++) {
+            if (!buffer_read_u32(cdata, &m->selectors[i], BE)) {
+                return io_send_sw(SW_VELA_ARGS);
+            }
+        }
+        if (!buffer_read_u8(cdata, &m->recipient_arg)) {
+            return io_send_sw(SW_VELA_ARGS);
+        }
+        if (m->n_contracts > 0) {
+            if (m->n_selectors == 0 || m->recipient_arg == MANDATE_ARG_NONE) {
+                return io_send_sw(SW_VELA_ARGS);
+            }
+        }
     }
 
     // It reaches NVRAM only if the user taps.
@@ -257,6 +300,122 @@ int handler_authorize_spend(buffer_t *cdata) {
     write_u64_be(out, off, mandate_available(id));
     off += 8;
     out[off++] = (uint8_t) body_len;
+    memcpy(out + off, body, (size_t) body_len);
+    off += (size_t) body_len;
+    memcpy(out + off, sig, HEDERA_SIG_LEN);
+    off += HEDERA_SIG_LEN;
+    memcpy(out + off, anchor, sizeof(anchor));
+    off += sizeof(anchor);
+    memcpy(out + off, anchor_sig, HEDERA_SIG_LEN);
+    off += HEDERA_SIG_LEN;
+
+    return io_send_response_pointer(out, off, SWO_SUCCESS);
+}
+
+/**
+ * Authorise a contract call.
+ *
+ * The transfer handler above checks a payee the protobuf will name. This one
+ * checks a payee the protobuf will *not* name: a call's value goes wherever
+ * its arguments say, so the mandate reads the calldata and binds the address
+ * argument to this device's own account before anything is signed.
+ *
+ * That is the whole difference, and it is the point of the feature. An agent
+ * under prompt injection reaches for the recipient parameter, because it is
+ * the only field that turns a legitimate-looking swap into a theft. The chip
+ * will encode the call, the contract, the function and the amount the agent
+ * asked for — and refuse the one thing that would let the proceeds leave.
+ */
+int handler_authorize_call(buffer_t *cdata) {
+    uint8_t id = 0;
+    hedera_call_t c = {0};
+    uint32_t now = 0;
+    uint16_t calldata_len = 0;
+
+    // The calldata is copied out of the APDU buffer rather than pointed into
+    // it: io_send_response_pointer keeps a pointer, and the request buffer is
+    // reused before the response is transmitted.
+    static uint8_t calldata[HEDERA_CALLDATA_MAX];
+
+    if (!buffer_read_u8(cdata, &id) ||                        //
+        !buffer_read_u64(cdata, &c.fee_payer, BE) ||          //
+        !buffer_read_u64(cdata, &c.from, BE) ||               //
+        !buffer_read_u64(cdata, &c.contract, BE) ||           //
+        !buffer_read_u64(cdata, &c.node, BE) ||               //
+        !buffer_read_u64(cdata, &c.amount, BE) ||             //
+        !buffer_read_u64(cdata, &c.fee, BE) ||                //
+        !buffer_read_u64(cdata, &c.gas, BE) ||                //
+        !buffer_read_u64(cdata, &c.valid_start_sec, BE) ||    //
+        !buffer_read_u32(cdata, &c.valid_start_nanos, BE) ||  //
+        !buffer_read_u32(cdata, &c.valid_duration_sec, BE) || //
+        !buffer_read_u32(cdata, &now, BE)) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+
+    uint8_t hi = 0, lo = 0;
+    if (!buffer_read_u8(cdata, &hi) || !buffer_read_u8(cdata, &lo)) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+    calldata_len = (uint16_t) ((hi << 8) | lo);
+    if (calldata_len < 4 || calldata_len > HEDERA_CALLDATA_MAX) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+    if (!read_bytes(cdata, calldata, calldata_len)) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+    c.calldata = calldata;
+    c.calldata_len = calldata_len;
+
+    // `c.from` is what the host claims this device controls. The mandate is
+    // given that value to bind the recipient against, and the signature will
+    // only be accepted by Hedera if it really is this device's account — so a
+    // host that lies here produces a transaction nobody can submit.
+    uint32_t seq = 0;
+    mandate_status_t st = mandate_authorize_call(id, c.contract, c.from, calldata,
+                                                 calldata_len, c.amount, now, &seq);
+    if (st != MANDATE_OK) {
+        PRINTF("VELA: call refused on mandate %d, code %d\n", id, st);
+        return io_send_sw(sw_for(st));
+    }
+
+    static uint8_t body[HEDERA_CALL_BODY_MAX];
+    int body_len = hedera_encode_call(&c, body, sizeof(body));
+    if (body_len <= 0) {
+        return io_send_sw(SW_VELA_ARGS);
+    }
+
+    static uint8_t sig[HEDERA_SIG_LEN];
+    if (!hedera_sign_body(0, body, (size_t) body_len, sig)) {
+        return io_send_sw(SWO_SECURITY_ISSUE);
+    }
+
+    // The contract stands where the payee stands for a transfer: it is what
+    // the chip agreed to hand value to. The recipient is not in the anchor
+    // because the chip already refused to sign any recipient but its own —
+    // recording it would be recording a constant.
+    static uint8_t anchor[29];
+    anchor[0] = id;
+    write_u32_be(anchor, 1, seq);
+    write_u64_be(anchor, 5, c.contract);
+    write_u64_be(anchor, 13, c.amount);
+    write_u64_be(anchor, 21, mandate_available(id));
+
+    static uint8_t anchor_sig[HEDERA_SIG_LEN];
+    if (!hedera_sign_anchor(0, anchor, sizeof(anchor), anchor_sig)) {
+        return io_send_sw(SWO_SECURITY_ISSUE);
+    }
+
+    // Same layout as a transfer draw, except body_len needs two bytes: a
+    // call body runs past 255.
+    static uint8_t out[4 + 8 + 2 + HEDERA_CALL_BODY_MAX + HEDERA_SIG_LEN + 29 + HEDERA_SIG_LEN];
+    memset(out, 0, sizeof(out));
+    size_t off = 0;
+    write_u32_be(out, off, seq);
+    off += 4;
+    write_u64_be(out, off, mandate_available(id));
+    off += 8;
+    out[off++] = (uint8_t) ((body_len >> 8) & 0xFF);
+    out[off++] = (uint8_t) (body_len & 0xFF);
     memcpy(out + off, body, (size_t) body_len);
     off += (size_t) body_len;
     memcpy(out + off, sig, HEDERA_SIG_LEN);

@@ -44,6 +44,18 @@
 #define F_AA_ACCOUNT 1
 #define F_AA_AMOUNT 2
 
+// ContractCall. The body's oneof puts it at 7, well before cryptoTransfer's
+// 14 — different wire tags entirely, so a call can never be mistaken for a
+// transfer by a node, nor by a verifier reading back what was signed.
+#define F_BODY_CONTRACT_CALL 7
+#define F_CC_CONTRACT_ID 1
+#define F_CC_GAS 2
+#define F_CC_AMOUNT 3
+#define F_CC_PARAMS 4
+// ContractID.contractNum shares field 3 with AccountID.accountNum, so
+// account_id() serialises both.
+#define F_CONTRACT_NUM 3
+
 /** A bounded append-only writer. Every helper fails closed on overflow. */
 typedef struct {
     uint8_t *buf;
@@ -206,5 +218,88 @@ int hedera_build_transfer_body(const hedera_transfer_t *t, uint8_t *out, size_t 
         return -1;
     }
 
+    return (int) body.len;
+}
+
+int hedera_encode_call(const hedera_call_t *c, uint8_t *out, size_t out_len) {
+    if (c == NULL || out == NULL || c->calldata == NULL) {
+        return -1;
+    }
+    if (c->calldata_len < 4 || c->calldata_len > HEDERA_CALLDATA_MAX) {
+        return -1;
+    }
+    if (c->amount > (uint64_t) INT64_MAX) {
+        return -1;
+    }
+
+    // Static, not stack. A 224-byte body plus scratch is more than this
+    // frame should hold: the stack protector fires on far less, and it
+    // reports as EXCEPTION_OVERFLOW a long way from the cause.
+    static uint8_t scratch[HEDERA_CALL_BODY_MAX];
+    static uint8_t inner[64];
+    int n;
+
+    // --- TransactionID ----------------------------------------------------
+    pb_t ts = {inner, sizeof(inner), 0};
+    if (!pb_uint(&ts, F_TS_SECONDS, c->valid_start_sec) ||
+        !pb_uint(&ts, F_TS_NANOS, c->valid_start_nanos)) {
+        return -1;
+    }
+
+    pb_t txid = {scratch, sizeof(scratch), 0};
+    if (!pb_submsg(&txid, F_TXID_START, inner, ts.len)) {
+        return -1;
+    }
+    n = account_id(inner, sizeof(inner), c->fee_payer);
+    if (n < 0 || !pb_submsg(&txid, F_TXID_ACCOUNT, inner, (size_t) n)) {
+        return -1;
+    }
+
+    pb_t body = {out, out_len, 0};
+    if (!pb_submsg(&body, F_BODY_TX_ID, scratch, txid.len)) {
+        return -1;
+    }
+
+    // --- nodeAccountID, fee, validDuration --------------------------------
+    n = account_id(inner, sizeof(inner), c->node);
+    if (n < 0 || !pb_submsg(&body, F_BODY_NODE, inner, (size_t) n)) {
+        return -1;
+    }
+    if (!pb_uint(&body, F_BODY_FEE, c->fee)) {
+        return -1;
+    }
+    pb_t dur = {inner, sizeof(inner), 0};
+    if (!pb_uint(&dur, F_DUR_SECONDS, c->valid_duration_sec) ||
+        !pb_submsg(&body, F_BODY_DURATION, inner, dur.len)) {
+        return -1;
+    }
+
+    // --- contractCall -----------------------------------------------------
+    n = account_id(inner, sizeof(inner), c->contract);   // ContractID.contractNum
+    if (n < 0) {
+        return -1;
+    }
+    pb_t call = {scratch, sizeof(scratch), 0};
+    if (!pb_submsg(&call, F_CC_CONTRACT_ID, inner, (size_t) n) ||
+        !pb_uint(&call, F_CC_GAS, c->gas) ||
+        !pb_uint(&call, F_CC_AMOUNT, c->amount)) {
+        return -1;
+    }
+    // The calldata goes in byte for byte. Every claim about where this call
+    // sends value was made by mandate_authorize_call() reading these same
+    // bytes; nothing here re-interprets them.
+    if (!pb_tag(&call, F_CC_PARAMS, WIRE_LEN) ||
+        !pb_varint(&call, c->calldata_len)) {
+        return -1;
+    }
+    for (uint16_t i = 0; i < c->calldata_len; i++) {
+        if (!pb_byte(&call, c->calldata[i])) {
+            return -1;
+        }
+    }
+
+    if (!pb_submsg(&body, F_BODY_CONTRACT_CALL, scratch, call.len)) {
+        return -1;
+    }
     return (int) body.len;
 }

@@ -16,6 +16,9 @@
 #define SW_VELA_BUDGET        0xB106  /// over what is left in the envelope
 #define SW_VELA_SETTLE_AMOUNT 0xB107  /// settling more than was authorised
 #define SW_VELA_ARGS          0xB108  /// malformed request
+#define SW_VELA_CONTRACT      0xB109  /// callee is not on the allowlist
+#define SW_VELA_SELECTOR      0xB10A  /// that function is not allowed on it
+#define SW_VELA_RECIPIENT     0xB10B  /// the call would hand value to someone else
 
 /**
  * Status word for dynamic token TLV parsing/validation failed.

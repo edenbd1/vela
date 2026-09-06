@@ -26,13 +26,27 @@
  */
 #define HEDERA_BODY_MAX 128
 
+/** Longest calldata the chip will accept. Four ABI words and a selector. */
+#define HEDERA_CALLDATA_MAX 132
+
 /**
- * A single HBAR transfer, in the only shape Vela signs.
+ * Enough for a contract call body carrying HEDERA_CALLDATA_MAX of arguments.
+ *
+ * Larger than a transfer body for the obvious reason, and sized from the
+ * pieces rather than guessed: the header fields come to about forty bytes,
+ * the ContractCall submessage adds the contract id, gas and value, and then
+ * the calldata verbatim.
+ */
+#define HEDERA_CALL_BODY_MAX 224
+
+/**
+ * A single HBAR transfer.
  *
  * Shard and realm are 0 on every public Hedera network, so accounts reduce to
- * their number. Keeping the shape this narrow is deliberate: the chip can
- * only ever produce a plain two-party transfer, which means an agent cannot
- * talk it into signing a contract call or a token operation.
+ * their number. The shape stays this narrow on purpose: within this path the
+ * chip can only ever produce a plain two-party transfer, so an agent cannot
+ * talk *this* encoder into emitting anything else. Contract calls have their
+ * own encoder and their own mandate checks, next to it rather than folded in.
  */
 typedef struct {
     /**
@@ -62,3 +76,35 @@ typedef struct {
  * @return number of bytes written, or -1 if the buffer is too small.
  */
 int hedera_build_transfer_body(const hedera_transfer_t *t, uint8_t *out, size_t out_len);
+
+/**
+ * A contract call.
+ *
+ * `calldata` is passed through verbatim, which is exactly why the mandate has
+ * to have read it first. The protobuf names the contract and the value; where
+ * that value ends up is decided by bytes this encoder does not interpret.
+ */
+typedef struct {
+    uint64_t fee_payer;
+    uint64_t from;              /// the account this device controls
+    uint64_t contract;          /// Hedera contract number being called
+    uint64_t node;
+    uint64_t amount;            /// tinybars sent with the call
+    uint64_t fee;
+    uint64_t gas;
+    uint64_t valid_start_sec;
+    uint32_t valid_start_nanos;
+    uint32_t valid_duration_sec;
+    uint16_t calldata_len;
+    const uint8_t *calldata;
+} hedera_call_t;
+
+/**
+ * Serialise a ContractCall TransactionBody.
+ *
+ * @param[in]  c        the call, already checked against a mandate
+ * @param[out] out      destination, at least HEDERA_CALL_BODY_MAX bytes
+ * @param[in]  out_len  size of `out`
+ * @return bytes written, or -1 if it did not fit
+ */
+int hedera_encode_call(const hedera_call_t *c, uint8_t *out, size_t out_len);

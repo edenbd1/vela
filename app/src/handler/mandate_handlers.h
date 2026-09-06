@@ -48,6 +48,16 @@ int handler_create_mandate(buffer_t *cdata);
 int handler_authorize_spend(buffer_t *cdata);
 
 /**
+ * Authorise a contract call under a mandate.
+ *
+ * Where handler_authorize_spend() checks a payee the protobuf names, this
+ * checks one it does not: a call sends value wherever its arguments say, so
+ * the mandate reads the calldata and binds the address argument to this
+ * device's own account before signing.
+ */
+int handler_authorize_call(buffer_t *cdata);
+
+/**
  * Close a draw: release the unused headroom, record what settled.
  *
  * data = mandate_id (1) || quoted (8, BE) || actual (8, BE)
