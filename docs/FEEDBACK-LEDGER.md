@@ -5,9 +5,14 @@ NVRAM and decides each draw on-chip.
 **Device:** Ledger Flex (`target_id 0x33300004`, SE 1.6.1, MCU 6.9.2).
 **Host:** macOS, Docker Desktop, `ledger-app-builder:latest`, `flex-secure-sdk`
 v26.6.1 (API level 26), `ledgerwallet` 0.10.0.
-**Scope:** everything below was hit in a single evening, on the standard path —
-clone `app-boilerplate`, retarget it, define an APDU protocol, load it on a
-physical device. No exotic cryptography, no unusual configuration.
+**Scope:** everything below was hit on the standard path — clone
+`app-boilerplate`, retarget it, define an APDU protocol, load it on a physical
+device. No exotic cryptography, no unusual configuration, and no privileged
+capability the app asked for.
+
+**Cost, before the list starts:** one Ledger Flex factory-reset twice, and a
+seed lost with it, from running the loader the boilerplate's own default
+configuration produces.
 
 ---
 
@@ -15,7 +20,8 @@ physical device. No exotic cryptography, no unusual configuration.
 
 The platform is good, and the parts that are good are *very* good: NBGL, the
 build image, the boilerplate, and the SDK's own `make -n load` are all
-excellent. We shipped a working native app on day one.
+excellent. We shipped a working native app on day one, and this document
+exists because we kept going, not because we struggled to start.
 
 Every problem we hit falls into one pattern:
 
@@ -34,6 +40,32 @@ Three others are real bugs: \#10 writes past the end of a correctly sized
 buffer, \#7 copies the wrong number of bytes, and \#12 is a documented build
 option the SDK stopped reading, which kills the application at runtime with no
 diagnostic anywhere.
+
+---
+
+## Triage
+
+Ordered by what it costs the developer, not by the order we hit them.
+
+| | finding | what it costs | where the fix is |
+|---|---|---|---|
+| 🔴 | [13 — `ENABLE_BLUETOOTH=1` factory-resets the device](#13-the-default-boilerplate-config-factory-resets-a-flex-on-every-sideload) | the seed, silently, on every sideload | `ledgerblue.loadApp` warning · boilerplate default |
+| 🟠 | [10 — `bip32_derive_..._pubkey_256` writes 65 bytes for Ed25519](#10-bip32_derive_with_seed_get_pubkey_256-writes-65-bytes-for-ed25519) | stack overrun and a wrong key, failing far away | SDK, or one line of doc |
+| 🟠 | [12 — the APDU buffer knob is no longer read](#12-the-makefile-knob-for-the-apdu-buffer-is-no-longer-read) | app dies at runtime, no status word | honour the variable or delete the line |
+| 🟠 | [7 — `buffer_move()` copies the whole remainder](#7-buffer_move-does-the-opposite-of-what-its-signature-says) | every multi-field APDU fails on its first field | add `buffer_read_bytes()` |
+| 🟡 | [11 — `io_send_response_pointer` keeps the pointer](#11-io_send_response_pointer-keeps-the-pointer) | stale bytes returned with a success status | one line of doc |
+| 🟡 | [1 — the SDK silently needs a git repository](#1-the-sdk-requires-a-git-repository-and-fails-at-link-time-instead) | `undefined symbol: app_main`, cause elsewhere | make the guard fatal |
+| 🟡 | [2 — `ledgerctl install` cannot install on Flex](#2-ledgerctl-install-cannot-install-on-flex-and-says-0x6512) | `0x6512`, no path forward | teach `manifest_toml.py` about `apiLevel` |
+| 🟡 | [8 — `@ledgerhq/ledger-key-ring-protocol` is uninstallable](#8-ledgerhqledger-key-ring-protocol-cannot-be-installed-from-npm) | a dead dependency on the published package | publish the missing dep |
+| 🟡 | [9 — its ESM build does not load in Node](#9-the-esm-build-of-hw-ledger-key-ring-protocol-does-not-load-in-node) | extensionless imports | emit extensions |
+| ⚪ | [3 — two manifests with near-identical names](#3-two-manifests-with-near-identical-names-and-no-cross-reference) | "wrong kind of file" | detect the shape |
+| ⚪ | [4 — `install-ca` demands recovery mode](#4-install-ca-demands-recovery-mode-without-saying-whether-you-need-it) | an unnecessary detour | one sentence |
+| ⚪ | [5 — nothing says to quit Ledger Wallet](#5-nothing-says-to-quit-ledger-wallet-first) | drifting status words | detect the process |
+| ⚪ | [6 — `ledgerctl run` has no inverse](#6-ledgerctl-run-app-has-no-inverse) | no way back to the dashboard | a dashboard command |
+
+**If only one thing changes:** `ledgerblue.loadApp` already knows the flags and
+already talks to the device. One line — *"this will erase the device's seed"* —
+would have prevented both wipes.
 
 ---
 
@@ -527,3 +559,9 @@ findings 1, 2, 6 and 7 would have saved this entire evening.
 9. Use its CommonJS build.
 10. Response buffers must be static — never a local.
 11. Ed25519 public keys come back as 65-byte uncompressed points.
+12. **Check `--appFlags` before every load.** `make -n load | grep -A1
+    appFlags`. Anything but `0x0` means the build is asking for a privilege,
+    and a privileged flag on an unsigned app erases an onboarded device.
+    `ENABLE_BLUETOOTH=1` — the boilerplate default — sets it on Flex.
+13. Do not trust `DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE`. It is not read.
+    Split the response instead.

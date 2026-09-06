@@ -321,9 +321,22 @@ afternoon.
 
 ## Notes for Ledger
 
-Building this surfaced eleven concrete developer-experience problems, written
-up with reproductions in [`docs/FEEDBACK-LEDGER.md`](docs/FEEDBACK-LEDGER.md).
-Most are one error string away from being fine. Two are real bugs:
+Building this surfaced thirteen concrete developer-experience problems,
+written up with reproductions in
+[`docs/FEEDBACK-LEDGER.md`](docs/FEEDBACK-LEDGER.md).
+
+**One of them cost a Flex its seed. Twice.** The boilerplate ships
+`ENABLE_BLUETOOTH = 1`; on Flex that silently becomes
+`APPLICATION_FLAG_BOLOS_SETTINGS`, reaching the loader as `--appFlags 0x200`.
+Installing an unsigned app that asks for a privileged flag onto an onboarded
+device factory-resets it. Nothing in the build, the loader or the device says
+so — the app never asked for the privilege, and the device comes back showing
+*"Welcome to Ledger Flex"*. `ledgerblue.loadApp` already knows the flags and
+already talks to the device; one line of warning would have prevented both
+wipes.
+
+Most of the rest are one error string away from being fine. Three more are
+real bugs:
 
 - **`bip32_derive_with_seed_get_pubkey_256` writes 65 bytes for Ed25519.**
   The documented output is a 32-byte key; the SDK writes an uncompressed point.
@@ -333,6 +346,10 @@ Most are one error string away from being fine. Two are real bugs:
   a long way from the cause.
 - **`buffer_move()` copies the entire remaining buffer**, not the requested
   length, so any multi-field APDU fails on its first field.
+- **`DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE` is documented in the boilerplate
+  Makefile and read by nothing.** Setting it changes no buffer size, the build
+  succeeds in silence, and the app dies at runtime with no status word when a
+  response exceeds the size it thought it had raised.
 
 A twelfth finding was drafted and then dropped: a crash we first blamed on our
 own 64px glyph turned out to be the buffer overrun above. The correlation was
