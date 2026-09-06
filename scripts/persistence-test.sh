@@ -1,60 +1,46 @@
 #!/usr/bin/env bash
-# NVRAM persistence, one phase per process.
+# NVRAM persistence: the claim the whole project rests on.
 #
-# The device changes state under us — the app exits, the dashboard takes
-# over, the app starts again. A single long-lived process cannot hold an HID
-# handle across that on macOS, so each phase gets its own.
+# Read the counters, tear the application down, bring it back, read again.
+# Equality means the envelope lives in the Secure Element rather than in
+# this host's memory or a file this host could rewrite.
+#
+# One process per phase, each bounded by probe.py's own alarm. The macOS HID
+# pipe wedges when a handle outlives a device state change, and a wedged
+# handle poisons every call after it.
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-q() { python3 -c "$1" 2>/dev/null; }
+probe() { python3 host/probe.py "$1" 2>/dev/null; }
 
-WHO='
-from ledgerblue.comm import getDongle
-d=getDongle(False); r=bytes(d.exchange(bytes.fromhex("b001000000"))); d.close()
-print(r[2:2+r[1]].decode("ascii","replace"))'
+[ "$(probe who)" = "Vela" ] || { probe run >/dev/null; sleep 3; }
+[ "$(probe who)" = "Vela" ] || { echo "cannot reach the Vela app"; exit 1; }
 
-READ='
-import struct
-from ledgerblue.comm import getDongle
-from ledgerblue.commException import CommException
-d=getDongle(False)
-for s in range(3):
-    try:
-        r=d.exchange(bytes([0xE0,0x10,s,0,0]))
-        b,rs,sp,pc,av=struct.unpack(">QQQQQ", bytes(r)[21:61])
-        e,q=struct.unpack(">II", bytes(r)[61:69])
-        print(f"slot{s} agent={bytes(r)[1:21].hex()[:8]} spent={sp} budget={b} avail={av} draws={q}")
-    except CommException as ex:
-        print(f"slot{s} " + ("free" if ex.sw==0xB102 else f"sw=0x{ex.sw:04x}"))
-d.close()'
+echo "--- before ---"
+probe read | tee /tmp/vela_before.txt
 
-# QUIT_APP never answers: os_sched_exit() tears the app down mid-exchange,
-# so there is no reply to read and exchange() would block forever. Bound it.
-QUIT='
-import signal, sys
-signal.signal(signal.SIGALRM, lambda *a: sys.exit(0))
-signal.alarm(5)
-from ledgerblue.comm import getDongle
-try: getDongle(False).exchange(bytes([0xE0,0x15,0,0,0]))
-except Exception: pass'
+echo
+echo "--- tearing the app down ---"
+probe quit >/dev/null   # never answers: the app exits mid-exchange
+sleep 3
+echo "device is running: $(probe who)"
 
-echo "device is running: $(q "$WHO")"
-[ "$(q "$WHO")" = "Vela" ] || { python3 -m ledgerwallet.ledgerctl run Vela >/dev/null 2>&1; sleep 3; }
+echo
+echo "--- bringing it back ---"
+probe run >/dev/null
+sleep 3
+echo "device is running: $(probe who)"
 
-echo; echo "--- before ---"; q "$READ" | tee /tmp/vela_before.txt
-
-echo; echo "--- exiting the app ---"; q "$QUIT"; sleep 3
-echo "device is running: $(q "$WHO")"
-
-echo; echo "--- restarting ---"; python3 -m ledgerwallet.ledgerctl run Vela >/dev/null 2>&1; sleep 3
-echo "device is running: $(q "$WHO")"
-
-echo; echo "--- after ---"; q "$READ" | tee /tmp/vela_after.txt
+echo
+echo "--- after ---"
+probe read | tee /tmp/vela_after.txt
 
 echo
 if diff -q /tmp/vela_before.txt /tmp/vela_after.txt >/dev/null; then
   echo "IDENTICAL — the envelope survived a full application restart."
+  exit 0
 else
-  echo "MISMATCH:"; diff /tmp/vela_before.txt /tmp/vela_after.txt
+  echo "MISMATCH — the state did not survive:"
+  diff /tmp/vela_before.txt /tmp/vela_after.txt
+  exit 1
 fi
