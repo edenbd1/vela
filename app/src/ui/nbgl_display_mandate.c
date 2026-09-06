@@ -115,7 +115,7 @@ int ui_display_create_mandate(void) {
 
     nbgl_useCaseReview(TYPE_OPERATION,
                        &pairList,
-                       &ICON_APP_WARNING,  // TODO: our own 64px glyph faults on hardware
+                       &ICON_APP_VELA,
                        "Grant a spending\nmandate",
                        NULL,
                        "Grant this mandate?\nThe agent will draw on it\nwithout asking again.",

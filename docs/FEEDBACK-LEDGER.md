@@ -290,6 +290,61 @@ Node picks `lib/` automatically.
 
 ---
 
+## 12. `bip32_derive_with_seed_get_pubkey_256` writes 65 bytes for Ed25519
+
+The obvious destination for an Ed25519 public key is 32 bytes. The SDK writes
+an **uncompressed point** — `0x04 || x || y` — so a 32-byte buffer is a
+33-byte stack overrun on every call.
+
+It does not fail there. The corruption lands on whatever the app does *next*:
+in our case the following command opened an NBGL review and the app
+disappeared, with no status word and no log. We spent an hour isolating the
+review screen, and even swapped our app icon for an SDK one and concluded —
+wrongly — that our glyph was at fault. It was a correlation: the reload that
+came with the swap changed which commands ran first.
+
+Two separate problems in one signature:
+
+- **Silent overrun.** Nothing in the name, the parameter list, or the
+  surrounding documentation suggests 65 bytes.
+- **A public key that looks valid but is not.** The first 32 bytes are `0x04`
+  followed by most of `x`. Every length check accepts it, tools display it
+  happily, and it can be used to create an account nothing will ever be able
+  to spend from. We funded one before noticing.
+
+The conversion is not obvious either, and `app-hedera` has it:
+
+```c
+for (int i = 0; i < 32; i++) dst[i] = raw_pubkey[64 - i];   // y, little endian
+if (raw_pubkey[32] & 1) dst[31] |= 0x80;                    // x parity in the top bit
+```
+
+**Suggested fix:** take the destination length and check it, and say in the
+doc comment that Ed25519 yields an uncompressed point. Better still, offer a
+`get_pubkey_ed25519_compressed` so every app does not reimplement the same
+sixteen lines — or get them wrong and not find out until a signature fails on
+mainnet.
+
+---
+
+## 13. `io_send_response_pointer` keeps the pointer
+
+The name is honest, and the consequence is not written down anywhere: the
+buffer must outlive the handler. A response built in a local array is read
+after its frame is gone, and what the host receives is one stale byte with a
+**success** status.
+
+That is the worst possible failure shape. A wrong status word sends you to
+the right place; a plausible reply with `0x9000` reads as a protocol
+disagreement between two sides that are, in fact, agreeing perfectly.
+
+We hit it four times in one app before spotting the pattern.
+
+**Suggested fix:** one line in the doc comment — "the buffer must remain
+valid until the response is sent; do not pass a local".
+
+---
+
 ## Tutorial we would have wanted
 
 Nothing linked from the "getting started" path covers the actual arc of writing
@@ -311,3 +366,5 @@ findings 1, 2, 6 and 7 would have saved this entire evening.
 7. NVRAM is per app **name** — renaming your app wipes its persistent state.
 8. Depend on `@ledgerhq/hw-ledger-key-ring-protocol`, not the Live wrapper.
 9. Use its CommonJS build.
+10. Response buffers must be static — never a local.
+11. Ed25519 public keys come back as 65-byte uncompressed points.
