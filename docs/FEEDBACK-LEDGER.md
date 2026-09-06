@@ -559,8 +559,17 @@ resemble an attack from the silicon's point of view:
 - applications that crash, because that is what happens while writing one
 - USB pipes that wedge and disconnect mid-exchange
 
-We cannot prove which of these did it, and this document is not going to
-guess a third time — see the note below. But a developer sideloading their own
+**Findings 4 and 14 may be the same finding.** Chasing an unrelated problem we
+tried `ledgerctl install-ca`, were told the device was not in recovery mode,
+and concluded a custom CA is not needed for ordinary sideloading. That is true
+for making *one* load succeed. Whether it is true for making fifty succeed is
+a different question, and nothing anywhere raises it. Without a trusted CA,
+every single load is an unauthenticated host presenting a **freshly generated
+key** to the secure element — which is, repeated enough times, a fair
+description of an attack.
+
+We cannot prove that is what happened, and this document is not going to guess
+a third time — see the note below. But a developer sideloading their own
 app all day is doing, repeatedly and legitimately, the shape of thing the
 protection exists to catch, and the only feedback is a wiped device some hours
 later.
@@ -580,6 +589,10 @@ later.
 4. **Document the developer case.** If a normal sideload loop can trigger
    this, developer-mode devices should either be more tolerant or the
    documentation should say plainly that it can happen and why.
+5. **Say whether a custom CA prevents it.** If installing one is what stops a
+   development host from looking like an attacker, that belongs in the first
+   paragraph a new app developer reads — not behind an error message about
+   recovery mode that reads like the command was the wrong one.
 
 **Two wrong conclusions, recorded because the reasoning is the lesson.**
 
