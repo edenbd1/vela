@@ -71,8 +71,14 @@ def attack_software():
 
 
 def attack_device():
-    from ledgerblue.commException import CommException
+    import ledgerblue.commException
+    import transport
     from transport import open_device
+
+    # Either transport can raise: ledgerblue's when the USB device is opened
+    # directly, ours when the call goes through the bridge. Both carry .sw,
+    # which is the only thing this cares about.
+    CommException = (ledgerblue.commException.CommException, transport.CommException)
 
     print("\nmode: device  — the policy lives in the Secure Element\n")
 

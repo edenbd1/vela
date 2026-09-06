@@ -11,6 +11,33 @@
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# This test owns the device. It quits and relaunches the application, which
+# the bridge cannot relay — it is not holding the dashboard, and it does not
+# survive the app exiting mid-exchange. So the bridge is stopped for the
+# duration and put back afterwards, rather than the test failing with an
+# empty app name and a diff that looks like lost NVRAM.
+BRIDGE_WAS_UP=0
+if curl -s -m 3 -X POST http://127.0.0.1:8099/apdu \
+     -H 'content-type: application/json' -d '{"apdu":"b001000000"}' >/dev/null 2>&1; then
+  BRIDGE_WAS_UP=1
+  echo "stopping host/bridge.py for the duration of this test"
+  pkill -f "host/bridge.py" 2>/dev/null
+  sleep 2
+fi
+
+restore_bridge() {
+  if [ "$BRIDGE_WAS_UP" = "1" ]; then
+    echo
+    echo "restarting host/bridge.py"
+    python3 host/bridge.py >/tmp/bridge.log 2>&1 &
+    disown 2>/dev/null
+    sleep 3
+  fi
+}
+trap restore_bridge EXIT
+
+export VELA_NO_BRIDGE=1
+
 probe() { python3 host/probe.py "$1" 2>/dev/null; }
 
 [ "$(probe who)" = "Vela" ] || { probe run >/dev/null; sleep 3; }
