@@ -45,6 +45,12 @@
     <h3>May pay <span class="src">hardware boundary</span></h3>
     <ul class="payees" id="payees"></ul>
 
+    <h3>May call <span class="src">contracts, hardware boundary</span></h3>
+    <ul class="payees" id="contracts"><li class="none">no contract calls</li></ul>
+
+    <h3>Proceeds <span class="src">bound in the chip</span></h3>
+    <p class="bound" id="proceeds">—</p>
+
     <h3>Currently advised against <span class="src">enclave, advisory</span></h3>
     <ul class="denied" id="denied"><li class="none">nothing flagged</li></ul>
   </section>
@@ -58,6 +64,44 @@
     </p>
     <div class="tiers" id="tiers"></div>
     <p class="hint" id="hint"></p>
+  </section>
+
+  <!-- ================= the experiment ================= -->
+  <section class="card defi" id="defi">
+    <h2>Trade freely. Exfiltrate nothing.</h2>
+    <p class="lede">
+      A transfer names its payee in the transaction. A contract call names only
+      the contract — where the value lands is decided by ABI arguments the
+      transaction does not interpret. Under prompt injection, that argument is
+      what an attacker rewrites, because it turns a plausible swap into a theft.
+    </p>
+
+    <div class="pair">
+      <button class="scenario" data-case="good">
+        <span class="tag ok">the agent</span>
+        <b>swap — proceeds to itself</b>
+        <em id="sig-good">…</em>
+      </button>
+      <button class="scenario" data-case="steal">
+        <span class="tag bad">the same agent, hijacked</span>
+        <b>swap — proceeds to an attacker</b>
+        <em id="sig-steal">…</em>
+      </button>
+    </div>
+    <p class="onefield">
+      Same contract. Same function. Same amount.
+      <b>One field differs: the address in argument 1.</b>
+    </p>
+
+    <div class="tiers">
+      <button class="scenario" data-case="approve">
+        Unlimited <code>approve()</code> to the attacker, on the allowed router
+      </button>
+      <button class="scenario" data-case="other">
+        The legitimate swap, on a router the mandate never named
+      </button>
+    </div>
+    <p class="hint" id="defi-hint"></p>
   </section>
 
   <!-- ================= the feed ================= -->

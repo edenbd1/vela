@@ -66,6 +66,16 @@ const server = createServer(async (req, res) => {
         { path: "/infer/synthesis", label: "synthesis", price: "0.08" },
         { path: "/infer/exhaustive", label: "exhaustive", price: "0.15" },
       ],
+      // Selectors are the first four bytes of keccak256 of the signature.
+      // Spelled out so the page is checkable rather than trusted:
+      //   swapExactHBARForTokens(uint256,address) -> f406a91a
+      //   approve(address,uint256)                -> 095ea7b3
+      defi: {
+        swap: { selector: "f406a91a", sig: "swapExactHBARForTokens(uint256,address)" },
+        approve: { selector: "095ea7b3", sig: "approve(address,uint256)" },
+        attacker: "0.0.66666666",
+        otherRouter: "0.0.5000002",
+      },
     }));
   }
 

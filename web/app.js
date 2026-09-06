@@ -99,6 +99,31 @@ async function refresh() {
     $("payees").append(li);
   }
 
+  // Contract terms, from the chip. Named rather than counted, for the same
+  // reason the payees are: "2 contracts allowed" is not something a human can
+  // check, and checking is the entire purpose of showing it.
+  const calls = m.calls;
+  $("contracts").innerHTML = "";
+  if (!calls || calls.contracts.length === 0) {
+    $("contracts").innerHTML = '<li class="none">no contract calls</li>';
+  } else {
+    for (const c of calls.contracts) {
+      const li = document.createElement("li");
+      li.textContent = c;
+      if (calls.selectors.length) {
+        const why = document.createElement("span");
+        why.className = "why";
+        why.textContent = calls.selectors.join(" ");
+        li.append(why);
+      }
+      $("contracts").append(li);
+    }
+  }
+
+  const bound = calls?.proceeds ?? "unknown — this chip predates contract calls";
+  $("proceeds").textContent = bound;
+  $("proceeds").className = calls?.recipient_arg == null ? "bound none" : "bound";
+
   const denied = d.advisory?.denied ?? [];
   $("denied").innerHTML = denied.length
     ? ""
@@ -203,6 +228,70 @@ async function buy(tier) {
     : "";
 }
 
+/* ---------------------------------------------------------- the chip -- */
+
+/** A Hedera account as a long-zero EVM address, padded to an ABI word. */
+function addressWord(account) {
+  const n = BigInt(String(account).split(".").pop());
+  return n.toString(16).padStart(64, "0");
+}
+
+const numberWord = (n) => BigInt(n).toString(16).padStart(64, "0");
+
+function scenario(name, m) {
+  const { swap, approve, attacker, otherRouter } = CONFIG.defi;
+  const router = m.calls?.contracts?.[0];
+  const self = CONFIG.buyer;
+  switch (name) {
+    case "good":
+      return { contract: router, sig: swap.sig,
+               calldata: `0x${swap.selector}${numberWord(1)}${addressWord(self)}` };
+    case "steal":
+      return { contract: router, sig: swap.sig,
+               calldata: `0x${swap.selector}${numberWord(1)}${addressWord(attacker)}` };
+    case "approve":
+      return { contract: router, sig: approve.sig,
+               calldata: `0x${approve.selector}${addressWord(attacker)}${numberWord(1)}` };
+    case "other":
+      return { contract: otherRouter, sig: swap.sig,
+               calldata: `0x${swap.selector}${numberWord(1)}${addressWord(self)}` };
+  }
+}
+
+async function runScenario(name) {
+  const env = await api("envelope");
+  const m = env.mandate;
+  if (!m?.calls?.contracts?.length) {
+    $("defi-hint").textContent =
+      "this mandate permits no contract calls — grant one that does";
+    return;
+  }
+
+  const s = scenario(name, m);
+  $("defi-hint").textContent = "asking the chip…";
+  const d = await api("call", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ contract: s.contract, calldata: s.calldata, amount: "1000000" }),
+  });
+
+  if (d.signed) {
+    event({ kind: "paid", who: "chip",
+            text: `signed a call to ${s.contract}`,
+            detail: `${s.sig} — ${d.body_len}-byte body built and signed on-chip, ` +
+                    `draw #${d.seq}` });
+  } else if (d.refused) {
+    event({ kind: "refused", who: "chip",
+            text: `refused — ${d.reason}`,
+            detail: d.advice });
+  } else {
+    event({ kind: "refused", who: "gateway",
+            text: d.error ?? "no answer", detail: JSON.stringify(d).slice(0, 200) });
+  }
+  $("defi-hint").textContent = "";
+  await refresh();
+}
+
 /* ----------------------------------------------------------- the proof -- */
 
 async function loadReceipts() {
@@ -245,6 +334,11 @@ async function loadReceipts() {
     $("topic").append(a);
   }
   $("load-receipts").onclick = loadReceipts;
+  for (const b of document.querySelectorAll("button.scenario")) {
+    b.onclick = () => runScenario(b.dataset.case);
+  }
+  $("sig-good").textContent = CONFIG.defi.swap.sig;
+  $("sig-steal").textContent = CONFIG.defi.swap.sig;
   await refresh();
   // The envelope can change without this page doing anything — another agent
   // draws on it, or a human revokes it on the device.

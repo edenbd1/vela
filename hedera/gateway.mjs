@@ -50,6 +50,15 @@ const REFUSALS = {
             advice: "this single payment exceeds per_call_max; a cheaper tier may fit" },
   0xb106: { reason: "over_budget", terminal: true,
             advice: "the envelope has less left than this costs; check /envelope for available" },
+  0xb109: { reason: "contract_not_allowed", terminal: true,
+            advice: "this contract is not on the mandate; no calldata will make it pass" },
+  0xb10a: { reason: "selector_not_allowed", terminal: true,
+            advice: "that function is not permitted on this contract — the same router " +
+                    "that swaps also approves, and only one of them was granted" },
+  0xb10b: { reason: "recipient_not_self", terminal: true,
+            advice: "the call would hand value to an address that is not this device. " +
+                    "The chip will encode the contract, the function and the amount you " +
+                    "asked for, and refuse the one field that lets the proceeds leave" },
 };
 
 let signer;
@@ -109,6 +118,49 @@ function payeesFrom(state) {
     `0.0.${state.readBigUInt64BE(70 + i * 8)}`);
 }
 
+/**
+ * The contract terms, appended after the payees.
+ *
+ * A transfer's payee is in the transaction body, so an allowlist of accounts
+ * is enough to describe what a mandate permits. A contract call's recipient
+ * is in ABI-encoded arguments the body does not interpret — so the mandate
+ * also names which contracts may be called, which functions on them, and
+ * which argument carries the address value flows to. That last one is what
+ * the chip binds to its own account.
+ *
+ * Null when the chip is older than this layout: "did not say" and "said
+ * nothing is allowed" have to stay distinguishable.
+ */
+function contractTermsFrom(state) {
+  if (state.length < 70) return null;
+  let off = 70 + state.readUInt8(69) * 8;
+  if (state.length < off + 1) return null;
+
+  const nContracts = state.readUInt8(off++);
+  if (state.length < off + nContracts * 8 + 1) return null;
+  const contracts = Array.from({ length: nContracts }, (_, i) =>
+    `0.0.${state.readBigUInt64BE(off + i * 8)}`);
+  off += nContracts * 8;
+
+  const nSelectors = state.readUInt8(off++);
+  if (state.length < off + nSelectors * 4 + 1) return null;
+  const selectors = Array.from({ length: nSelectors }, (_, i) =>
+    `0x${state.readUInt32BE(off + i * 4).toString(16).padStart(8, "0")}`);
+  off += nSelectors * 4;
+
+  const recipientArg = state.readUInt8(off);
+  return {
+    contracts,
+    selectors,
+    recipient_arg: recipientArg === 0xff ? null : recipientArg,
+    // The sentence, not the field. "argument 1 must equal self" is true and
+    // useless to anyone deciding whether to grant this.
+    proceeds: nContracts === 0 || recipientArg === 0xff
+      ? "no contract calls permitted"
+      : "must return to this account",
+  };
+}
+
 /** The mandate, read from the chip on every call — it can be revoked mid-run. */
 async function envelope() {
   const state = await signer.transport
@@ -127,6 +179,7 @@ async function envelope() {
     expiry: state.readUInt32BE(61),
     draws_so_far: state.readUInt32BE(65),
     payees: payeesFrom(state),
+    calls: contractTermsFrom(state),
     asset: "HBAR, in tinybars",
   };
 }
@@ -330,6 +383,77 @@ const routes = {
       note: "signed inside the Secure Element after the chip checked this " +
             "payee and this amount against the mandate",
     });
+  },
+
+  /**
+   * Ask the chip to sign a contract call.
+   *
+   * Deliberately dumb about what the call means: it takes a contract and
+   * calldata and forwards them. Every judgement about where that call sends
+   * value is made in the Secure Element, reading the same bytes. A gateway
+   * that second-guessed the calldata here would be adding a host-side check
+   * in front of a hardware one, which is the pattern this project exists to
+   * argue against.
+   */
+  "POST /call": async (req, res) => {
+    const body = await readBody(req);
+    if (!body?.contract || !body?.calldata) {
+      return json(res, 400, { error: 'give me {"contract":"0.0.x","calldata":"0x…"}' });
+    }
+
+    const before = await envelope();
+    if (!before) {
+      return json(res, 200, { signed: false, refused: true, reason: "no_mandate",
+                              terminal: true,
+                              advice: "a human must grant an envelope on the device first" });
+    }
+
+    const calldata = Buffer.from(body.calldata.replace(/^0x/, ""), "hex");
+    const amount = BigInt(body.amount ?? 0);
+    const now = Math.floor(Date.now() / 1000);
+
+    const head = Buffer.alloc(79);
+    let o = 0;
+    head.writeUInt8(SLOT, o); o += 1;
+    for (const v of [
+      7162784n,                                                  // fee payer
+      BigInt(process.env.HEDERA_BUYER_ID.split(".")[2]),         // this device
+      BigInt(String(body.contract).split(".").pop()),            // callee
+      3n,                                                        // node
+      amount,
+      100_000_000n,                                              // max fee
+      BigInt(body.gas ?? 120_000),
+      BigInt(now),
+    ]) { head.writeBigUInt64BE(v, o); o += 8; }
+    head.writeUInt32BE(0, o); o += 4;
+    head.writeUInt32BE(120, o); o += 4;
+    head.writeUInt32BE(now, o); o += 4;
+    head.writeUInt16BE(calldata.length, o);
+
+    const payload = Buffer.concat([head, calldata]);
+    try {
+      const r = await signer.transport.exchange(
+        Buffer.concat([Buffer.from([0xe0, 0x18, 0, 0, payload.length]), payload]));
+      const bodyLen = r.readUInt16BE(12);
+      // The encoded body comes back separately; see handler_authorize_call.
+      const encoded = await signer.transport.exchange(
+        Buffer.from([0xe0, 0x19, 0, 0, 0]));
+      return json(res, 200, {
+        signed: true,
+        seq: r.readUInt32BE(0),
+        remaining: String(r.readBigUInt64BE(4)),
+        body_len: bodyLen,
+        body: encoded.toString("hex"),
+        note: "the chip built this body from fields it checked, and signed " +
+              "bytes it constructed rather than bytes it was handed",
+      });
+    } catch (e) {
+      const r = REFUSALS[e?.sw ?? e?.cause?.sw];
+      if (r) {
+        return json(res, 200, { signed: false, refused: true, ...r, envelope: before });
+      }
+      return json(res, 500, { error: String(e?.message ?? e) });
+    }
   },
 
   "GET /receipts": async (_req, res) => {

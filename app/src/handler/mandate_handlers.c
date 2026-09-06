@@ -99,7 +99,8 @@ int handler_get_mandate(uint8_t id) {
     // than copying, so a buffer that dies with this frame is read after it
     // is gone — the host sees one stale byte and a success status, which
     // looks like a protocol mismatch rather than a dangling pointer.
-    static uint8_t out[1 + AGENT_ID_LEN + 8 * 5 + 4 + 4 + 1 + 8 * MANDATE_MAX_PAYEES];
+    static uint8_t out[1 + AGENT_ID_LEN + 8 * 5 + 4 + 4 + 1 + 8 * MANDATE_MAX_PAYEES +
+                      1 + 8 * MANDATE_MAX_CONTRACTS + 1 + 4 * MANDATE_MAX_SELECTORS + 1];
     memset(out, 0, sizeof(out));
     size_t off = 0;
 
@@ -127,6 +128,25 @@ int handler_get_mandate(uint8_t id) {
         write_u64_be(out, off, m->payees[i]);
         off += 8;
     }
+
+    // Contract terms, appended after the payees for the same reason the
+    // payees were appended after seq: a reader built against the earlier
+    // layout finds every field it knows at the offset it expects.
+    //
+    // An agent cannot plan against a boundary it cannot see, and a human
+    // cannot audit one either. The chip is the only place these are true,
+    // so it is the only honest place to read them from.
+    out[off++] = m->n_contracts;
+    for (uint8_t i = 0; i < m->n_contracts && i < MANDATE_MAX_CONTRACTS; i++) {
+        write_u64_be(out, off, m->contracts[i]);
+        off += 8;
+    }
+    out[off++] = m->n_selectors;
+    for (uint8_t i = 0; i < m->n_selectors && i < MANDATE_MAX_SELECTORS; i++) {
+        write_u32_be(out, off, m->selectors[i]);
+        off += 4;
+    }
+    out[off++] = m->recipient_arg;
 
     return io_send_response_pointer(out, off, SWO_SUCCESS);
 }
