@@ -1,22 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Vela">
   <title>Vela</title>
   <!--
-    Four chevrons: V, >, ∧, < — opening outward, points turned toward the
-    centre without meeting it. One arm rotated four times, so the mark is a
-    single path and keeps its silhouette down to a 40px device icon.
+    Four chevrons opening outward — V, >, ∧, < — their points turned toward
+    the centre and blunted, never quite meeting.
 
-      68,26 / 132,26   outer tips
-      88,26 / 112,26   inner tips (the notch mouth)
-      100,52           notch floor
-      100,84           point, stopping short of the centre
+    Traced from the reference mark rather than reconstructed by eye: three
+    attempts at rebuilding it parametrically all drifted, because the inner
+    points are cut flat and the arms are wider than they look.
   -->
-  <defs>
-    <path id="vela-arm" d="M 68,26 L 100,84 L 132,26 L 112,26 L 100,52 L 88,26 Z"/>
-  </defs>
   <g fill="#0d1520">
-    <use href="#vela-arm"/>
-    <use href="#vela-arm" transform="rotate(90 100 100)"/>
-    <use href="#vela-arm" transform="rotate(180 100 100)"/>
-    <use href="#vela-arm" transform="rotate(270 100 100)"/>
+    <path d="M 151.1,8.0 L 120.4,8.0 L 102.3,54.2 L 99.3,53.6 L 81.3,9.3 L 50.1,8.9 L 79.8,73.1 L 88.4,79.6 L 96.6,82.0 L 107.6,81.8 L 119.1,76.1 L 124.8,69.0 Z"/>
+    <path d="M 8.2,49.5 L 9.3,80.2 L 54.1,97.9 L 54.1,101.2 L 9.8,119.4 L 9.3,149.8 L 72.7,121.7 L 80.0,113.3 L 82.9,105.1 L 82.9,92.6 L 74.1,78.3 Z"/>
+    <path d="M 191.8,49.6 L 131.1,76.4 L 124.0,82.2 L 118.9,91.6 L 118.1,104.1 L 125.6,119.7 L 132.9,124.7 L 191.8,149.7 L 191.4,119.4 L 146.6,101.6 L 146.6,98.6 L 191.8,80.2 Z"/>
+    <path d="M 50.2,191.2 L 80.7,191.4 L 99.1,146.1 L 101.8,146.6 L 119.7,189.7 L 150.8,190.4 L 122.1,127.0 L 112.9,119.6 L 103.8,117.0 L 88.6,119.3 L 80.1,125.0 Z"/>
   </g>
 </svg>
