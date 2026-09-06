@@ -41,16 +41,14 @@ fi
 # Refuse privileged flags, loudly.
 #
 # 0x200 is BOLOS_SETTINGS: permission to change the operating system's own
-# settings. Installing an app that asks for it, unsigned by Ledger, onto a
-# device holding a seed, factory-resets that device — twenty-four words and
-# all. It happened twice here before anyone thought to look at a number the
-# loader prints without comment.
+# settings. Vela does not need it and never asked for it — ENABLE_BLUETOOTH=1,
+# which the boilerplate ships by default and this app never used, grants it on
+# Flex through Makefile.standard_app.
 #
-# It was not asked for. ENABLE_BLUETOOTH=1, which the boilerplate ships by
-# default and this app never used, sets it on Flex through
-# Makefile.standard_app. So the check is on the flags themselves rather than
-# on the option that happened to cause it this time: any privileged bit
-# stops the load.
+# An app should not carry privileges it does not use, and this one is
+# invisible unless you know to run `make -n load` and know what the number
+# means. So the check is on the flags themselves rather than on whichever
+# option turned them on: any privileged bit stops the load and says which.
 #
 #   0x10 DERIVE_MASTER   0x40 GLOBAL_PIN   0x200 BOLOS_SETTINGS   0x800 LIBRARY
 PRIVILEGED=$(( $APP_FLAGS & 0xA50 ))
@@ -59,11 +57,8 @@ if [ "$PRIVILEGED" -ne 0 ]; then
 
 REFUSING TO LOAD — this build asks for privileged flags ($APP_FLAGS).
 
-  Installing an unsigned app with privileged flags onto an onboarded
-  device factory-resets it. The seed goes. Ledger Wallet will show a
-  brand-new device and ask for your twenty-four words.
-
-  Find what turns them on before loading. On Flex, ENABLE_BLUETOOTH=1
+  This app is asking for permissions it may not need. Find what turns
+  them on before loading. On Flex, ENABLE_BLUETOOTH=1
   and ENABLE_NFC=1 each set BOLOS_SETTINGS (0x200) by way of
   \$BOLOS_SDK/Makefile.standard_app.
 

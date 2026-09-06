@@ -10,9 +10,10 @@ v26.6.1 (API level 26), `ledgerwallet` 0.10.0.
 device. No exotic cryptography, no unusual configuration, and no privileged
 capability the app asked for.
 
-**Cost, before the list starts:** one Ledger Flex factory-reset twice, and a
-seed lost with it, from running the loader the boilerplate's own default
-configuration produces.
+**Cost, before the list starts:** one Ledger Flex factory-reset three times
+and a seed restored twice — from a depleted battery nothing told us about
+(finding 14), after most of a day spent confidently investigating the wrong
+cause.
 
 ---
 
@@ -28,15 +29,16 @@ Every problem we hit falls into one pattern:
 > **The failure surfaces far away from its cause, and the message points
 > somewhere else.**
 
-Thirteen times, the tooling knew exactly what was wrong and told us something
+Fourteen times, the tooling knew exactly what was wrong and told us something
 unrelated — or nothing at all. Most are a small fix, often one error string.
 
-**Read \#13 first.** The boilerplate's default configuration factory-resets a
-Flex on every sideload, in silence. It cost us a seed twice before we thought
-to look at a number the loader prints without comment. Everything else in this
-document is a papercut by comparison.
+**Read \#14 first.** A Flex that resets itself does not say why. Ours did it
+three times, and the reason — a depleted battery on a hub that carried data
+but not power — appeared only on a transient device screen we happened to
+photograph. Everything about that failure is invisible from the terminal, and
+the device that comes back passes its genuine check.
 
-Three others are real bugs: \#10 writes past the end of a correctly sized
+Three findings are real bugs: \#10 writes past the end of a correctly sized
 buffer, \#7 copies the wrong number of bytes, and \#12 is a documented build
 option the SDK stopped reading, which kills the application at runtime with no
 diagnostic anywhere.
@@ -49,7 +51,8 @@ Ordered by what it costs the developer, not by the order we hit them.
 
 | | finding | what it costs | where the fix is |
 |---|---|---|---|
-| 🔴 | [13 — `ENABLE_BLUETOOTH=1` factory-resets the device](#13-the-default-boilerplate-config-factory-resets-a-flex-on-every-sideload) | the seed, silently, on every sideload | `ledgerblue.loadApp` warning · boilerplate default |
+| 🔴 | [14 — a device that resets itself does not say why](#14-a-device-that-resets-itself-does-not-say-why-until-it-is-too-late) | three wipes, two seeds, a day on the wrong cause | surface protection mode in Wallet and `ledgerblue` |
+| 🟡 | [13 — an app is granted OS privileges it never asked for](#13-an-app-is-granted-os-privileges-it-never-asked-for) | invisible `BOLOS_SETTINGS` from a Bluetooth option | a comment · name the flags in words |
 | 🟠 | [10 — `bip32_derive_..._pubkey_256` writes 65 bytes for Ed25519](#10-bip32_derive_with_seed_get_pubkey_256-writes-65-bytes-for-ed25519) | stack overrun and a wrong key, failing far away | SDK, or one line of doc |
 | 🟠 | [12 — the APDU buffer knob is no longer read](#12-the-makefile-knob-for-the-apdu-buffer-is-no-longer-read) | app dies at runtime, no status word | honour the variable or delete the line |
 | 🟠 | [7 — `buffer_move()` copies the whole remainder](#7-buffer_move-does-the-opposite-of-what-its-signature-says) | every multi-field APDU fails on its first field | add `buffer_read_bytes()` |
@@ -63,9 +66,10 @@ Ordered by what it costs the developer, not by the order we hit them.
 | ⚪ | [5 — nothing says to quit Ledger Wallet](#5-nothing-says-to-quit-ledger-wallet-first) | drifting status words | detect the process |
 | ⚪ | [6 — `ledgerctl run` has no inverse](#6-ledgerctl-run-app-has-no-inverse) | no way back to the dashboard | a dashboard command |
 
-**If only one thing changes:** `ledgerblue.loadApp` already knows the flags and
-already talks to the device. One line — *"this will erase the device's seed"* —
-would have prevented both wipes.
+**If only one thing changes:** the device knows it is in protection mode and
+knows it reset itself to protect the keys. One line, anywhere a developer
+looks — Ledger Wallet, `ledgerblue`, or the welcome screen afterwards — would
+have saved two days and two seeds.
 
 ---
 
@@ -447,9 +451,7 @@ signature and the attestation, and a second command returns the body. It
 costs a round trip, and it is safe: the signature is over the body, so a body
 that does not match will not verify.
 
-## 13. The default boilerplate config factory-resets a Flex on every sideload
-
-This one cost a seed. Twice.
+## 13. An app is granted OS privileges it never asked for
 
 `ledger-app-boilerplate` ships with:
 
@@ -465,9 +467,9 @@ ifeq ($(TARGET_NAME),$(filter $(TARGET_NAME),TARGET_NANOX TARGET_STAX TARGET_FLE
     HAVE_APPLICATION_FLAG_BOLOS_SETTINGS = 1
 ```
 
-which reaches the loader as `--appFlags 0x200` — `APPLICATION_FLAG_BOLOS_SETTINGS`,
-permission to modify the operating system's own settings. It is a one-line
-change to demonstrate:
+which reaches the loader as `--appFlags 0x200` —
+`APPLICATION_FLAG_BOLOS_SETTINGS`, permission to modify the operating
+system's own settings:
 
 ```console
 $ grep '^ENABLE_BLUETOOTH' Makefile
@@ -482,59 +484,83 @@ $ make -n load | tr ' ' '\n' | grep -A1 -- --appFlags
 0x0
 ```
 
-Installing an unsigned application that requests a privileged flag onto an
-onboarded device wipes it. That is a defensible security decision — a seed
-should not survive granting OS privileges to uncertified code. What is not
-defensible is arriving there by default, in silence.
+Vela has spoken over USB since its first commit and has never used
+Bluetooth. It was granted settings privileges anyway, for two days, and
+nothing in the build, the loader or the device said so.
 
-**What it costs.** The device comes back showing *"Welcome to Ledger Flex,
-your digital signer"*. Twenty-four words gone. Ledger Wallet reports a
-brand-new device that passes its genuine check, because it is genuine — and
-empty.
+**Why this is worth fixing even though nothing broke.** The privilege is
+invisible at every step. The Makefile option is about a radio; the flag is
+about OS settings, and the link between them lives in an SDK file the app
+developer never opens. `make load` prints the number among a dozen other
+numeric parameters. `ledgerblue.loadApp` prints `Broken certificate chain`
+and a hash, then succeeds. A reviewer asking "what privileges does this app
+hold?" has to know to run `make -n load` and to know what `0x200` means.
 
-**Why it took two devices to find.** Nothing connects the cause to the
-effect at any point in the chain:
+**Suggested fixes:**
 
-- The app never asked for the privilege. It came from a Bluetooth option
-  the app does not use, and the app was talking over USB the whole time.
-- `make load` prints `--appFlags 0x200` with no comment, among a dozen other
-  numeric parameters. There is nothing to make it stand out.
-- `ledgerblue.loadApp` prints `Broken certificate chain - loading from user
-  key` and `Application full hash: ...`, then succeeds. No warning.
-- The device says nothing on the way down and shows the welcome screen on the
-  way up, which reads like the device broke rather than like the load
-  did it.
-- The failure lands on the *device*, so the first hypothesis is anything but
-  the build configuration. We suspected a wedged USB pipe, our own APDU
-  handler, and RAM pressure first.
+1. Say it where the option is set. One comment beside `ENABLE_BLUETOOTH` in
+   the boilerplate Makefile — *"on Stax/Flex this also grants
+   BOLOS_SETTINGS"* — costs nothing.
+2. Have `ledgerblue.loadApp` name the flags it is about to send in words,
+   not hex. `appFlags 0x200 (BOLOS_SETTINGS)` is a different sentence from
+   `appFlags 0x200`.
+3. Do not ship `ENABLE_BLUETOOTH = 1` as the default. Most apps start on
+   USB, and an option that is on by default and grants a privilege is a trap
+   for the developer least equipped to see it.
 
-We ran the same load command a dozen times over two days before the number
-was worth looking at. The first wipe was written off as the device being
-strange.
+**What we wrongly blamed it for.** Our Flex factory-reset itself three times
+over two days. We correlated it with the loads, found this flag, and were
+confident we had the cause — privileged flag, unsigned app, onboarded
+device, wipe. It was a good story and it was wrong. See finding 14.
 
-**Suggested fixes**, in the order we would want them:
+---
 
-1. **`ledgerblue.loadApp` should refuse, or at minimum warn, when
-   `--appFlags` carries a privileged bit and the device is onboarded.** One
-   line of output — *"this will erase the device's seed"* — would have saved
-   both wipes. It already knows the flags and it already talks to the device.
-2. **`ENABLE_BLUETOOTH` should not imply `BOLOS_SETTINGS` silently.** If BLE
-   genuinely needs it, say so where the option is set, in the boilerplate
-   Makefile, next to the line every new app inherits.
-3. **Do not ship `ENABLE_BLUETOOTH = 1` as the boilerplate default.** Most
-   apps start on USB. An option that is on by default and grants a privilege
-   is a trap for exactly the developer least able to see it — the new one.
+## 14. A device that resets itself does not say why until it is too late
 
-**Workaround.** `ENABLE_BLUETOOTH = 0`, and a loader that checks before it
-loads:
+Our Flex factory-reset itself three times in two days, taking the seed each
+time. There is nothing in `ledgerblue`, in Ledger Wallet, or on the device at
+the moment it happens that explains it.
 
-```bash
-APP_FLAGS=$(make -n load | tr ' ' '\n' | grep -A1 -- '--appFlags' | tail -1)
-if [ $(( $APP_FLAGS & 0xA50 )) -ne 0 ]; then
-  echo "REFUSING — privileged flags ($APP_FLAGS) will factory-reset the device" >&2
-  exit 1
-fi
-```
+The actual cause, which we found only because the device happened to show
+this screen while we were photographing it for an unrelated reason:
+
+> **Protection mode — 1%**
+> For security, this Ledger device will reset once protection mode is at
+> 100%. Keep it charged till then.
+
+The battery had been running down. The device was plugged into a hub that
+carried data and not enough power, so it read as connected the entire time.
+
+**What the developer sees instead.** The device comes back showing *"Welcome
+to Ledger Flex, your digital signer"*. Ledger Wallet reports a brand-new
+device that passes its genuine check — because it is genuine, and empty.
+Nothing anywhere says the words "battery" or "protection mode". The screen
+that explains it appears on the device, transiently, and is trivially missed
+by someone whose attention is on a terminal.
+
+**What it cost.** Three wipes, two seed restorations, and most of a day spent
+confidently investigating the wrong cause. We wrote up finding 13 as the
+culprit — privileged app flags — with a reproduction, a suggested fix and a
+severity marker, before the real reason showed up on the screen. That finding
+is still worth reading; it is simply not what erased anything.
+
+**Suggested fixes:**
+
+1. **Surface protection mode where the developer is looking.** Ledger Wallet
+   knows the battery level and the protection-mode counter. A banner is
+   enough.
+2. **Say it in the manager protocol.** `ledgerblue` talks to the device on
+   every load and could print one line: *"device is in protection mode
+   (N%) — it will factory-reset if this reaches 100%"*.
+3. **Make the on-device screen persistent, not transient**, once the counter
+   has started. A warning that has to be caught in the act is not a warning.
+4. **Say it afterwards.** The device knows it reset itself and why. The
+   welcome screen could carry one line — *"this device reset to protect your
+   keys after its battery was depleted"* — and would have saved us two days
+   and two seeds.
+
+**Note for anyone developing on a Flex:** a USB hub that enumerates the
+device is not necessarily charging it. Check the battery, not the connection.
 
 ## Tutorial we would have wanted
 
@@ -559,9 +585,14 @@ findings 1, 2, 6 and 7 would have saved this entire evening.
 9. Use its CommonJS build.
 10. Response buffers must be static — never a local.
 11. Ed25519 public keys come back as 65-byte uncompressed points.
-12. **Check `--appFlags` before every load.** `make -n load | grep -A1
-    appFlags`. Anything but `0x0` means the build is asking for a privilege,
-    and a privileged flag on an unsigned app erases an onboarded device.
-    `ENABLE_BLUETOOTH=1` — the boilerplate default — sets it on Flex.
-13. Do not trust `DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE`. It is not read.
+12. **Watch the battery, not the connection.** A hub that enumerates a Flex
+    is not necessarily charging it. A depleted Flex factory-resets itself,
+    and nothing outside the device says so.
+13. **Know your `--appFlags`.** `make -n load | grep -A1 appFlags`. Anything
+    but `0x0` means the build asks for an OS privilege. `ENABLE_BLUETOOTH=1`
+    — the boilerplate default — grants `BOLOS_SETTINGS` on Flex.
+14. Do not trust `DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE`. It is not read.
     Split the response instead.
+15. Reproduce crashes on Speculos before the device. `signal 11` with a
+    replayable APDU beats a device that wedges its USB pipe and takes an
+    afternoon with it.

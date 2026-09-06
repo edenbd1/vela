@@ -96,17 +96,17 @@ DEBUG = 1
 ########################################
 # Application communication interfaces #
 ########################################
-# Off, and not by preference.
+# Off, because Vela has never used it.
 #
 # The boilerplate ships this as 1. On Flex, Makefile.standard_app turns it
 # into HAVE_APPLICATION_FLAG_BOLOS_SETTINGS, which reaches the loader as
-# --appFlags 0x200 — permission to modify the OS's own settings. Installing
-# an app that asks for that, without a Ledger-issued certificate, onto a
-# device holding a seed, factory-resets the device. It did, twice, and
-# nothing in the build or the load said a word.
+# --appFlags 0x200 — permission to modify the OS's own settings. Vela talks
+# over USB and does not need either, so it should not be holding a privilege
+# it never asked for.
 #
-# Vela talks over USB and has never used Bluetooth. See scripts/load.sh,
-# which now refuses to load anything asking for a privileged flag.
+# We briefly believed this flag was factory-resetting the device. It was not:
+# the resets were the battery-depletion protection mode, on a hub that
+# carried data but not power. Both are written up, findings 13 and 14.
 ENABLE_BLUETOOTH = 0
 #ENABLE_NFC = 1
 ENABLE_NBGL_FOR_NANO_DEVICES = 1

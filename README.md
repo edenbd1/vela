@@ -321,19 +321,18 @@ afternoon.
 
 ## Notes for Ledger
 
-Building this surfaced thirteen concrete developer-experience problems,
+Building this surfaced fourteen concrete developer-experience problems,
 written up with reproductions in
 [`docs/FEEDBACK-LEDGER.md`](docs/FEEDBACK-LEDGER.md).
 
-**One of them cost a Flex its seed. Twice.** The boilerplate ships
-`ENABLE_BLUETOOTH = 1`; on Flex that silently becomes
-`APPLICATION_FLAG_BOLOS_SETTINGS`, reaching the loader as `--appFlags 0x200`.
-Installing an unsigned app that asks for a privileged flag onto an onboarded
-device factory-resets it. Nothing in the build, the loader or the device says
-so — the app never asked for the privilege, and the device comes back showing
-*"Welcome to Ledger Flex"*. `ledgerblue.loadApp` already knows the flags and
-already talks to the device; one line of warning would have prevented both
-wipes.
+**The one that cost the most was invisible.** The Flex factory-reset itself
+three times over two days, taking the seed with it. Nothing in the loader, in
+Ledger Wallet, or on the device at the moment it happens says why — the device
+comes back showing *"Welcome to Ledger Flex"* and passes its genuine check,
+because it is genuine and empty. The cause was a depleted battery on a hub
+that carried data but not power, and it surfaced only on a transient
+device screen. We spent most of a day confidently investigating the wrong
+cause first, and the write-up says so.
 
 Most of the rest are one error string away from being fine. Three more are
 real bugs:
