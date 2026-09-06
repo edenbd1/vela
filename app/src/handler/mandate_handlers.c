@@ -185,13 +185,16 @@ int handler_authorize_spend(buffer_t *cdata) {
         return io_send_sw(sw_for(st));
     }
 
-    uint8_t body[HEDERA_BODY_MAX];
+    // Static, like the response buffer below. Ed25519 signing needs a lot of
+    // stack of its own, and a couple of hundred bytes of locals still live in
+    // this frame when it is called — enough to take the app down.
+    static uint8_t body[HEDERA_BODY_MAX];
     int body_len = hedera_build_transfer_body(&t, body, sizeof(body));
     if (body_len <= 0) {
         return io_send_sw(SW_VELA_ARGS);
     }
 
-    uint8_t sig[HEDERA_SIG_LEN];
+    static uint8_t sig[HEDERA_SIG_LEN];
     if (!hedera_sign_body(0, body, (size_t) body_len, sig)) {
         return io_send_sw(SWO_SECURITY_ISSUE);
     }

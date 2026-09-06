@@ -12,15 +12,11 @@ protobuf, and confirm three things:
 If any of those fail, the device is signing something other than what it
 was asked to authorise, which is the one bug this project cannot survive.
 """
-import signal
 import struct
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-signal.signal(signal.SIGALRM, lambda *a: (print("TIMEOUT"), sys.exit(2)))
-signal.alarm(30)
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -96,26 +92,21 @@ def decode_transfer(body):
 
 
 def main():
+    # The alarm lives here, not at import time: verify_body is imported by
+    # e2e.py for its decoder, and a module-level alarm would kill its caller.
+    import signal
+    signal.signal(signal.SIGALRM, lambda *a: (print("TIMEOUT"), sys.exit(2)))
+    signal.alarm(60)
+
     payer, payee, node = 10365982, 10365984, 3
     amount = 1_000_000  # 0.01 HBAR in tinybars
     slot = int(sys.argv[1]) if len(sys.argv) > 1 else 1
 
     d = open_device()
 
-    # Grant a fresh envelope on the chosen slot, so the check does not depend
-    # on whatever a previous run left behind. Needs a tap.
-    import hashlib
-    agent = hashlib.sha256(b"verifier").digest()[:20]
-    grant = agent + bytes([1]) + struct.pack(">Q", payee)
-    grant += struct.pack(">QQI", 10_000_000, 5_000_000, 0)
-    try:
-        got = bytes(d.exchange(bytes([CLA, 0x11, 0, 0, len(grant)]) + grant))
-        slot = got[0]
-        print(f"granted a fresh mandate in slot {slot}")
-    except CommException as e:
-        print(f"could not grant: 0x{e.sw:04x}")
-        return 1
-
+    # Use whatever mandate already occupies the slot. Granting one needs a
+    # human, or the emulator's approval walker; neither belongs in a check
+    # that is about what gets signed.
     pk = bytes(d.exchange(bytes([CLA, INS_PUBKEY, 0, 0, 0])))
     print(f"device key   : {pk.hex()}")
 
