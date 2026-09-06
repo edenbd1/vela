@@ -42,6 +42,10 @@ static bool read_bytes(buffer_t *b, uint8_t *out, size_t n) {
 }
 
 /** Map a policy verdict onto the status word the host will see. */
+/// The last contract-call body, kept between AUTHORIZE_CALL and GET_LAST_BODY.
+static uint8_t g_call_body[HEDERA_CALL_BODY_MAX];
+static uint16_t g_last_body_len;
+
 static uint16_t sw_for(mandate_status_t st) {
     switch (st) {
         case MANDATE_OK:
@@ -378,14 +382,13 @@ int handler_authorize_call(buffer_t *cdata) {
         return io_send_sw(sw_for(st));
     }
 
-    static uint8_t body[HEDERA_CALL_BODY_MAX];
-    int body_len = hedera_encode_call(&c, body, sizeof(body));
+    int body_len = hedera_encode_call(&c, g_call_body, sizeof(g_call_body));
     if (body_len <= 0) {
         return io_send_sw(SW_VELA_ARGS);
     }
 
     static uint8_t sig[HEDERA_SIG_LEN];
-    if (!hedera_sign_body(0, body, (size_t) body_len, sig)) {
+    if (!hedera_sign_body(0, g_call_body, (size_t) body_len, sig)) {
         return io_send_sw(SWO_SECURITY_ISSUE);
     }
 
@@ -405,9 +408,26 @@ int handler_authorize_call(buffer_t *cdata) {
         return io_send_sw(SWO_SECURITY_ISSUE);
     }
 
-    // Same layout as a transfer draw, except body_len needs two bytes: a
-    // call body runs past 255.
-    static uint8_t out[4 + 8 + 2 + HEDERA_CALL_BODY_MAX + HEDERA_SIG_LEN + 29 + HEDERA_SIG_LEN];
+    // The body does not travel with this response, and that is not a design
+    // preference.
+    //
+    // Flex gives an app a 272-byte APDU buffer. Sequence, balance, a call
+    // body, its signature and the chip's anchor statement with its own
+    // signature come to well over three hundred, and the app-side Makefile
+    // knob for raising it — DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE — is no
+    // longer read by the SDK. Setting it changes nothing, the oversized
+    // response overruns the buffer, and the application dies with no status
+    // word at all. Written up as finding 12 in docs/FEEDBACK-LEDGER.md.
+    //
+    // So the body is kept here and fetched with VELA_GET_LAST_BODY. The host
+    // holds a signature for bytes it has not seen yet for exactly one round
+    // trip, which costs nothing: the signature is over those bytes, so a body
+    // that does not match is a body that will not verify.
+    g_last_body_len = (uint16_t) body_len;
+
+    // seq (4) || available (8) || body_len (2) || signature (64)
+    //         || anchor (29) || anchor signature (64)   = 171 bytes
+    static uint8_t out[4 + 8 + 2 + HEDERA_SIG_LEN + 29 + HEDERA_SIG_LEN];
     memset(out, 0, sizeof(out));
     size_t off = 0;
     write_u32_be(out, off, seq);
@@ -416,8 +436,6 @@ int handler_authorize_call(buffer_t *cdata) {
     off += 8;
     out[off++] = (uint8_t) ((body_len >> 8) & 0xFF);
     out[off++] = (uint8_t) (body_len & 0xFF);
-    memcpy(out + off, body, (size_t) body_len);
-    off += (size_t) body_len;
     memcpy(out + off, sig, HEDERA_SIG_LEN);
     off += HEDERA_SIG_LEN;
     memcpy(out + off, anchor, sizeof(anchor));
@@ -426,6 +444,21 @@ int handler_authorize_call(buffer_t *cdata) {
     off += HEDERA_SIG_LEN;
 
     return io_send_response_pointer(out, off, SWO_SUCCESS);
+}
+
+/**
+ * The body of the last call this chip signed.
+ *
+ * Empty until a call has been authorised, and overwritten by the next one.
+ * Nothing is protected by keeping it: the body is public the moment it is
+ * submitted, and it is worthless without the signature that came back with
+ * the authorisation.
+ */
+int handler_get_last_body(void) {
+    if (g_last_body_len == 0) {
+        return io_send_sw(SW_VELA_NOT_FOUND);
+    }
+    return io_send_response_pointer(g_call_body, g_last_body_len, SWO_SUCCESS);
 }
 
 int handler_settle_confirm(buffer_t *cdata) {

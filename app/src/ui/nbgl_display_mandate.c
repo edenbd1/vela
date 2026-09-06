@@ -33,8 +33,10 @@ static char g_budget[32];
 static char g_per_call[32];
 static char g_payees[80];
 static char g_expiry[32];
+static char g_contracts[96];
+static char g_recipient[64];
 
-static nbgl_contentTagValue_t pairs[5];
+static nbgl_contentTagValue_t pairs[7];
 static nbgl_contentTagValueList_t pairList;
 
 static char g_revoke_title[48];
@@ -59,6 +61,8 @@ int ui_display_create_mandate(void) {
     explicit_bzero(g_per_call, sizeof(g_per_call));
     explicit_bzero(g_payees, sizeof(g_payees));
     explicit_bzero(g_expiry, sizeof(g_expiry));
+    explicit_bzero(g_contracts, sizeof(g_contracts));
+    explicit_bzero(g_recipient, sizeof(g_recipient));
 
     if (format_hex(m->agent_id, AGENT_ID_LEN, g_agent, sizeof(g_agent)) == -1) {
         return io_send_sw(SW_VELA_ARGS);
@@ -97,6 +101,34 @@ int ui_display_create_mandate(void) {
         snprintf(g_expiry, sizeof(g_expiry), "unix %u", (unsigned) m->expiry);
     }
 
+    // Contracts get the same treatment as payees: named, not counted. A user
+    // approving "2 contracts allowed" has approved nothing they could check.
+    size_t coff = 0;
+    for (uint8_t i = 0; i < m->n_contracts && i < MANDATE_MAX_CONTRACTS; i++) {
+        int n = snprintf(g_contracts + coff,
+                         sizeof(g_contracts) - coff,
+                         "%s0.0.%u",
+                         i ? "\n" : "",
+                         (unsigned) m->contracts[i]);
+        if (n <= 0 || (size_t) n >= sizeof(g_contracts) - coff) {
+            break;
+        }
+        coff += (size_t) n;
+    }
+    if (coff == 0) {
+        snprintf(g_contracts, sizeof(g_contracts), "None");
+    }
+
+    // The sentence that matters most on this screen, so it is a sentence and
+    // not a field name. "Argument 1 must equal self" is true and useless; the
+    // user needs to know that whatever the agent trades, the proceeds cannot
+    // leave this account.
+    if (m->recipient_arg == MANDATE_ARG_NONE || m->n_contracts == 0) {
+        snprintf(g_recipient, sizeof(g_recipient), "No contract calls");
+    } else {
+        snprintf(g_recipient, sizeof(g_recipient), "Only back to this account");
+    }
+
     pairs[0].item = "Agent";
     pairs[0].value = g_agent;
     pairs[1].item = "Total budget";
@@ -105,11 +137,15 @@ int ui_display_create_mandate(void) {
     pairs[2].value = g_per_call;
     pairs[3].item = "May pay";
     pairs[3].value = g_payees;
-    pairs[4].item = "Expires";
-    pairs[4].value = g_expiry;
+    pairs[4].item = "May call";
+    pairs[4].value = g_contracts;
+    pairs[5].item = "Proceeds go";
+    pairs[5].value = g_recipient;
+    pairs[6].item = "Expires";
+    pairs[6].value = g_expiry;
 
     pairList.nbMaxLinesForValue = 0;
-    pairList.nbPairs = 5;
+    pairList.nbPairs = 7;
     pairList.pairs = pairs;
     pairList.wrapping = true;
 

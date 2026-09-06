@@ -78,6 +78,9 @@ int apdu_dispatcher(const command_t *cmd) {
         case VELA_GET_MANDATE:
             return handler_get_mandate(cmd->p1);
 
+        case VELA_GET_LAST_BODY:
+            return handler_get_last_body();
+
         case VELA_GET_PUBKEY:
             return handler_get_pubkey(cmd->p1);
 

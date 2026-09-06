@@ -57,6 +57,9 @@ int handler_authorize_spend(buffer_t *cdata);
  */
 int handler_authorize_call(buffer_t *cdata);
 
+/** The body of the last call the chip signed. See handler_authorize_call. */
+int handler_get_last_body(void);
+
 /**
  * Close a draw: release the unused headroom, record what settled.
  *

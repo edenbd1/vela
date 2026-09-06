@@ -22,10 +22,12 @@ Every problem we hit falls into one pattern:
 > **The failure surfaces far away from its cause, and the message points
 > somewhere else.**
 
-Eleven times, the tooling knew exactly what was wrong and told us something
-unrelated. Most are a small fix — often one error string. Two are real bugs:
-\#10 writes past the end of a correctly sized buffer, and \#7 copies the wrong
-number of bytes.
+Twelve times, the tooling knew exactly what was wrong and told us something
+unrelated — or nothing at all. Most are a small fix, often one error string.
+Three are real bugs: \#10 writes past the end of a correctly sized buffer,
+\#7 copies the wrong number of bytes, and \#12 is a documented build option
+the SDK stopped reading, which kills the application at runtime with no
+diagnostic anywhere.
 
 ---
 
@@ -346,6 +348,66 @@ We hit it four times in one app before spotting the pattern.
 valid until the response is sent; do not pass a local".
 
 ---
+
+## 12. The Makefile knob for the APDU buffer is no longer read
+
+`ledger-app-boilerplate`'s `Makefile` documents this, and every app derived
+from it carries the line:
+
+```make
+#DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE = 1 # To allow custom size declaration
+```
+
+Flex gets a 272-byte buffer:
+
+```make
+# flex-secure-sdk/Makefile.defines
+DEFINES += OS_IO_SEPH_BUFFER_SIZE=272
+```
+
+We needed more — a signed transaction body plus two 64-byte signatures and a
+29-byte attestation comes to well over three hundred — so we did what the
+Makefile says:
+
+```make
+DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE = 1
+DEFINES += OS_IO_SEPH_BUFFER_SIZE=512
+DEFINES += CUSTOM_IO_APDU_BUFFER_SIZE=512
+```
+
+**`DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE` appears nowhere in the SDK.**
+
+```console
+$ grep -rn "DISABLE_DEFAULT_IO_SEPROXY_BUFFER_SIZE" /opt/flex-secure-sdk/
+$ echo $?
+1
+```
+
+It is read by nothing. The SDK still emits its own
+`OS_IO_SEPH_BUFFER_SIZE=272`, ours is appended after it, and the build
+succeeds without a word.
+
+**What it costs.** The app believes it has a 512-byte buffer and answers a
+command with 311 bytes. There is no bounds check and no status word: the
+application dies, the device falls back to the dashboard, and the host sees a
+read error from a transport that was working a millisecond earlier. Nothing
+points at the buffer. We suspected the new handler, the encoder, and RAM
+pressure from the static buffers before checking whether the Makefile
+variable existed at all.
+
+**Cost:** a crashed app on real hardware, a wiped NVRAM from the reinstall
+that followed, and the wrong three hypotheses first.
+
+**Suggested fix.** Either honour the variable, or delete the line from the
+boilerplate. A commented-out knob in a template is read as documentation. If
+raising the buffer is genuinely unsupported now, `Makefile.defines` could
+refuse a second definition rather than silently keeping the first — the
+duplicate is visible at build time, and the runtime failure is not.
+
+**Workaround.** Split the response across two commands. Ours returns the
+signature and the attestation, and a second command returns the body. It
+costs a round trip, and it is safe: the signature is over the body, so a body
+that does not match will not verify.
 
 ## Tutorial we would have wanted
 
