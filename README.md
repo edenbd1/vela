@@ -60,6 +60,18 @@ stealing. And the device stays the one component every agent depends on and
 none can modify, which is what makes it a console rather than a dashboard. A
 dashboard shows you what a server says. This shows you what the chip knows.
 
+## How it fits together
+
+<p align="center">
+  <img src="docs/architecture.png" alt="Vela architecture" width="880">
+</p>
+
+The diagram is drawn around one question: **who can edit what.** The agents
+hold nothing. The broker and gateway are hosts you control, and they still
+hold nothing at rest. The chip holds the only figures nobody can change, and
+the two layers along the bottom can narrow what an agent may do without ever
+widening it.
+
 ## The fleet
 
 Three agents, three envelopes, one object:

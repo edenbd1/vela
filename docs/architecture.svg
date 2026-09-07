@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 730" width="920" height="730"
+     font-family="ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif">
+  <title>Vela — where each fact lives, and who can edit it</title>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+            orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b6672"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+            orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4ade80"/>
+    </marker>
+    <style>
+      .zone   { fill:#14171c; stroke:#232830; stroke-width:1; rx:12 }
+      .untrusted { stroke-dasharray:5 4 }
+      .box    { fill:#191d23; stroke:#2b3138; stroke-width:1; rx:8 }
+      .chip   { fill:#191d23; stroke:#7dd3fc; stroke-width:1.5; rx:10 }
+      .zt     { fill:#5b6672; font-size:11px; letter-spacing:.7px; text-transform:uppercase }
+      .t      { fill:#e7ebf0; font-size:13.5px; font-weight:600 }
+      .s      { fill:#8b95a3; font-size:11.5px }
+      .m      { fill:#8b95a3; font-size:11px; font-family:ui-monospace,Menlo,monospace }
+      .lbl    { fill:#5b6672; font-size:10.5px; font-family:ui-monospace,Menlo,monospace }
+      .ok     { fill:#4ade80 }
+      .warn   { fill:#fbbf24 }
+      .line   { stroke:#5b6672; stroke-width:1.2; fill:none; marker-end:url(#a) }
+      .lineok { stroke:#4ade80; stroke-width:1.4; fill:none; marker-end:url(#ag) }
+    </style>
+  </defs>
+
+  <rect width="920" height="730" fill="#0b0d10"/>
+
+  <!-- ============ machines you do not control ============ -->
+  <rect class="zone untrusted" x="24" y="24" width="560" height="120"/>
+  <text class="zt" x="40" y="46">machines you do not control</text>
+
+  <rect class="box" x="42" y="58" width="164" height="68"/>
+  <text class="t" x="56" y="82">research-1</text>
+  <text class="s" x="56" y="100">container</text>
+  <text class="m" x="56" y="116">no keys · no secrets</text>
+
+  <rect class="box" x="220" y="58" width="164" height="68"/>
+  <text class="t" x="234" y="82">ops-nightly</text>
+  <text class="s" x="234" y="100">VPS</text>
+  <text class="m" x="234" y="116">no keys · no secrets</text>
+
+  <rect class="box" x="398" y="58" width="164" height="68"/>
+  <text class="t" x="412" y="82">watcher</text>
+  <text class="s" x="412" y="100">CI runner</text>
+  <text class="m" x="412" y="116">no keys · no secrets</text>
+
+  <!-- ============ a host you do control ============ -->
+  <rect class="zone" x="24" y="212" width="560" height="132"/>
+  <text class="zt" x="40" y="234">a host you do control — and it still holds nothing at rest</text>
+
+  <rect class="box" x="42" y="248" width="252" height="80"/>
+  <text class="t" x="56" y="272">broker</text>
+  <text class="s" x="56" y="290">named actions, never the key</text>
+  <text class="m" x="56" y="308">decrypts per request · drops it</text>
+
+  <rect class="box" x="310" y="248" width="252" height="80"/>
+  <text class="t" x="324" y="272">gateway</text>
+  <text class="s" x="324" y="290">one slot per agent</text>
+  <text class="m" x="324" y="308">the caller never names the slot</text>
+
+  <!-- agent -> broker / gateway -->
+  <path class="line" d="M 124 130 L 124 244"/>
+  <text class="lbl" x="132" y="176">invoke an action</text>
+  <path class="line" d="M 302 130 L 302 190 L 436 190 L 436 244"/>
+  <text class="lbl" x="312" y="206">name a service</text>
+  <path class="line" d="M 480 130 L 480 190 L 200 190 L 200 244"/>
+
+  <!-- ============ the device ============ -->
+  <rect class="chip" x="624" y="212" width="272" height="188"/>
+  <text class="zt" x="640" y="234" fill="#7dd3fc">ledger flex — nobody can edit this</text>
+  <text class="t" x="640" y="264">3 mandates in NVRAM</text>
+  <text class="s" x="640" y="284">budget · per-draw ceiling · payees</text>
+  <text class="s" x="640" y="302">contracts · function selectors</text>
+  <text class="s" x="640" y="320">proceeds must return here</text>
+  <text class="m ok" x="640" y="348">signs, or refuses</text>
+  <text class="m" x="640" y="366">survives unplugging</text>
+  <text class="m warn" x="640" y="384">revoked by a finger, not an API call</text>
+
+  <path class="line" d="M 566 288 L 620 288"/>
+  <text class="lbl" x="566" y="278">APDU</text>
+
+  <!-- ============ the human ============ -->
+  <rect class="box" x="624" y="60" width="272" height="72"/>
+  <text class="t" x="640" y="86">a human, once</text>
+  <text class="s" x="640" y="106">grants an envelope with a tap</text>
+  <text class="m" x="640" y="124">and takes it back the same way</text>
+  <path class="lineok" d="M 760 136 L 760 206"/>
+
+  <!-- ============ upstream ============ -->
+  <rect class="box" x="42" y="412" width="252" height="64"/>
+  <text class="t" x="56" y="436">the authenticated API</text>
+  <text class="m" x="56" y="456">a credential the agent never held</text>
+  <path class="line" d="M 168 332 L 168 408"/>
+
+  <!-- ============ hedera ============ -->
+  <rect class="zone" x="310" y="412" width="586" height="132"/>
+  <text class="zt" x="326" y="434">hedera — what actually happened</text>
+
+  <rect class="box" x="328" y="448" width="252" height="80"/>
+  <text class="t" x="342" y="472">x402 settlement</text>
+  <text class="s" x="342" y="490">real HBAR, sub-second finality</text>
+  <text class="m" x="342" y="508">signed inside the Secure Element</text>
+
+  <rect class="box" x="596" y="448" width="284" height="80"/>
+  <text class="t" x="610" y="472">HCS audit log</text>
+  <text class="s" x="610" y="490">every draw, signed by the chip</text>
+  <text class="m" x="610" y="508">verify.mjs reads only the mirror node</text>
+
+  <path class="line" d="M 700 404 L 700 444"/>
+  <text class="lbl" x="708" y="428">signed body + anchor</text>
+
+  <!-- ============ ens / enclave ============ -->
+  <text class="zt" x="44" y="568">two more layers, neither of which can widen anything</text>
+  <rect class="box" x="42" y="580" width="410" height="104"/>
+  <text class="t" x="56" y="606">ENSv2 — who the agent is</text>
+  <text class="s" x="56" y="626">a subname per agent, Enhanced Access Control</text>
+  <text class="m" x="56" y="646">public: a stranger resolves it without being</text>
+  <text class="m" x="56" y="662">given access to anything</text>
+
+  <rect class="box" x="486" y="580" width="410" height="104"/>
+  <text class="t" x="500" y="606">Chainlink CRE — a confidential enclave</text>
+  <text class="s" x="500" y="626">screens payees against a private feed</text>
+  <text class="m warn" x="500" y="646">may narrow the mandate</text>
+  <text class="m" x="500" y="662">can never widen it — the chip decides</text>
+
+</svg>
