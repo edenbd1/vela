@@ -11,6 +11,7 @@
  * Delete this file and rewrite it however you like — the chip still refuses.
  */
 import net from "node:net";
+import { request as httpRequest } from "node:http";
 
 const CLA = 0xe0;
 const INS_AUTHORIZE = 0x12;
@@ -131,7 +132,11 @@ export class BridgeTransport {
   }
 
   async open() {
-    const r = await fetch(`${this.url}/health`).catch(() => null);
+    // Generous: /health probes the device, which takes seconds over USB. A
+    // tight bound here reports "no bridge" for a bridge that is running and
+    // about to answer, which is the least useful sentence available.
+    const r = await fetch(`${this.url}/health`,
+                          { signal: AbortSignal.timeout(30_000) }).catch(() => null);
     if (!r?.ok) {
       throw new Error(`no device bridge at ${this.url} — start host/bridge.py`);
     }
@@ -140,12 +145,49 @@ export class BridgeTransport {
   close() {}
 
   async exchange(apdu) {
-    const r = await fetch(`${this.url}/apdu`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ apdu: Buffer.from(apdu).toString("hex") }),
+    // node:http rather than fetch, and the reason is human.
+    //
+    // Some of these commands put a question on the device's screen and wait
+    // for a person to answer it. Node's fetch abandons a response that has
+    // not started arriving within five minutes — a sensible default for a
+    // web request and the wrong one for someone reading a screen. It fails
+    // as UND_ERR_HEADERS_TIMEOUT, which says nothing about a device and
+    // sends you looking at the bridge.
+    //
+    // The device's own approval timeout is the one that should govern, and
+    // host/bridge.py holds the connection open for exactly that long.
+    const payload = JSON.stringify({ apdu: Buffer.from(apdu).toString("hex") });
+    const { body, status } = await new Promise((resolve, reject) => {
+      const u = new URL(`${this.url}/apdu`);
+      const req = httpRequest(
+        {
+          hostname: u.hostname,
+          port: u.port,
+          path: u.pathname,
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "content-length": Buffer.byteLength(payload),
+          },
+        },
+        (res) => {
+          let out = "";
+          res.setEncoding("utf8");
+          res.on("data", (c) => (out += c));
+          res.on("end", () => {
+            try {
+              resolve({ body: JSON.parse(out), status: res.statusCode });
+            } catch {
+              reject(new Error(`bridge returned ${res.statusCode}: ${out.slice(0, 120)}`));
+            }
+          });
+        },
+      );
+      req.setTimeout(0);          // no ceiling; the device has its own
+      req.on("error", reject);
+      req.end(payload);
     });
-    const body = await r.json();
+    const r = { ok: status >= 200 && status < 300, status };
     if (!r.ok) throw new Error(body.error ?? `bridge failed: ${r.status}`);
     if (body.sw !== 0x9000) {
       throw Object.assign(new Error(`device refused: 0x${body.sw.toString(16)}`), { sw: body.sw });
