@@ -62,12 +62,26 @@ const ROSTER = (() => {
   }
 })();
 
-function callerSlot(req) {
+function callerSlot(req, url) {
   const token = String(req.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return { slot: SLOT, agent: null, anonymous: true };
-  const found = Object.values(ROSTER).find((a) => a.token === token);
-  if (!found) return null;
-  return { slot: found.slot, agent: found.label, anonymous: false };
+
+  if (token) {
+    const found = Object.values(ROSTER).find((a) => a.token === token);
+    if (!found) return null;
+    // An identified agent gets its own slot and cannot ask for another. The
+    // query string is ignored rather than merged: a request that both proves
+    // who it is and asks to be someone else is not ambiguous, it is a
+    // request to be refused.
+    return { slot: found.slot, agent: found.label, anonymous: false };
+  }
+
+  // The operator path. The local console has no agent identity — it is the
+  // human's view of the whole fleet — so it names the slot it wants to look
+  // at. That is only acceptable because it is the same person who granted
+  // the envelopes in the first place.
+  const asked = Number(url?.searchParams?.get("slot") ?? SLOT);
+  if (!Number.isInteger(asked) || asked < 0 || asked > 2) return null;
+  return { slot: asked, agent: null, anonymous: true };
 }
 
 /**
@@ -315,7 +329,7 @@ async function publishRelease(before, accepts, price) {
 
 const routes = {
   "GET /envelope": async (req, res) => {
-    const who = callerSlot(req);
+    const who = callerSlot(req, new URL(req.url, "http://localhost"));
     if (!who) return json(res, 401, { error: "unknown token" });
     const e = await envelope(who.slot);
     if (!e) {
@@ -349,7 +363,7 @@ const routes = {
   },
 
   "POST /pay": async (req, res) => {
-    const who = callerSlot(req);
+    const who = callerSlot(req, new URL(req.url, "http://localhost"));
     if (!who) return json(res, 401, { error: "unknown token" });
 
     const body = await readBody(req);

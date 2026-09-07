@@ -199,3 +199,44 @@ button.scenario code {
   font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
   background: #23282f; padding: 1px 5px; border-radius: 4px;
 }
+
+/* ---------- the fleet ---------- */
+.fleet { grid-column: 1 / -1; }
+.agents { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 900px) { .agents { grid-template-columns: 1fr; } }
+
+.agent {
+  background: #191d23; border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 9px; padding: 14px 16px; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.agent:hover { background: #1d222a; }
+.agent.on { border-color: #3a424e; border-left-color: var(--accent); background: #1d222a; }
+.agent.free { cursor: default; opacity: .45; }
+.agent.free:hover { background: #191d23; }
+
+.agent .name {
+  display: flex; align-items: baseline; gap: 8px;
+  font-weight: 600; font-size: 14.5px; margin-bottom: 2px;
+}
+.agent .slot {
+  font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
+  color: var(--faint); text-transform: uppercase; letter-spacing: .6px;
+}
+.agent .amount {
+  font-family: ui-monospace, Menlo, monospace; font-size: 19px;
+  letter-spacing: -.3px; margin: 6px 0 8px;
+}
+.agent .minibar { height: 5px; border-radius: 3px; background: #2b3138; overflow: hidden; display: flex; }
+.agent .minibar i { display: block; height: 100%; }
+.agent .minibar .spent { background: var(--accent); }
+.agent .minibar .reserved { background: var(--advise); }
+.agent .grants {
+  margin-top: 10px; display: flex; flex-direction: column; gap: 3px;
+  font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--dim);
+}
+.agent .grants .q { color: var(--faint); }
+.agent .unknown {
+  margin-top: 8px; font-size: 11.5px; color: var(--advise);
+}

@@ -11,6 +11,16 @@ const hbar = (tinybars) => `${Number(tinybars) / 1e8} HBAR`;
 let CONFIG = null;
 let busy = false;
 
+/**
+ * Which agent the panels below are showing.
+ *
+ * Held by slot rather than by name, because the slot is what the chip
+ * indexes on. A name is a label a host could reuse; a slot is a place in
+ * NVRAM.
+ */
+let selected = null;
+let FLEET = null;
+
 async function api(path, opts) {
   const r = await fetch(`/api/${path}`, opts);
   return r.json();
@@ -55,12 +65,108 @@ function event({ kind, who, text, detail, link }) {
   list.prepend(li);
 }
 
+/* --------------------------------------------------------------- fleet -- */
+
+async function paintFleet() {
+  let d;
+  try {
+    d = await (await fetch("/api/fleet")).json();
+  } catch {
+    return null;
+  }
+  FLEET = d;
+
+  const live = d.agents.filter((a) => !a.free);
+  if (selected === null && live.length) selected = live[0].slot;
+
+  const box = $("agents");
+  box.innerHTML = "";
+
+  for (const a of d.agents) {
+    const el = document.createElement("div");
+    el.className = "agent" + (a.free ? " free" : "") +
+                   (a.slot === selected ? " on" : "");
+
+    if (a.free) {
+      el.innerHTML =
+        `<div class="name">Slot ${a.slot}<span class="slot">free</span></div>` +
+        `<div class="amount">—</div>`;
+      box.append(el);
+      continue;
+    }
+
+    const total = Number(a.budget_total) || 1;
+    const pct = (x) => `${(Number(x) / total) * 100}%`;
+
+    const name = document.createElement("div");
+    name.className = "name";
+    name.append(document.createTextNode(a.label));
+    const slot = document.createElement("span");
+    slot.className = "slot";
+    slot.textContent = `slot ${a.slot}`;
+    name.append(slot);
+
+    const amount = document.createElement("div");
+    amount.className = "amount";
+    amount.textContent = hbar(a.available);
+
+    const bar = document.createElement("div");
+    bar.className = "minibar";
+    const spent = Number(a.budget_total) - Number(a.available);
+    bar.innerHTML = `<i class="spent" style="width:${pct(spent)}"></i>` +
+                    `<i class="left" style="width:${pct(a.available)}"></i>`;
+
+    el.append(name, amount, bar);
+
+    const grants = document.createElement("div");
+    grants.className = "grants";
+    if (a.grants?.length) {
+      for (const g of a.grants) {
+        const row = document.createElement("span");
+        row.textContent = g.name;
+        const q = document.createElement("span");
+        q.className = "q";
+        q.textContent = `  ${g.used}/${g.limit}`;
+        row.append(q);
+        grants.append(row);
+      }
+    } else {
+      const row = document.createElement("span");
+      row.className = "q";
+      row.textContent = "no capabilities granted";
+      grants.append(row);
+    }
+    el.append(grants);
+
+    // A mandate the chip holds that the broker has never heard of. Surfaced
+    // rather than hidden: the chip is the half that cannot be edited from
+    // here, so a disagreement is the broker's problem, not the device's.
+    if (!a.known_to_broker) {
+      const warn = document.createElement("div");
+      warn.className = "unknown";
+      warn.textContent = "on the device, unknown to the broker";
+      el.append(warn);
+    }
+
+    el.onclick = () => { selected = a.slot; refresh(); };
+    box.append(el);
+  }
+  return d;
+}
+
 /* ------------------------------------------------------------ envelope -- */
 
 async function refresh() {
+  const fleet = await paintFleet();
+  const row = fleet?.agents?.find((a) => a.slot === selected && !a.free);
+
+  $("sel-name").textContent = row?.label ?? "no agent selected";
+  $("sel-slot").textContent = row ? `slot ${row.slot}` : "";
+  $("try-as").textContent = row ? `as ${row.label}` : "as —";
+
   let d;
   try {
-    d = await api("envelope");
+    d = await api(`envelope?slot=${selected ?? 0}`);
   } catch {
     $("dot").className = "dot off";
     $("device-text").textContent = "gateway unreachable";

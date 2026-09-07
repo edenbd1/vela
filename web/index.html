@@ -23,9 +23,23 @@
 
 <main>
 
-  <!-- ================= the envelope ================= -->
+  <!-- ================= the fleet ================= -->
+  <section class="card fleet">
+    <h2>The fleet <span class="src">spending from the chip · capabilities from the broker</span></h2>
+    <p class="lede">
+      Three agents on three machines, none of which has a device attached.
+      This is the only place both halves of what they may do are visible at
+      once — and only one half can be edited from here.
+    </p>
+    <div class="agents" id="agents"></div>
+  </section>
+
+  <!-- ================= the selected agent ================= -->
   <section class="card envelope">
-    <h2>The envelope <span class="src">read from the chip</span></h2>
+    <h2>
+      <span id="sel-name">—</span>
+      <span class="src" id="sel-slot"></span>
+    </h2>
 
     <div class="numbers">
       <div><b id="available">—</b><span>available</span></div>
@@ -45,25 +59,14 @@
     <h3>May pay <span class="src">hardware boundary</span></h3>
     <ul class="payees" id="payees"></ul>
 
-    <h3>May call <span class="src">contracts, hardware boundary</span></h3>
+    <h3>May call <span class="src">contracts</span></h3>
     <ul class="payees" id="contracts"><li class="none">no contract calls</li></ul>
 
     <h3>Proceeds <span class="src">bound in the chip</span></h3>
     <p class="bound" id="proceeds">—</p>
 
-    <h3>Currently advised against <span class="src">enclave, advisory</span></h3>
+    <h3>Advised against <span class="src">enclave, advisory</span></h3>
     <ul class="denied" id="denied"><li class="none">nothing flagged</li></ul>
-  </section>
-
-  <!-- ================= try it ================= -->
-  <section class="card try">
-    <h2>Spend it</h2>
-    <p class="lede">
-      The agent decides what to buy. The chip decides whether it may.
-      Press a tier and watch which one answers.
-    </p>
-    <div class="tiers" id="tiers"></div>
-    <p class="hint" id="hint"></p>
   </section>
 
   <!-- ================= the experiment ================= -->
