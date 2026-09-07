@@ -56,7 +56,7 @@ restart_risk "$PAYEE"
 echo
 echo "  the agent asks for the cheap tier, exactly as before:"
 curl -s -m 150 -X POST "$GATEWAY/pay" -H 'content-type: application/json' \
-  -d "{\"url\":\"$SELLER/infer/triage\"}" \
+  -d '{"service":"triage"}' \
   | python3 -c "import json,sys; d=json.load(sys.stdin); print('   ', d.get('reason') or ('paid, tx '+str(d.get('tx'))))"
 echo "  nothing changed on the device. Only what the enclave knows."
 
@@ -66,7 +66,7 @@ rule
 restart_risk
 ./scripts/advisor.sh 2>&1 | tail -3 | sed 's/^/  /'
 curl -s -m 150 -X POST "$GATEWAY/pay" -H 'content-type: application/json' \
-  -d "{\"url\":\"$SELLER/infer/triage\"}" \
+  -d '{"service":"triage"}' \
   | python3 -c "import json,sys; d=json.load(sys.stdin); print('   ', d.get('reason') or ('paid, tx '+str(d.get('tx'))))"
 
 echo
@@ -88,20 +88,31 @@ for v in a['allow']:
         print(f\"  enclave: allow {v['payee']}  {v['reason']} (score {v['score']})\")"
 
 python3 - <<'PY'
-import json, struct, time, urllib.request
+import json, os, re, struct, time, urllib.request
+
 def apdu(h):
     r = urllib.request.Request("http://127.0.0.1:8099/apdu",
         data=json.dumps({"apdu": h}).encode(),
         headers={"content-type": "application/json"})
     return json.load(urllib.request.urlopen(r, timeout=60))
 
+# Read the buyer rather than remember it. It changes whenever the device's
+# seed does, and a hardcoded account here fails as a bridge error several
+# layers away from the reason.
+env = open(".env").read()
+buyer = int(re.search(r"^HEDERA_BUYER_ID=0\.0\.(\d+)", env, re.M).group(1))
+
 SW = {0xb103: "expired", 0xb104: "payee_not_allowed", 0xb105: "over_per_call",
       0xb106: "over_budget", 0x9000: "AUTHORIZED"}
 now = int(time.time())
 body = bytes([0]) + struct.pack(">QQQQQQQIII",
-    7162784, 10392125, 77777777, 3, 1_000_000, 100_000_000, now, 0, 120, now)
-sw = apdu((bytes([0xe0, 0x12, 0, 0, len(body)]) + body).hex())["sw"]
-print(f"  chip:    0x{sw:04x}  {SW.get(sw, 'unknown')}")
+    7162784, buyer, 77777777, 3, 1_000_000, 100_000_000, now, 0, 120, now)
+try:
+    sw = apdu((bytes([0xe0, 0x12, 0, 0, len(body)]) + body).hex())["sw"]
+except urllib.error.HTTPError as e:
+    print(f"  chip:    bridge said {e.code} — is the Vela app open?")
+else:
+    print(f"  chip:    0x{sw:04x}  {SW.get(sw, 'unknown')}")
 PY
 
 echo

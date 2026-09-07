@@ -13,6 +13,7 @@ finally needs it.
 """
 import json
 import os
+import sys
 import time
 
 PATH = os.environ.get(
@@ -22,8 +23,20 @@ PATH = os.environ.get(
 )
 
 
+_complained = False
+
+
 def record(event: str, **fields) -> None:
-    """Append one entry. Never raises: instrumentation must not break the run."""
+    """
+    Append one entry. Never raises: instrumentation must not break the run.
+
+    It does complain, once, and that is the lesson from the first gap. This
+    journal exists so a fourth device reset produces evidence rather than a
+    fourth guess — and it went quiet for nine hours across a session of real
+    grants and payments without a word. A recorder that fails silently is
+    worse than none, because it is believed.
+    """
+    global _complained
     try:
         line = {"t": round(time.time(), 3),
                 "iso": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -31,8 +44,11 @@ def record(event: str, **fields) -> None:
         line.update(fields)
         with open(PATH, "a") as f:
             f.write(json.dumps(line) + "\n")
-    except Exception:
-        pass
+    except Exception as e:
+        if not _complained:
+            _complained = True
+            print(f"[journal] cannot write {PATH}: {e} — "
+                  f"device history is NOT being recorded", file=sys.stderr, flush=True)
 
 
 def tail(n: int = 40):
