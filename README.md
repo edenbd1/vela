@@ -5,14 +5,15 @@
 <h1 align="center">Vela</h1>
 
 <p align="center">
-  <em>A spending mandate that lives inside a Ledger Secure Element.<br>
-  The agent holds no key. The host holds no key. The chip decides.</em>
+  <em>Your agents run on machines you do not control.<br>
+  The only thing that sees all of them, and can take any of them back,<br>
+  is an object in your pocket.</em>
 </p>
 
 <p align="center">
+  <a href="#the-fleet">The fleet</a> ·
+  <a href="#capabilities-not-credentials">Capabilities, not credentials</a> ·
   <a href="#the-experiment">The experiment</a> ·
-  <a href="#what-the-chip-enforces">What the chip enforces</a> ·
-  <a href="#verified-on-hedera-testnet">Verified on testnet</a> ·
   <a href="#run-it">Run it</a>
 </p>
 
@@ -20,43 +21,127 @@
 
 ## The problem
 
-An AI agent that pays for things needs a private key. Today that key sits on
-the machine the agent runs on — in an env var, a keystore, a cloud secret.
-Every safeguard around it is host software: a rate limiter the agent could be
-talked into ignoring, an allowlist in a config file, a spend cap in the same
-process that a prompt injection just took over.
+An agent that does real work needs two things you would rather not give it: a
+credential, and a way to spend money.
 
-That is not a spending limit. It is a suggestion, enforced by the thing being
-attacked.
+Today you copy both onto whatever machine it runs on. The API key sits in an
+environment variable. The private key sits in a keystore beside it. Every
+control around them is host software — a spend cap in the same process a
+prompt injection just reached, an allowlist in a config file that process can
+edit, a rate limiter the agent could be talked into ignoring.
 
-Custody hardware already solves the adjacent problem — it proves *you* approved
-a transaction. But that model assumes a human at the screen for every payment,
-which is exactly what an autonomous agent cannot do. Approve once per payment
-and you do not have an agent. Approve once and hand over the key and you do not
-have a limit.
+That is not a limit. It is a suggestion, enforced by the thing being attacked.
+And it makes the machine as valuable as everything on it: revocation means
+rotating a key somewhere else and hoping you got every copy.
+
+Hardware custody solves the adjacent problem — it proves *you* approved a
+transaction. Ledger's own [Agent Stack](https://blog.thirdweb.com/ledger-agent-stack-hardware-gated-wallet-security-for-ai-agents/)
+puts it plainly: **"Agents propose. Humans approve."** One tap per
+transaction, and no limit enforced by the device at all. That assumes a human
+at the screen for every action, which is exactly what an autonomous agent
+cannot have. Approve every payment and you do not have an agent. Hand over the
+key and you do not have a limit.
 
 ## What Vela is
 
-A BOLOS application for the Ledger Flex that holds a **mandate**: an envelope of
-spending authority, granted once by a human on the device screen, and enforced
-from then on by the Secure Element itself.
+A native BOLOS application for the Ledger Flex that turns the device into the
+console for a fleet of agents running somewhere else.
 
 ```
-      Agent decides what to buy          →   has no key, no override
-      Host builds the transaction        →   has no key, cannot read the mandate
-      Chip checks it against the mandate  →   refuses, or signs
-      Hedera settles it                  →   x402, real HBAR
-      HCS records what the chip decided  →   signed by the chip, publicly checkable
+    ENSv2 subname     who the agent is          public, anyone can resolve
+    Ledger Key Ring   what it may use           encrypted; it gets results, not keys
+    Secure Element    what it may spend         NVRAM; no host can read or edit it
+    Hedera + HCS      what it actually did      signed by the chip, checkable by anyone
 ```
 
-You tap the device once, to say *this agent may spend up to 0.5 HBAR, never
-more than 0.1 at a time, and only to these accounts*. After that the agent
-runs unattended. Every payment is checked in silicon against terms the host
-cannot read, cannot edit, and cannot skip — because the host never has the key
-that would let it sign around them.
+You grant an envelope once, with a tap. After that the agent runs unattended
+on a VPS, a CI runner, a container — anywhere, with nothing on it worth
+stealing. And the device stays the one component every agent depends on and
+none can modify, which is what makes it a console rather than a dashboard. A
+dashboard shows you what a server says. This shows you what the chip knows.
 
-The mandate survives unplugging, app exit, and reboot. It is in NVRAM, not RAM,
-and not on your disk.
+## The fleet
+
+Three agents, three envelopes, one object:
+
+```
+research-1    -  0.5/0.5 HBAR   ›
+ops-nightly   -  0.2/0.2 HBAR   ›
+watcher       -  0.1/0.1 HBAR   ›
+Revoke all mandates             ›
+```
+
+Tap one and the device asks:
+
+> **Revoke ops-nightly?**
+> It loses every remaining draw immediately. Nothing on any host has to be
+> rotated.
+
+That last sentence is the product. Revocation is a finger on a screen, not a
+key rotation across every machine that ever held a copy.
+
+Everything on that screen comes out of NVRAM. The host is never consulted and
+cannot be — an agent reporting its own state to this screen would be an agent
+describing itself to the one thing meant to check it. Which is also why the
+device shows what it *authorised* rather than where anything runs: if the host
+says "I am `vps-paris-1`", the screen would be displaying a claim dressed as a
+hardware fact. The sequence counter says something the chip owns instead —
+that an agent is alive, not where it is sleeping.
+
+## Capabilities, not credentials
+
+The agent never receives the API key. It invokes a **named action** and
+receives the **result**; the secret is decrypted under the Ledger Key Ring for
+one upstream request and dropped.
+
+The decision that matters is not the encryption. It is that the URL lives in
+the manifest and not in the request:
+
+```console
+$ POST /do/risk.screen  {"params": {"account": "0.0.66666666"}}
+  → score 97, sanctioned counterparty          49 calls left
+
+$ POST /do/risk.screen  {"params": {"account": "0.0.1",
+                                    "url": "http://attacker.example/collect"}}
+  → 'url' is not part of this capability
+
+$ POST /do/risk.screen  {"params": {"account": "../../admin"}}
+  → does not match ^0\.0\.[0-9]{1,12}$
+```
+
+A broker that took a URL from an agent and attached a credential to it would
+be a confused deputy with an API key. So an agent supplies only declared
+parameters, each matched against a pattern before it reaches a template, and
+an invalid request never gets far enough to have a credential attached.
+
+`wallet-cli ring encrypt --key <name>` derives a distinct key per name, so the
+ring itself carries the scoping: a member enrolled for `vela.risk-feed` is not
+thereby enrolled for `vela.market-data`. That boundary survives the filesystem
+being copied, which a permission bit does not.
+
+## A host with nothing on it
+
+[`agent/`](agent) runs in a container with no `--device`, no volume and no
+secret in its environment, so the claim is checkable rather than asserted. The
+first thing it prints is its own inventory:
+
+```
+everything on this machine:
+  api keys                   none
+  private keys               none
+  recovery phrase            none
+  broker token               one — scoped to this agent, revocable, useless elsewhere
+  usb devices                none — this is a container
+  reachable                  :4060  (actions)
+                             :4030  (payments)
+```
+
+Then it screens three counterparties with a credential it has never seen, and
+pays for an inference with a signature made in a chip it cannot reach.
+
+The token is not nothing, and the inventory says so. It authenticates to one
+broker, unlocks one agent's grants, and is revoked by deleting a line. Key
+Ring membership replaces it once a device can enrol the host.
 
 ## The experiment
 
@@ -77,11 +162,13 @@ list.
 | **software** | `host/software/policy.py`, same process as the agent | `[3/3] paying 100 HBAR to 0.0.66666666 … SETTLED` |
 | **device** | Ledger Flex Secure Element | `[3/3] … REFUSED (payee_not_allowed)` |
 
-The software policy is not a straw man. It is not buggy, and it is not weaker
-than the chip's. It loses because it is reachable: the attacker in this
+The software policy is not a straw man. It is not buggy, it is not weaker than
+the chip's, and it is the same shape as the mature spend-governance layers
+being built in this space — caps, budgets, allowlists, a kill switch, enforced
+before settlement. It loses because it is reachable: the attacker in this
 scenario has already reached the agent's process, and a rule that lives in the
 process being attacked is a rule the attacker owns. The chip's copy is behind
-a hardware boundary the host cannot cross.
+a boundary the host cannot cross.
 
 That is the whole thesis, and it is one command.
 
@@ -186,21 +273,20 @@ way in the output too. A verifier that overclaims is worse than none.
 ## The pieces
 
 ```
-app/         BOLOS application for Ledger Flex — the mandate, the on-chip
-             Hedera serialiser, the NBGL control panel  (~4.4k lines of C)
-hedera/      x402-gated seller, the Ledger-backed x402 signer, HCS anchoring,
-             the public verifier, the end-to-end demo, the agent gateway, and
-             the private risk feed the enclave screens against
-cre/         Chainlink CRE workflow — the confidential spend advisor, running
-             in an AWS Nitro enclave
-web/         a page where you can press the button yourself and watch the
-             chip refuse
-host/        APDU bridge, device probes, the software control arm, Key Ring
-             enrolment
-scripts/     build, load, Speculos, the persistence test, the experiment
-brand/       the mark, and the four device glyphs generated from it
-docs/        developer-experience feedback for Ledger, the agent
-             integration guide, and the Lean Canvas
+app/         BOLOS application for Ledger Flex — the mandates, the fleet
+             screen, the on-chip Hedera serialiser  (~4.6k lines of C)
+broker/      the capability broker: secrets under the Key Ring, agents get
+             named actions and results
+agent/       an agent in a container with no device and no credentials
+hedera/      x402-gated seller, the Ledger-backed signer, HCS anchoring, the
+             public verifier, the multi-tenant gateway
+cre/         Chainlink CRE confidential workflow, running in an AWS Nitro
+             enclave
+ens/         ENSv2 — an agent as a namespace with permissions
+web/         the console: the whole fleet, and the button that stops one
+host/        APDU bridge, device journal, Key Ring enrolment, the software
+             control arm
+docs/        Ledger developer-experience feedback, the direction, the canvas
 ```
 
 ### On-device control panel
@@ -223,45 +309,38 @@ can undo.
 Requires a Ledger Flex in developer mode, Docker, Node 20+, and Python 3.9+.
 
 ```bash
-./scripts/build.sh                     # build the BOLOS app in ledger-app-builder
-./scripts/load.sh                      # sideload it (quit Ledger Wallet first)
+./scripts/build.sh                # build the BOLOS app
+./scripts/load.sh                 # sideload it (quit Ledger Wallet first)
 
-python3 host/bridge.py &               # APDU shim on :8099
-node hedera/seller.mjs &               # x402-gated service on :4021
+python3 host/bridge.py &          # APDU shim on :8099
+node broker/server.mjs &          # capability broker on :4060
+node hedera/seller.mjs &          # x402-gated service on :4021
+node hedera/gateway.mjs &         # payments, one slot per agent, on :4030
+node web/server.mjs &             # the console on :4050
 
-node hedera/demo.mjs                   # grant once on the device, then N
-                                       # autonomous paid draws, each anchored
-node hedera/verify.mjs $HEDERA_TOPIC_ID   # check the log from the mirror node
+./agent/run.sh                    # an agent, in a container, with nothing on it
 ```
 
-An agent does not run scripts, so `hedera/gateway.mjs` exposes the same thing
-as three tools it can call — `GET /envelope`, `POST /pay`, `GET /receipts`.
-The rule that surface is built around: **a refusal comes back as a 200 with a
-reason and `"terminal": true`, never a 500.** An agent that receives a 500
-retries, and retrying a hardware refusal is the worst thing it can do here —
-the chip is deterministic, so the second attempt fails identically and a turn
-is gone. See [`docs/AGENT-GUIDE.md`](docs/AGENT-GUIDE.md).
+Open `http://127.0.0.1:4050` to see the fleet and stop one of them.
 
 `./scripts/experiment.sh` runs the controlled experiment.
-`./scripts/persistence-test.sh` tears the app down and proves the envelope
+`./scripts/composition.sh` shows the enclave narrowing a mandate, and failing
+to widen it.
+`node hedera/refusals.mjs` exercises every refusal without damaging the audit
+log.
+`./scripts/persistence-test.sh` tears the app down and proves the envelopes
 survived.
-`node web/server.mjs` serves the interface on :4050. Everything this project
-argues happens either inside a Secure Element or in a terminal, and neither is
-watchable — so the page exists to let someone press *buy the 0.15 tier* against
-a 0.10 ceiling and watch the hardware say no.
 
-`node hedera/refusals.mjs` exercises all four refusals without damaging the
-audit log: the reservations it needs to reach `over_budget` are released and
-the releases are published, so the envelope ends where it started.
-`./scripts/advisor.sh` runs the confidential workflow and keeps its verdict.
-`./scripts/composition.sh` shows the enclave narrowing the mandate, and
-failing to widen it.
+**Develop on Speculos, not on the device.** It runs the same ELF and found a
+segfault in three iterations after a morning wasted on hardware. It cannot
+tell you anything about persistence, timing, or what the silicon considers an
+attack — see [`docs/PROTECTION-MODE.md`](docs/PROTECTION-MODE.md), which
+exists because this Flex factory-reset itself three times.
 
 Two things that will cost you an hour if nobody tells you: **quit Ledger
-Wallet** before touching the device (it holds the HID handle), and note that
-`scripts/build.sh` mounts the *repository root*, not `app/` — the Ledger SDK
-calls `git rev-parse --show-toplevel` and silently drops every source file if
-it does not find a git repository.
+Wallet** before touching the device, and note that `scripts/build.sh` mounts
+the *repository root* — the Ledger SDK calls `git rev-parse --show-toplevel`
+and silently drops every source file if it does not find a git repository.
 
 ## The second boundary
 
@@ -359,10 +438,11 @@ shipping a false report.
 
 ## Built on
 
-[Ledger](https://developers.ledger.com) BOLOS/NBGL and the Ledger Key Ring
-Protocol · [Hedera](https://hedera.com) for settlement and consensus ·
+[Ledger](https://developers.ledger.com) BOLOS/NBGL, the Agent Stack and
+`wallet-cli ring` · [Hedera](https://hedera.com) for settlement and consensus ·
 [x402](https://x402.org) with the Blocky402 facilitator ·
-[Chainlink CRE](https://docs.chain.link/cre) Confidential Workflows for the
-enclave half.
+[ENSv2](https://docs.ens.domains/ensv2/overview) for agent identity and
+Enhanced Access Control · [Chainlink CRE](https://docs.chain.link/cre)
+Confidential Workflows for the enclave half.
 
 `app/` derives from [`LedgerHQ/app-boilerplate`](https://github.com/LedgerHQ/app-boilerplate), Apache-2.0.
