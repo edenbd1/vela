@@ -48,9 +48,9 @@ A native BOLOS application for the Ledger Flex that turns the device into the
 console for a fleet of agents running somewhere else.
 
 ```
-    ENSv2 subname     who the agent is          public, anyone can resolve
     Ledger Key Ring   what it may use           encrypted; it gets results, not keys
     Secure Element    what it may spend         NVRAM; no host can read or edit it
+    Chainlink CRE     whether it should         an enclave that narrows, and cannot widen
     Hedera + HCS      what it actually did      signed by the chip, checkable by anyone
 ```
 
@@ -453,8 +453,12 @@ shipping a false report.
 [Ledger](https://developers.ledger.com) BOLOS/NBGL, the Agent Stack and
 `wallet-cli ring` · [Hedera](https://hedera.com) for settlement and consensus ·
 [x402](https://x402.org) with the Blocky402 facilitator ·
-[ENSv2](https://docs.ens.domains/ensv2/overview) for agent identity and
-Enhanced Access Control · [Chainlink CRE](https://docs.chain.link/cre)
-Confidential Workflows for the enclave half.
+[Chainlink CRE](https://docs.chain.link/cre) Confidential Workflows for the
+enclave half.
+
+An [ENSv2](https://docs.ens.domains/ensv2/overview) integration is sketched in
+[`ens/`](ens) with its interface verified against the deployed Sepolia
+contracts. It is not part of this submission: removing it would change
+nothing here, which is its own answer to whether it belongs.
 
 `app/` derives from [`LedgerHQ/app-boilerplate`](https://github.com/LedgerHQ/app-boilerplate), Apache-2.0.

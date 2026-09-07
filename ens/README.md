@@ -1,5 +1,11 @@
 # ENSv2 — an agent is a name with permissions
 
+> **Not part of the submission.** Kept because the interface is verified
+> against the deployed contracts and it is a credible direction afterwards.
+> The reason it was dropped is in [`../docs/DIRECTION.md`](../docs/DIRECTION.md):
+> remove it and this project works identically, which is what "cosmetic"
+> means.
+
 ENS's own framing for this track:
 
 > *think agents as namespaces, each with their own identity and permissions*

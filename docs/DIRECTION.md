@@ -33,10 +33,11 @@ Four things live in four places, and the split is the design:
 
 | layer | where it lives | why there |
 |---|---|---|
-| **Identity & permissions** | ENSv2 subname per agent | public, portable, resolvable by anyone |
+| **Identity & permissions** | the broker's roster | whoever holds that host — and an agent reads only its own |
 | **Secrets** | Ledger Key Ring (`wallet-cli ring`) | encrypted at rest under hardware; the agent asks for the *action*, never the key |
 | **Money** | mandate in the Secure Element | an envelope the host cannot read, edit or skip |
 | **Proof** | HCS, signed by the chip | a record that does not depend on believing the host |
+| **Judgement** | a Chainlink CRE enclave | narrows what the gateway will ask for; can never widen it |
 
 The device is the only component **every agent depends on and none can
 modify**. That is what makes it a console rather than a dashboard. A dashboard
@@ -119,32 +120,42 @@ built the third and skipped the two they lead with and make mandatory.
 service, a platform consuming it, real paid requests end to end, and an HCS
 audit trail anyone can verify from the mirror node.
 
-**ENS — $4,500.** Their page: *"think agents as namespaces, each with their
-own identity and permissions."* That is the fleet, stated by them. Each agent
-is a subname; Enhanced Access Control expresses what it may do. Four payouts
-($1,500 / $1,500 / $1,000 / $500).
+**Chainlink — $2,000.** A CRE Confidential Workflow with `handlerInTee` on
+AWS Nitro, screening payees against a private feed the node operators cannot
+read — and not because the key is hidden, but because the *questions* are: a
+node watching this workflow ask about four accounts has learned which accounts
+an agent may pay.
 
-### Why ENS over Chainlink, and the honest counter
+### Why Chainlink over ENS, having first chosen the other way
 
-Chainlink's Confidential Workflow track is **already built** — a CRE workflow
-with `handlerInTee` on AWS Nitro, screening payees against a private feed,
-with the composition tested in both directions. It costs zero further days,
-the pool is $2,000 across two teams, and the integration is real rather than
-decorative.
+ENS was picked first, on the strength of their own sentence — *"think agents
+as namespaces, each with their own identity and permissions"* — and a larger
+pool: $4,500 across four payouts against $2,000 across two.
 
-ENS costs perhaps a day and a half of the seven remaining, on a chain the
-project does not otherwise touch, and a judge will reasonably ask why identity
-sits on Sepolia while money sits on Hedera. The answer is defensible —
-identity and permissions are public and portable, money and audit are not —
-but it has to be given rather than assumed.
+Then their own bar was applied honestly: *"central to the product, not a
+cosmetic add-on."* Remove ENS tomorrow and this project works identically.
+The broker's roster is what decides an agent's capabilities; an ENS subname
+would **mirror** that decision without ever making it. That is the definition
+of cosmetic, and a judge would see it in thirty seconds.
 
-**Chosen: ENS.** Not for the pool size but because, with the fleet, ENS stops
-being a third integration and becomes part of the same sentence. Their bar is
-*"central to the product, not a cosmetic add-on"*, and without the fleet idea
-ENS would have failed that bar honestly.
+There is one way to make it central — have the broker read roles from ENS, so
+the chain becomes the source of truth for what an agent may invoke. That is
+more than a day, it puts a cross-chain read in the hot path of every call, and
+it still leaves the question of why identity sits on Sepolia when money
+settles on Hedera.
 
-**Chainlink is not deleted, only not submitted.** The workflow stays in the
-repository and in the README. It is depth for the tracks we do enter.
+The enclave is already the opposite of that. It is built, it works, and it
+**changes behaviour**: it removes a payee the chip would have signed for, and
+fails to add one the chip refuses. Tested in both directions. It is a
+mechanism, not a mirror, and it sits on the same axis as everything else here
+— one more boundary that can only narrow.
+
+A finished, genuinely integrated submission beats a rushed and arguably
+decorative one, particularly on a track whose stated bar is "not cosmetic".
+
+`ens/` stays in the repository. It cost an hour, its interface is verified
+against the deployed contract on Sepolia, and it is a credible direction after
+the hackathon. It is simply not one of the three.
 
 ---
 
@@ -167,7 +178,8 @@ Not built:
 - **enrolment of a host with no USB port** — a VPS or container joining the
   ring
 - **the fleet view** on the device, using the three slots for three agents
-- **ENSv2 subnames** with Enhanced Access Control
+- **ENSv2 subnames** with Enhanced Access Control — kept as a direction,
+  not submitted
 
 The first two are what Ledger asks for and makes mandatory. They come first.
 
