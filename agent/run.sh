@@ -11,6 +11,7 @@ docker build -q -t vela-agent . >/dev/null
 
 exec docker run --rm \
   -e AGENT_NAME="${AGENT_NAME:-research-1}" \
+  -e AGENT_TOKEN="${AGENT_TOKEN:-research-1-token}" \
   -e BROKER="http://host.docker.internal:${BROKER_PORT:-4060}" \
   -e GATEWAY="http://host.docker.internal:${GATEWAY_PORT:-4030}" \
   -e COUNTERPARTIES="${COUNTERPARTIES:-0.0.10388937,0.0.66666666,0.0.10365984}" \

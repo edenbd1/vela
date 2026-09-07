@@ -1,0 +1,41 @@
+{
+  "capabilities": {
+    "risk.screen": {
+      "description": "Screen one Hedera account against the private risk feed",
+      "secret": "vela.risk-feed",
+      "method": "GET",
+      "url": "http://127.0.0.1:4040/risk/{account}",
+      "header": "x-api-key",
+      "params": { "account": "^0\\.0\\.[0-9]{1,12}$" }
+    },
+    "infer.triage": {
+      "description": "Buy one triage inference",
+      "secret": "vela.seller-token",
+      "method": "GET",
+      "url": "http://127.0.0.1:4021/infer/triage",
+      "header": "x-client-token",
+      "params": {}
+    }
+  },
+
+  "agents": {
+    "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1": {
+      "label": "research-1",
+      "slot": 0,
+      "token": "research-1-token",
+      "grants": { "risk.screen": 50, "infer.triage": 20 }
+    },
+    "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": {
+      "label": "ops-nightly",
+      "slot": 1,
+      "token": "ops-nightly-token",
+      "grants": { "infer.triage": 5 }
+    },
+    "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3": {
+      "label": "watcher",
+      "slot": 2,
+      "token": "watcher-token",
+      "grants": { "risk.screen": 200 }
+    }
+  }
+}

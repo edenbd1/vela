@@ -19,19 +19,36 @@ const BROKER = process.env.BROKER ?? "http://127.0.0.1:4060";
 const GATEWAY = process.env.GATEWAY ?? "http://127.0.0.1:4030";
 const NAME = process.env.AGENT_NAME ?? "research-1";
 
+/**
+ * The one thing this host does hold, and it is worth being exact.
+ *
+ * It authenticates to the broker and nowhere else, it unlocks only this
+ * agent's own grants, and it is revoked by deleting a line in the broker's
+ * roster. Stealing it buys the ability to burn one agent's quota; it does not
+ * buy the risk feed's API key, which is what this process would otherwise be
+ * carrying and what would have to be rotated everywhere.
+ *
+ * `wallet-cli ring init` replaces it with Key Ring membership once a device
+ * is available to enrol this host, which is the difference between a shared
+ * string and a credential the trustchain can rotate away.
+ */
+const TOKEN = process.env.AGENT_TOKEN ?? "";
+
 const COUNTERPARTIES = (process.env.COUNTERPARTIES ??
   "0.0.10388937,0.0.66666666,0.0.10365984").split(",");
 
 const j = (label, o) => console.log(`  ${label.padEnd(26)} ${o}`);
 
+const auth = () => (TOKEN ? { authorization: `Bearer ${TOKEN}` } : {});
+
 async function get(url) {
-  const r = await fetch(url);
+  const r = await fetch(url, { headers: auth() });
   return r.json();
 }
 async function post(url, body) {
   const r = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...auth() },
     body: JSON.stringify(body),
   });
   return r.json();
@@ -44,6 +61,9 @@ console.log("everything on this machine:");
 j("api keys", "none");
 j("private keys", "none");
 j("recovery phrase", "none");
+j("broker token", TOKEN
+    ? "one — scoped to this agent, revocable, useless elsewhere"
+    : "none — the broker will refuse everything");
 j("usb devices", "none — this is a container");
 j("reachable", `${BROKER}  (actions)`);
 j("", `${GATEWAY}  (payments)`);
@@ -54,6 +74,10 @@ console.log();
 const caps = await get(`${BROKER}/capabilities`).catch(() => null);
 if (!caps) {
   console.log(`the broker is unreachable at ${BROKER}. Nothing to do.`);
+  process.exit(1);
+}
+if (caps.error) {
+  console.log(`the broker refused: ${caps.error}`);
   process.exit(1);
 }
 console.log("capabilities granted to it:");

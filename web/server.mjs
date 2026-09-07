@@ -36,6 +36,7 @@ const env = (() => {
 
 const PORT = Number(env.WEB_PORT ?? 4050);
 const GATEWAY = `http://127.0.0.1:${env.GATEWAY_PORT ?? 4030}`;
+const BROKER = `http://127.0.0.1:${env.BROKER_PORT ?? 4060}`;
 const SELLER = `http://127.0.0.1:${env.SELLER_PORT ?? 4021}`;
 
 const TYPES = {
@@ -76,6 +77,66 @@ const server = createServer(async (req, res) => {
         attacker: "0.0.66666666",
         otherRouter: "0.0.5000002",
       },
+    }));
+  }
+
+  /**
+   * The fleet, joined.
+   *
+   * Two sources that are not the same kind of fact, and the join keeps them
+   * apart rather than blending them into one row of numbers.
+   *
+   *   the chip    what each agent may spend, and has spent. It cannot be
+   *               argued with, and the host does not hold these figures.
+   *   the broker  what each agent may invoke. A file on a host, editable by
+   *               whoever holds the host.
+   *
+   * This is a host, so it is allowed to be wrong, and the response says which
+   * half came from where. A console that presented both as one authority
+   * would be doing exactly what the device screen is careful not to do.
+   */
+  if (path === "/api/fleet") {
+    const [mandates, roster] = await Promise.all([
+      fetch(`${GATEWAY}/mandates`).then((r) => r.json()).catch(() => null),
+      fetch(`${BROKER}/fleet`).then((r) => r.json()).catch(() => null),
+    ]);
+
+    const byLabel = new Map(
+      (roster?.agents ?? []).map((a) => [a.label, a]),
+    );
+
+    const agents = (mandates?.slots ?? []).map((slot) => {
+      if (slot.free) return { slot: slot.slot, free: true };
+      const known = byLabel.get(slot.label);
+      return {
+        slot: slot.slot,
+        // From the chip.
+        label: slot.label,
+        budget_total: slot.budget_total,
+        available: slot.available,
+        per_call_max: slot.per_call_max,
+        draws: slot.draws_so_far,
+        payees: slot.payees,
+        // From the broker, and named as such.
+        grants: known?.grants ?? null,
+        agent_id: known?.agent_id ?? null,
+        // A mandate with no matching roster entry is not an error. It is an
+        // agent the device authorised and this host has never heard of, which
+        // is worth surfacing rather than hiding: the chip is the one that
+        // cannot be edited.
+        known_to_broker: Boolean(known),
+      };
+    });
+
+    return send(res, 200, "application/json", JSON.stringify({
+      agents,
+      sources: {
+        spending: mandates ? "chip" : "unreachable",
+        capabilities: roster ? "broker" : "unreachable",
+      },
+      note: "spending figures come from the Secure Element and cannot be " +
+            "corrected by this host. Capability grants come from the broker, " +
+            "which is a host and can be.",
     }));
   }
 

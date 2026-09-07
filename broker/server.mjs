@@ -31,10 +31,40 @@ import { backingFor, reveal, PLAINTEXT, RING } from "./secrets.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.BROKER_PORT ?? 4060);
-const CAPS = JSON.parse(readFileSync(join(HERE, "capabilities.json"), "utf8"));
+const FLEET = JSON.parse(readFileSync(join(HERE, "fleet.json"), "utf8"));
+const CAPS = FLEET.capabilities;
+const AGENTS = FLEET.agents;
 
-/** Calls made per capability, this process. Crude, and enough to be real. */
+/** Calls made, keyed by agent and capability. */
 const used = new Map();
+const useKey = (agentId, cap) => `${agentId}:${cap}`;
+
+/**
+ * Which agent is calling.
+ *
+ * A bearer token, and it is worth being exact about what that buys, because
+ * the agent's own inventory claims it holds nothing sensitive.
+ *
+ * The token is not a credential in the sense that matters. It authenticates
+ * *to this broker only*, it unlocks only the grants recorded for that one
+ * agent, and it is revoked by deleting a line here. Stealing it gets you the
+ * ability to screen accounts under someone else's quota; it does not get you
+ * the risk feed's API key, which is what the agent would otherwise be
+ * carrying.
+ *
+ * The honest upgrade is Key Ring membership rather than a shared string, and
+ * that is what `wallet-cli ring init` on the agent's host replaces this with
+ * once a device is available to enrol it.
+ */
+function identify(req) {
+  const header = req.headers["authorization"] ?? "";
+  const token = header.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  for (const [id, a] of Object.entries(AGENTS)) {
+    if (a.token === token) return { id, ...a };
+  }
+  return null;
+}
 
 const json = (res, code, body) => {
   res.writeHead(code, { "content-type": "application/json" });
@@ -79,21 +109,53 @@ function buildUrl(cap, params) {
 }
 
 const routes = {
-  /** What may be invoked, and on what backing. Never what the secret is. */
-  "GET /capabilities": (_req, res) => {
+  /**
+   * What *this* agent may invoke. Not the catalogue — its own grants.
+   *
+   * An agent that could read the whole catalogue would learn the shape of
+   * every other agent's authority, which is not its business and is exactly
+   * the sort of thing that turns one compromised host into a map.
+   */
+  "GET /capabilities": (req, res) => {
+    const agent = identify(req);
+    if (!agent) return json(res, 401, { error: "present a bearer token" });
+
     json(res, 200, {
-      capabilities: Object.entries(CAPS).map(([name, c]) => ({
+      agent: agent.label,
+      capabilities: Object.entries(agent.grants).map(([name, limit]) => ({
         name,
-        description: c.description,
-        params: Object.keys(c.params ?? {}),
-        calls_used: used.get(name) ?? 0,
-        calls_allowed: c.limit ?? null,
+        description: CAPS[name]?.description ?? "unknown capability",
+        params: Object.keys(CAPS[name]?.params ?? {}),
+        calls_used: used.get(useKey(agent.id, name)) ?? 0,
+        calls_allowed: limit,
         // Named so a demo cannot quietly claim hardware it did not use.
-        secret_backing: backingFor(c.secret) ?? "missing",
+        secret_backing: backingFor(CAPS[name]?.secret) ?? "missing",
       })),
       note: "an agent invokes a named action and receives the result. " +
             "It never receives the credential, and it cannot choose the " +
             "endpoint the credential is sent to.",
+    });
+  },
+
+  /**
+   * The fleet, as the broker sees it.
+   *
+   * Deliberately not joined with the device here. The broker knows who is
+   * enrolled and what they may invoke; the chip knows what it authorised.
+   * Joining them is the console's job, and doing it here would mean this
+   * host restating the chip's numbers as though it owned them.
+   */
+  "GET /fleet": (_req, res) => {
+    json(res, 200, {
+      agents: Object.entries(AGENTS).map(([id, a]) => ({
+        agent_id: id,
+        label: a.label,
+        slot: a.slot,
+        grants: Object.entries(a.grants).map(([name, limit]) => ({
+          name, limit, used: used.get(useKey(id, name)) ?? 0,
+        })),
+      })),
+      note: "what each agent may invoke. What each may spend is on the device.",
     });
   },
 };
@@ -109,18 +171,31 @@ const server = createServer(async (req, res) => {
     return json(res, 404, { error: "POST /do/<capability>, or GET /capabilities" });
   }
 
+  const agent = identify(req);
+  if (!agent) return json(res, 401, { error: "present a bearer token" });
+
   const name = decodeURIComponent(m[1]);
   const cap = CAPS[name];
   if (!cap) {
-    return json(res, 404, { error: `no capability named '${name}'`,
-                            available: Object.keys(CAPS) });
+    return json(res, 404, { error: `no capability named '${name}'` });
   }
 
-  const count = used.get(name) ?? 0;
-  if (cap.limit != null && count >= cap.limit) {
+  // Granted to *this* agent, and the refusal says so without listing what
+  // anyone else holds.
+  const limit = agent.grants[name];
+  if (limit === undefined) {
+    return json(res, 200, {
+      ok: false, refused: true, reason: "not_granted",
+      advice: `'${agent.label}' has no grant for '${name}'`,
+      granted: Object.keys(agent.grants),
+    });
+  }
+
+  const count = used.get(useKey(agent.id, name)) ?? 0;
+  if (count >= limit) {
     return json(res, 200, {
       ok: false, refused: true, reason: "capability_exhausted",
-      advice: `this capability allowed ${cap.limit} calls and has used them`,
+      advice: `'${agent.label}' was granted ${limit} calls of '${name}' and has used them`,
     });
   }
 
@@ -149,14 +224,15 @@ const server = createServer(async (req, res) => {
       headers: { [cap.header]: secret.value },
     });
     const body = await upstream.text();
-    used.set(name, count + 1);
+    used.set(useKey(agent.id, name), count + 1);
 
     json(res, 200, {
       ok: upstream.ok,
+      agent: agent.label,
       capability: name,
       status: upstream.status,
       result: (() => { try { return JSON.parse(body); } catch { return body; } })(),
-      calls_left: cap.limit == null ? null : cap.limit - (count + 1),
+      calls_left: limit - (count + 1),
       secret_backing: secret.backing,
       note: "the credential was decrypted for this request and dropped. " +
             "It was never sent to the caller.",
@@ -176,7 +252,11 @@ server.listen(PORT, () => {
   for (const [name, c] of Object.entries(CAPS)) {
     const b = backingFor(c.secret);
     const mark = b === RING ? "ring" : b === PLAINTEXT ? "PLAINTEXT" : "missing";
-    console.log(`  ${name.padEnd(16)} ${String(c.limit ?? "∞").padStart(3)} calls   secret: ${mark}`);
+    console.log(`  capability ${name.padEnd(14)} secret: ${mark}`);
+  }
+  for (const a of Object.values(AGENTS)) {
+    console.log(`  agent ${a.label.padEnd(19)} slot ${a.slot}   ` +
+                Object.entries(a.grants).map(([n, l]) => `${n}×${l}`).join(" "));
   }
   console.log(`\nagents invoke actions. They never receive a credential,`);
   console.log(`and they cannot choose where one is sent.`);

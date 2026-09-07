@@ -170,6 +170,9 @@ export const REFUSALS = {
 
 export async function createLedgerHederaSigner({
   accountId,
+  // The default slot. A gateway serving several agents overrides it per
+  // request with `signer.slot = n`, because which envelope is drawn on is a
+  // property of who is asking, not of how this signer was constructed.
   slot = 0,
   feePayerFallback = "0.0.7162784",
   transport = new BridgeTransport(),
@@ -201,7 +204,7 @@ export async function createLedgerHederaSigner({
       const u64 = (v) => { req.writeBigUInt64BE(BigInt(v), o); o += 8; };
       const u32 = (v) => { req.writeUInt32BE(Number(v), o); o += 4; };
 
-      req.writeUInt8(slot, o); o += 1;
+      req.writeUInt8(this.slot ?? slot, o); o += 1;
       u64(num(feePayer));           // pays the network fee: the facilitator
       u64(num(accountId));          // debited: the account this device controls
       u64(num(requirements.payTo)); // credited: checked against the mandate
@@ -251,7 +254,7 @@ export async function createLedgerHederaSigner({
     async settle(actual) {
       if (!this.lastDraw) return;
       const d = Buffer.alloc(17);
-      d.writeUInt8(slot, 0);
+      d.writeUInt8(this.slot ?? slot, 0);
       d.writeBigUInt64BE(this.lastDraw.quoted, 1);
       d.writeBigUInt64BE(BigInt(actual), 9);
       await transport.exchange(Buffer.concat([Buffer.from([CLA, INS_SETTLE, 0, 0, 17]), d]));

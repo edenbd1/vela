@@ -38,6 +38,39 @@ dotenv.config({ path: join(ROOT, ".env") });
 const NETWORK = "hedera:testnet";
 
 /**
+ * Which slot a caller spends from.
+ *
+ * The gateway was single-tenant: every request drew on slot 0. With three
+ * agents on one device that is not a simplification, it is wrong — an agent
+ * would spend another agent's envelope and the audit log would attribute it
+ * to the wrong one.
+ *
+ * The slot comes from the caller's identity, never from the request. An agent
+ * that could name its own slot could name someone else's, and "whose budget"
+ * is not a thing the spender gets to decide.
+ *
+ * The roster is shared with the broker rather than duplicated. Two files that
+ * must agree about who exists is one file that will eventually disagree with
+ * itself, and the failure would be silent: an agent authenticated by one and
+ * mapped to the wrong slot by the other.
+ */
+const ROSTER = (() => {
+  try {
+    return JSON.parse(readFileSync(join(ROOT, "broker", "fleet.json"), "utf8")).agents ?? {};
+  } catch {
+    return {};
+  }
+})();
+
+function callerSlot(req) {
+  const token = String(req.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return { slot: SLOT, agent: null, anonymous: true };
+  const found = Object.values(ROSTER).find((a) => a.token === token);
+  if (!found) return null;
+  return { slot: found.slot, agent: found.label, anonymous: false };
+}
+
+/**
  * What may be bought, and where it lives.
  *
  * The broker refuses to take a URL from an agent, because a service that
@@ -155,6 +188,28 @@ function payeesFrom(state) {
  * Null when the chip is older than this layout: "did not say" and "said
  * nothing is allowed" have to stay distinguishable.
  */
+/**
+ * The name the human gave this agent when they granted its envelope.
+ *
+ * Read from the chip rather than from the broker's roster, and the difference
+ * matters: the roster is a file on a host, and a host that renamed an agent
+ * could show one name on a console while the device shows another. The screen
+ * a human taps to revoke is the one that has to be right.
+ */
+function labelFrom(state) {
+  if (state.length < 70) return null;
+  let off = 70 + state.readUInt8(69) * 8;
+  if (state.length < off + 1) return null;
+  off += 1 + state.readUInt8(off) * 8;          // contracts
+  if (state.length < off + 1) return null;
+  off += 1 + state.readUInt8(off) * 4;          // selectors
+  off += 1;                                      // recipient_arg
+  if (state.length < off + 1) return null;
+  const n = state.readUInt8(off);
+  if (state.length < off + 1 + n) return null;
+  return state.subarray(off + 1, off + 1 + n).toString("latin1");
+}
+
 function contractTermsFrom(state) {
   if (state.length < 70) return null;
   let off = 70 + state.readUInt8(69) * 8;
@@ -186,9 +241,9 @@ function contractTermsFrom(state) {
 }
 
 /** The mandate, read from the chip on every call — it can be revoked mid-run. */
-async function envelope() {
+async function envelope(slot = SLOT) {
   const state = await signer.transport
-    .exchange(Buffer.from([0xe0, 0x10, 0, 0, 0]))
+    .exchange(Buffer.from([0xe0, 0x10, slot, 0, 0]))
     .catch((e) => (e.sw === 0xb102 ? null : Promise.reject(e)));
 
   if (!state || state.length < STATE_LEN) return null;
@@ -202,6 +257,7 @@ async function envelope() {
     available: state.readBigUInt64BE(53),
     expiry: state.readUInt32BE(61),
     draws_so_far: state.readUInt32BE(65),
+    label: labelFrom(state),
     payees: payeesFrom(state),
     calls: contractTermsFrom(state),
     asset: "HBAR, in tinybars",
@@ -258,17 +314,23 @@ async function publishRelease(before, accepts, price) {
 }
 
 const routes = {
-  "GET /envelope": async (_req, res) => {
-    const e = await envelope();
+  "GET /envelope": async (req, res) => {
+    const who = callerSlot(req);
+    if (!who) return json(res, 401, { error: "unknown token" });
+    const e = await envelope(who.slot);
     if (!e) {
       return json(res, 200, {
+        slot: who.slot,
+        agent: who.agent,
         mandate: null,
-        note: "no mandate in the chip. Nothing can be paid until a human grants " +
-              "one on the device. This is not an error you can retry past.",
+        note: "no mandate in this slot. Nothing can be paid until a human " +
+              "grants one on the device. This is not an error you can retry past.",
       });
     }
     const a = advice();
     json(res, 200, {
+      slot: who.slot,
+      agent: who.agent,
       mandate: e,
       // Kept as a separate object rather than folded into the mandate. They
       // are not the same kind of fact: one is enforced in silicon and cannot
@@ -287,6 +349,9 @@ const routes = {
   },
 
   "POST /pay": async (req, res) => {
+    const who = callerSlot(req);
+    if (!who) return json(res, 401, { error: "unknown token" });
+
     const body = await readBody(req);
 
     // A named service resolves here; a raw URL is the operator path. An agent
@@ -302,7 +367,7 @@ const routes = {
       });
     }
 
-    const before = await envelope();
+    const before = await envelope(who.slot);
     if (!before) {
       return json(res, 200, {
         paid: false, refused: true, reason: "no_mandate", terminal: true,
@@ -322,6 +387,12 @@ const routes = {
     //
     // The ceiling that matters is in the Secure Element. Let the request
     // reach it and let it answer.
+    // The signer draws on whichever envelope the caller owns. Set here rather
+    // than at construction because one gateway serves the whole fleet, and
+    // the alternative — one signer per slot — would open three transports to
+    // one device for no gain.
+    signer.slot = who.slot;
+
     const client = new x402Client().register(NETWORK, new ExactHederaScheme(signer));
     // allowedAssets: true, not a cap. x402 applies spend controls by default
     // and HBAR is not one of its default assets, so leaving this unset does
@@ -404,7 +475,7 @@ const routes = {
     // Release the difference between what was reserved and what was actually
     // spent. Skipping this leaks budget: the chip reserved before signing.
     await signer.settle(price);
-    const after = await envelope();
+    const after = await envelope(who.slot);
     const tx = result.header.transaction;
 
     const anchored = await publishDraw(before, accepts, price, tx).catch(() => null);
@@ -490,6 +561,25 @@ const routes = {
       }
       return json(res, 500, { error: String(e?.message ?? e) });
     }
+  },
+
+  /**
+   * Every slot the chip holds.
+   *
+   * Three, because that is what fits in the NVRAM the app is loaded with —
+   * said plainly rather than presented as a design choice.
+   */
+  "GET /mandates": async (_req, res) => {
+    const slots = [];
+    for (let i = 0; i < 3; i++) {
+      const e = await envelope(i).catch(() => null);
+      slots.push(e ? { slot: i, ...e } : { slot: i, free: true });
+    }
+    json(res, 200, {
+      slots,
+      note: "read from the Secure Element. The host does not hold these " +
+            "numbers and cannot correct them.",
+    });
   },
 
   "GET /services": (_req, res) => {
