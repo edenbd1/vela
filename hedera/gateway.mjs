@@ -596,6 +596,60 @@ const routes = {
     });
   },
 
+  /**
+   * Ask the device to revoke an envelope.
+   *
+   * The request does not revoke anything. It puts a question on the device's
+   * screen and blocks until a human answers it with a finger — which is the
+   * whole point, and the reason this endpoint is safe to expose to a console
+   * that anyone on the machine can reach. A compromised host can ask. It
+   * cannot answer.
+   *
+   * Only the operator path may call it. An agent revoking its own mandate
+   * would be harmless; an agent revoking another's would not, and the
+   * simplest way to have neither is to let no agent do it.
+   */
+  "POST /revoke": async (req, res) => {
+    if (req.headers["authorization"]) {
+      return json(res, 403, {
+        error: "revocation is the operator's, not an agent's",
+        advice: "call this without a bearer token, from the console",
+      });
+    }
+
+    const body = await readBody(req);
+    const slot = Number(body?.slot);
+    if (!Number.isInteger(slot) || slot < 0 || slot > 2) {
+      return json(res, 400, { error: 'give me {"slot": 0}' });
+    }
+
+    const before = await envelope(slot).catch(() => null);
+    if (!before) {
+      return json(res, 200, { revoked: false, reason: "slot_already_free" });
+    }
+
+    try {
+      await signer.transport.exchange(
+        Buffer.concat([Buffer.from([0xe0, 0x14, 0, 0, 1]), Buffer.from([slot])]));
+      return json(res, 200, {
+        revoked: true,
+        slot,
+        was: before.label,
+        note: "the envelope is gone from NVRAM. Nothing on any host had to " +
+              "be rotated, and the agent's next draw fails at the chip.",
+      });
+    } catch (e) {
+      // A refusal on the device is a person saying no, and reads the same as
+      // a timeout from here. Both mean: not revoked, and say why plainly.
+      return json(res, 200, {
+        revoked: false,
+        slot,
+        reason: e?.sw ? `device answered 0x${e.sw.toString(16)}` : "no answer",
+        advice: "the device asks before it forgets. Approve it on the screen.",
+      });
+    }
+  },
+
   "GET /services": (_req, res) => {
     json(res, 200, {
       services: Object.keys(SERVICES),

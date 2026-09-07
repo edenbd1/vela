@@ -160,11 +160,24 @@ int ui_display_create_mandate(void) {
 }
 
 int ui_display_revoke_mandate(uint8_t id) {
-    snprintf(g_revoke_title, sizeof(g_revoke_title), "Revoke mandate %u?", (unsigned) id);
+    // The name, not the slot. This screen is the last thing between an agent
+    // and being cut off, and "mandate 2" is exactly the fact that does not
+    // help someone decide. A person running three agents needs to read which
+    // one they are about to stop.
+    const mandate_t *m = mandate_get(id);
+    if (m != NULL && m->in_use != MANDATE_SLOT_FREE && m->label[0] != '\0') {
+        snprintf(g_revoke_title, sizeof(g_revoke_title), "Revoke %s?", m->label);
+    } else {
+        snprintf(g_revoke_title, sizeof(g_revoke_title), "Revoke mandate %u?", (unsigned) id);
+    }
 
     nbgl_useCaseChoice(&ICON_APP_VELA,
                        g_revoke_title,
-                       "The agent loses every\nremaining draw immediately.",
+                       // No manual line breaks. NBGL wraps, and a hardcoded break fights the
+                       // wrap rather than helping it — the result reads as a typo on a
+                       // screen whose whole job is to be read carefully.
+                       "It loses every remaining draw immediately. "
+                       "Nothing on any host has to be rotated.",
                        "Revoke",
                        "Cancel",
                        revoke_choice);

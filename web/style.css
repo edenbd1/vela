@@ -240,3 +240,11 @@ button.scenario code {
 .agent .unknown {
   margin-top: 8px; font-size: 11.5px; color: var(--advise);
 }
+
+/* ---------- revocation ---------- */
+button.revoke {
+  width: 100%; margin-top: 22px; justify-content: center;
+  border-color: #4a2b2f; color: #fca5a5; background: #1f1618;
+}
+button.revoke:hover:not(:disabled) { background: #2a1c1e; border-color: #6b3a40; }
+button.revoke.waiting { color: var(--advise); border-color: #4a3f1f; background: #1f1c14; }

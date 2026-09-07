@@ -397,6 +397,50 @@ async function runScenario(name) {
   await refresh();
 }
 
+/* ------------------------------------------------------------- revoke -- */
+
+async function revoke() {
+  const row = FLEET?.agents?.find((a) => a.slot === selected && !a.free);
+  if (!row) return;
+
+  const btn = $("revoke");
+  btn.disabled = true;
+  btn.classList.add("waiting");
+  btn.textContent = `waiting for a finger on the device…`;
+  $("revoke-hint").textContent =
+    `the device is asking whether to forget ${row.label}. Nothing has changed yet.`;
+
+  let d;
+  try {
+    d = await api("revoke", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slot: row.slot }),
+    });
+  } catch (e) {
+    d = { revoked: false, reason: String(e.message) };
+  }
+
+  btn.disabled = false;
+  btn.classList.remove("waiting");
+  btn.textContent = "Revoke this agent";
+
+  if (d.revoked) {
+    event({
+      kind: "refused",
+      who: "human",
+      text: `revoked ${d.was}`,
+      detail: "the envelope is gone from NVRAM. Nothing on any host had to " +
+              "be rotated, and the agent's next draw fails at the chip.",
+    });
+    $("revoke-hint").textContent = "";
+    selected = null;
+  } else {
+    $("revoke-hint").textContent = d.advice ?? d.reason ?? "not revoked";
+  }
+  await refresh();
+}
+
 /* ----------------------------------------------------------- the proof -- */
 
 async function loadReceipts() {
@@ -439,6 +483,7 @@ async function loadReceipts() {
     $("topic").append(a);
   }
   $("load-receipts").onclick = loadReceipts;
+  $("revoke").onclick = revoke;
   for (const b of document.querySelectorAll("button.scenario")) {
     b.onclick = () => runScenario(b.dataset.case);
   }
