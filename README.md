@@ -354,6 +354,26 @@ re-enrolment.
 
 Open `http://127.0.0.1:4050` to see the fleet and stop one of them.
 
+`./scripts/test.sh` asserts what the chip enforces — seventeen cases against
+Speculos, including the four refusals, the contract-call bindings, settlement
+arithmetic, label validation, and expiry. It boots the emulator, runs, and
+tears it down; no device and no tapping.
+
+```console
+$ ./scripts/test.sh
+  PASS  a payee not on the allowlist
+  PASS  the same swap, proceeds to an attacker
+  PASS  a mandate with an expiry can be granted
+  PASS  and every draw on it is refused
+  …
+17/17 passed
+```
+
+Two claims are deliberately out of its scope, because an emulator cannot
+settle them: whether NVRAM survives a restart —
+`./scripts/persistence-test.sh`, on the Flex — and anything about real
+signatures, since Speculos signs correctly for a key that owns nothing.
+
 `./scripts/experiment.sh` runs the controlled experiment.
 `./scripts/composition.sh` shows the enclave narrowing a mandate, and failing
 to widen it.

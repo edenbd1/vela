@@ -31,3 +31,16 @@ def approve(max_pages=8, verbose=False):
             return seen
         screen.swipe("left")
     return seen
+
+
+def tap_choice(x=240, y=460):
+    """
+    Press the affirmative button on an nbgl_useCaseChoice screen.
+
+    Different gesture from approve(): a review is swiped through and held, a
+    choice is a single button. Revocation uses the second, and calling the
+    first on it waits forever for pages that are not coming.
+    """
+    import time
+    time.sleep(0.8)
+    screen.tap(x, y)
