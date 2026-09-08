@@ -39,3 +39,6 @@ broker/secrets/*.dev
 
 # Per-agent quota counters: runtime state, not source.
 broker/usage.json
+
+# Operator credential, minted per gateway run.
+.vela-operator-token

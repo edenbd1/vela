@@ -37,6 +37,22 @@ const env = (() => {
 const PORT = Number(env.WEB_PORT ?? 4050);
 const GATEWAY = `http://127.0.0.1:${env.GATEWAY_PORT ?? 4030}`;
 const BROKER = `http://127.0.0.1:${env.BROKER_PORT ?? 4060}`;
+
+/**
+ * The operator credential, read fresh each time.
+ *
+ * The gateway mints one per run and writes it beside the repository. Reading
+ * it per request rather than at startup means restarting the gateway does not
+ * silently leave this console holding a token nobody accepts any more — which
+ * would surface as "unknown token" on a page that has not changed.
+ */
+function operatorToken() {
+  try {
+    return readFileSync(join(ROOT, ".vela-operator-token"), "utf8").trim();
+  } catch {
+    return null;
+  }
+}
 const SELLER = `http://127.0.0.1:${env.SELLER_PORT ?? 4021}`;
 
 const TYPES = {
@@ -96,8 +112,11 @@ const server = createServer(async (req, res) => {
    * would be doing exactly what the device screen is careful not to do.
    */
   if (path === "/api/fleet") {
+    const op = operatorToken();
     const [mandates, roster] = await Promise.all([
-      fetch(`${GATEWAY}/mandates`).then((r) => r.json()).catch(() => null),
+      fetch(`${GATEWAY}/mandates`, {
+        headers: op ? { "x-vela-operator": op } : {},
+      }).then((r) => r.json()).catch(() => null),
       fetch(`${BROKER}/fleet`).then((r) => r.json()).catch(() => null),
     ]);
 
@@ -146,7 +165,14 @@ const server = createServer(async (req, res) => {
     try {
       const r = await fetch(target, {
         method: req.method,
-        headers: req.method === "POST" ? { "content-type": "application/json" } : undefined,
+        headers: {
+          ...(req.method === "POST" ? { "content-type": "application/json" } : {}),
+          // The console is the operator. It reads the credential the gateway
+          // minted for this run, which a page on another site cannot.
+          ...(operatorToken() ? { "x-vela-operator": operatorToken() } : {}),
+          // Forward an agent's own token when the page is acting as one.
+          ...(req.headers.authorization ? { authorization: req.headers.authorization } : {}),
+        },
         body: req.method === "POST" ? await new Promise((ok) => {
           let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => ok(b));
         }) : undefined,

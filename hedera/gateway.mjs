@@ -31,7 +31,8 @@ import { createLedgerHederaSigner } from "./ledger-signer.mjs";
 import { drawRecord, makeAnchor, mandateDigest, releaseRecord } from "./anchor.mjs";
 import { currentInstance } from "./instance.mjs";
 import { createHash } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
@@ -55,6 +56,42 @@ const NETWORK = "hedera:testnet";
  * itself, and the failure would be silent: an agent authenticated by one and
  * mapped to the wrong slot by the other.
  */
+/**
+ * The operator's own credential, minted at startup.
+ *
+ * Everything an agent does here is authenticated by its token. The operator
+ * path — naming a slot to look at, and asking the device to revoke one — was
+ * authenticated by nothing, on the reasoning that the device asks before it
+ * forgets, so the worst case is a wasted question.
+ *
+ * That reasoning is wrong in one specific way. This listens on loopback, and
+ * any web page the operator happens to visit can post to loopback from their
+ * browser. A page firing revoke requests in a loop makes the device ask over
+ * and over until someone taps out of habit. Not a technical compromise, a
+ * social one — and it ends with a real envelope gone.
+ *
+ * Two defences, because they fail differently: a token the console has and a
+ * random page does not, and an Origin check, since a browser attaches the
+ * requesting page's origin and cannot be talked out of it.
+ */
+const OPERATOR_TOKEN = randomBytes(24).toString("base64url");
+const OPERATOR_FILE = join(ROOT, ".vela-operator-token");
+try {
+  writeFileSync(OPERATOR_FILE, OPERATOR_TOKEN, { mode: 0o600 });
+} catch { /* the console will then fail loudly rather than quietly */ }
+
+/** A browser attaches Origin on cross-site requests; a local tool does not. */
+function sameOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    const h = new URL(origin).hostname;
+    return h === "127.0.0.1" || h === "localhost" || h === "::1";
+  } catch {
+    return false;
+  }
+}
+
 const ROSTER_FILE = join(ROOT, "broker", "fleet.json");
 function roster() {
   try {
@@ -110,6 +147,10 @@ function callerSlot(req, url) {
   // human's view of the whole fleet — so it names the slot it wants to look
   // at. That is only acceptable because it is the same person who granted
   // the envelopes in the first place.
+  // The console proves it is the console, rather than a page that happens to
+  // be pointed at this port.
+  if (String(req.headers["x-vela-operator"] ?? "") !== OPERATOR_TOKEN) return null;
+
   const asked = Number(url?.searchParams?.get("slot") ?? SLOT);
   if (!Number.isInteger(asked) || asked < 0 || asked > 2) return null;
   return { slot: asked, agent: null, anonymous: true };
@@ -655,6 +696,13 @@ const routes = {
         advice: "call this without a bearer token, from the console",
       });
     }
+    if (!sameOrigin(req)) {
+      return json(res, 403, {
+        error: "cross-origin request refused",
+        advice: "a page on another site asked this device to forget an " +
+                "envelope. It was not asked.",
+      });
+    }
 
     const body = await readBody(req);
     const slot = Number(body?.slot);
@@ -737,7 +785,8 @@ signer = await createLedgerHederaSigner({
 server.listen(PORT, () => {
   console.log(`vela gateway on :${PORT}`);
   console.log(`  GET  /envelope   what the chip will allow`);
-  console.log(`  POST /pay        {"url": "..."} — buy it, if the chip agrees`);
+  console.log(`  POST /pay        {"service": "triage"} — buy it, if the chip agrees`);
   console.log(`  GET  /receipts   the public log`);
+  console.log(`  operator token   ${OPERATOR_FILE}`);
   console.log(`\nbuyer ${process.env.HEDERA_BUYER_ID}, key in the Secure Element`);
 });
