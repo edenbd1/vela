@@ -12,6 +12,19 @@
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# --device runs the same assertions against the Flex. Slower, needs three
+# approvals, and it is the only way to know the emulator has not been lying —
+# the whole reason the divergence between them is written up in
+# docs/PROTECTION-MODE.md.
+if [ "${1:-}" = "--device" ]; then
+  if ! curl -s -m 8 -X POST http://127.0.0.1:8099/apdu \
+       -H 'content-type: application/json' -d '{"apdu":"b001000000"}' >/dev/null 2>&1; then
+    echo "no bridge on :8099 — start host/bridge.py, with Vela open" >&2
+    exit 1
+  fi
+  exec python3 test/chip_test.py
+fi
+
 IMAGE="ghcr.io/ledgerhq/speculos:latest"
 NAME="vela-test"
 

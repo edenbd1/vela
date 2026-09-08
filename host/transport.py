@@ -27,6 +27,16 @@ import urllib.error
 import urllib.request
 
 
+class DeviceUnreachable(Exception):
+    """
+    The bridge could not talk to the device at all.
+
+    Distinct from CommException on purpose: a status word is the chip
+    answering, and this is the chip not being there. Callers that treat every
+    failure as a refusal report a locked device as a policy decision.
+    """
+
+
 class CommException(Exception):
     """Mirrors ledgerblue's, so callers can read .sw the same way."""
 
@@ -49,8 +59,22 @@ class _Bridge:
             data=json.dumps({"apdu": bytes(apdu).hex()}).encode(),
             headers={"content-type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:
-            body = json.load(r)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:
+                body = json.load(r)
+        except urllib.error.HTTPError as e:
+            # The bridge answers non-2xx when it could not reach the device at
+            # all, and puts the reason in the body. Letting urllib's exception
+            # escape gives the caller a traceback about HTTP, which is never
+            # the interesting half — the interesting half is usually "the Vela
+            # app is not open" or "the device is locked".
+            try:
+                detail = json.load(e).get("error", "")
+            except Exception:
+                detail = ""
+            raise DeviceUnreachable(detail or f"the bridge answered {e.code}") from None
+        except urllib.error.URLError as e:
+            raise DeviceUnreachable(f"no bridge at {self.url}: {e.reason}") from None
         sw = body["sw"]
         data = bytes.fromhex(body.get("data") or "")
         if sw != 0x9000:
