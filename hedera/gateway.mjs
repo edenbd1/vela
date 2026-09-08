@@ -62,6 +62,29 @@ const ROSTER = (() => {
   }
 })();
 
+/**
+ * One draw at a time.
+ *
+ * The signer carries the slot it should draw on, and /pay sets it from the
+ * caller's identity — with seven await points between that assignment and the
+ * signature. Two agents paying concurrently and the second overwrites the
+ * first's slot mid-flight, so one agent spends another's envelope and the
+ * audit log attributes it to the wrong one. Precisely the bug that making
+ * this gateway multi-tenant was supposed to remove.
+ *
+ * A queue rather than a per-slot lock, because the device is one device: it
+ * answers one APDU at a time whatever this process believes, and pretending
+ * otherwise only moves the race somewhere harder to see.
+ */
+let deviceQueue = Promise.resolve();
+function onDevice(fn) {
+  const run = deviceQueue.then(fn, fn);
+  // Keep the chain alive after a rejection, or one failed draw wedges every
+  // draw after it.
+  deviceQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 function callerSlot(req, url) {
   const token = String(req.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "").trim();
 
@@ -401,10 +424,9 @@ const routes = {
     //
     // The ceiling that matters is in the Secure Element. Let the request
     // reach it and let it answer.
-    // The signer draws on whichever envelope the caller owns. Set here rather
-    // than at construction because one gateway serves the whole fleet, and
-    // the alternative — one signer per slot — would open three transports to
-    // one device for no gain.
+    // The signer draws on whichever envelope the caller owns, and everything
+    // from here to settlement runs alone on the device — see onDevice().
+    return onDevice(async () => {
     signer.slot = who.slot;
 
     const client = new x402Client().register(NETWORK, new ExactHederaScheme(signer));
@@ -504,6 +526,7 @@ const routes = {
       note: "signed inside the Secure Element after the chip checked this " +
             "payee and this amount against the mandate",
     });
+    });
   },
 
   /**
@@ -517,12 +540,15 @@ const routes = {
    * argue against.
    */
   "POST /call": async (req, res) => {
+    const who = callerSlot(req, new URL(req.url, "http://localhost"));
+    if (!who) return json(res, 401, { error: "unknown token" });
+
     const body = await readBody(req);
     if (!body?.contract || !body?.calldata) {
       return json(res, 400, { error: 'give me {"contract":"0.0.x","calldata":"0x…"}' });
     }
 
-    const before = await envelope();
+    const before = await envelope(who.slot);
     if (!before) {
       return json(res, 200, { signed: false, refused: true, reason: "no_mandate",
                               terminal: true,
@@ -535,7 +561,7 @@ const routes = {
 
     const head = Buffer.alloc(79);
     let o = 0;
-    head.writeUInt8(SLOT, o); o += 1;
+    head.writeUInt8(who.slot, o); o += 1;
     for (const v of [
       7162784n,                                                  // fee payer
       BigInt(process.env.HEDERA_BUYER_ID.split(".")[2]),         // this device
@@ -553,12 +579,17 @@ const routes = {
 
     const payload = Buffer.concat([head, calldata]);
     try {
-      const r = await signer.transport.exchange(
-        Buffer.concat([Buffer.from([0xe0, 0x18, 0, 0, payload.length]), payload]));
+      // Both exchanges together, or not at all. The chip keeps the encoded
+      // body until the next call replaces it, so an authorisation slipping in
+      // between these two lines hands this caller a body that its signature
+      // does not cover — a malformed transaction carrying a valid signature,
+      // which is worse than no transaction.
+      const { r, encoded } = await onDevice(async () => ({
+        r: await signer.transport.exchange(
+          Buffer.concat([Buffer.from([0xe0, 0x18, 0, 0, payload.length]), payload])),
+        encoded: await signer.transport.exchange(Buffer.from([0xe0, 0x19, 0, 0, 0])),
+      }));
       const bodyLen = r.readUInt16BE(12);
-      // The encoded body comes back separately; see handler_authorize_call.
-      const encoded = await signer.transport.exchange(
-        Buffer.from([0xe0, 0x19, 0, 0, 0]));
       return json(res, 200, {
         signed: true,
         seq: r.readUInt32BE(0),
@@ -629,8 +660,8 @@ const routes = {
     }
 
     try {
-      await signer.transport.exchange(
-        Buffer.concat([Buffer.from([0xe0, 0x14, 0, 0, 1]), Buffer.from([slot])]));
+      await onDevice(() => signer.transport.exchange(
+        Buffer.concat([Buffer.from([0xe0, 0x14, 0, 0, 1]), Buffer.from([slot])])));
       return json(res, 200, {
         revoked: true,
         slot,
