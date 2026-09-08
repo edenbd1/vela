@@ -80,7 +80,12 @@ def send(ins, body=b"", p1=0, timeout=30):
 
 
 def grant(label, budget, per_call, expiry=0, tag=0xA1, payee=PAYEE,
-          contracts=(), selectors=(), recipient_arg=None):
+          contracts=(), selectors=(), recipient_arg=None, expect_screen=True):
+    """
+    `expect_screen=False` for grants the chip rejects before it draws
+    anything. Asking someone to approve a screen that never appears is worse
+    than asking nothing: they stand there waiting, then start pressing things.
+    """
     body = (bytes(20 * [tag])
             + bytes([1]) + struct.pack(">Q", payee)
             + struct.pack(">Q", budget) + struct.pack(">Q", per_call)
@@ -90,7 +95,7 @@ def grant(label, budget, per_call, expiry=0, tag=0xA1, payee=PAYEE,
         body += bytes([len(contracts)]) + b"".join(struct.pack(">Q", c) for c in contracts)
         body += bytes([len(selectors)]) + b"".join(selectors)
         body += bytes([recipient_arg if recipient_arg is not None else 0xFF])
-    if ON_DEVICE:
+    if ON_DEVICE and expect_screen:
         print(f"      >>> approve '{label}' on the device <<<", flush=True)
         sw, r = send(CREATE, body, timeout=300)
     else:
@@ -206,7 +211,9 @@ def main():
     check("and every draw on it is refused", draw(SLOT_B, PAYEE, 1_000_000), 0xB103)
 
     print("\nvalidation")
-    sw, _ = grant("bad\x01label", 10_000_000, 1_000_000, tag=0xE5)
+    # No screen: the handler validates the label before it asks anyone.
+    sw, _ = grant("bad\x01label", 10_000_000, 1_000_000, tag=0xE5,
+                  expect_screen=False)
     check("a label with control characters is refused", sw, 0xB108)
 
     if ON_DEVICE:
