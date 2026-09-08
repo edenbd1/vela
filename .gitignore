@@ -36,3 +36,6 @@ host/ring/node_modules/
 
 # Broker secrets: ciphertext is fine to commit, plaintext is not.
 broker/secrets/*.dev
+
+# Per-agent quota counters: runtime state, not source.
+broker/usage.json

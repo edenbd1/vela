@@ -30,6 +30,7 @@ import { ExactHederaScheme } from "@x402/hedera/exact/client";
 import { createLedgerHederaSigner } from "./ledger-signer.mjs";
 import { drawRecord, makeAnchor, mandateDigest, releaseRecord } from "./anchor.mjs";
 import { currentInstance } from "./instance.mjs";
+import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,13 +55,14 @@ const NETWORK = "hedera:testnet";
  * itself, and the failure would be silent: an agent authenticated by one and
  * mapped to the wrong slot by the other.
  */
-const ROSTER = (() => {
+const ROSTER_FILE = join(ROOT, "broker", "fleet.json");
+function roster() {
   try {
-    return JSON.parse(readFileSync(join(ROOT, "broker", "fleet.json"), "utf8")).agents ?? {};
+    return JSON.parse(readFileSync(ROSTER_FILE, "utf8")).agents ?? {};
   } catch {
     return {};
   }
-})();
+}
 
 /**
  * One draw at a time.
@@ -89,7 +91,13 @@ function callerSlot(req, url) {
   const token = String(req.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "").trim();
 
   if (token) {
-    const found = Object.values(ROSTER).find((a) => a.token === token);
+    // The digest, and the roster read fresh. Two processes caching the same
+    // file for the life of a run is two caches that will disagree — and the
+    // disagreement is silent: authenticated by the broker, mapped to the
+    // wrong slot here.
+    const digest = createHash("sha256").update(token).digest("hex");
+    const found = Object.values(roster())
+      .find((a) => a.token_sha256 && a.token_sha256 === digest);
     if (!found) return null;
     // An identified agent gets its own slot and cannot ask for another. The
     // query string is ignored rather than merged: a request that both proves

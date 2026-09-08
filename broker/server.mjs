@@ -23,7 +23,8 @@
  * pattern before it reaches a template.
  */
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,13 +32,43 @@ import { backingFor, reveal, PLAINTEXT, RING } from "./secrets.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.BROKER_PORT ?? 4060);
-const FLEET = JSON.parse(readFileSync(join(HERE, "fleet.json"), "utf8"));
-const CAPS = FLEET.capabilities;
-const AGENTS = FLEET.agents;
+/**
+ * The roster, re-read on every use.
+ *
+ * It was loaded once at startup, which made revoking an agent a restart —
+ * of this process *and* of the gateway, which reads the same file. Two
+ * long-lived caches of one file are two caches that will disagree, and the
+ * disagreement is silent: authenticated by one, mapped to the wrong slot by
+ * the other. It is a few hundred bytes; reading it per request costs nothing
+ * and means deleting a line takes effect immediately.
+ */
+const FLEET_FILE = join(HERE, "fleet.json");
+const fleet = () => JSON.parse(readFileSync(FLEET_FILE, "utf8"));
 
-/** Calls made, keyed by agent and capability. */
-const used = new Map();
+/**
+ * Calls made, keyed by agent and capability, and persisted.
+ *
+ * Held only in memory, a restart silently returned every agent to zero used —
+ * which makes "granted 50 calls" a sentence rather than a limit, and the
+ * failure is invisible because nothing looks wrong afterwards.
+ */
+const USAGE_FILE = join(HERE, "usage.json");
+const used = new Map(Object.entries((() => {
+  try { return JSON.parse(readFileSync(USAGE_FILE, "utf8")); } catch { return {}; }
+})()));
 const useKey = (agentId, cap) => `${agentId}:${cap}`;
+
+function bump(key, to) {
+  used.set(key, to);
+  try {
+    writeFileSync(USAGE_FILE, JSON.stringify(Object.fromEntries(used), null, 2) + "\n");
+  } catch (e) {
+    // Loud, because a quota that stops counting looks exactly like a quota
+    // that is being respected.
+    console.error(`  [usage] cannot persist ${USAGE_FILE}: ${e.message} — ` +
+                  `quotas will reset on restart`);
+  }
+}
 
 /**
  * Which agent is calling.
@@ -60,8 +91,12 @@ function identify(req) {
   const header = req.headers["authorization"] ?? "";
   const token = header.replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
-  for (const [id, a] of Object.entries(AGENTS)) {
-    if (a.token === token) return { id, ...a };
+  const digest = createHash("sha256").update(token).digest("hex");
+  for (const [id, a] of Object.entries(fleet().agents)) {
+    // Only the digest. A roster carrying plaintext tokens hands the whole
+    // fleet to anyone who reads the file — and it was committed, so it handed
+    // it to anyone who read the repository.
+    if (a.token_sha256 && a.token_sha256 === digest) return { id, ...a };
   }
   return null;
 }
@@ -124,12 +159,12 @@ const routes = {
       agent: agent.label,
       capabilities: Object.entries(agent.grants).map(([name, limit]) => ({
         name,
-        description: CAPS[name]?.description ?? "unknown capability",
-        params: Object.keys(CAPS[name]?.params ?? {}),
+        description: fleet().capabilities[name]?.description ?? "unknown capability",
+        params: Object.keys(fleet().capabilities[name]?.params ?? {}),
         calls_used: used.get(useKey(agent.id, name)) ?? 0,
         calls_allowed: limit,
         // Named so a demo cannot quietly claim hardware it did not use.
-        secret_backing: backingFor(CAPS[name]?.secret) ?? "missing",
+        secret_backing: backingFor(fleet().capabilities[name]?.secret) ?? "missing",
       })),
       note: "an agent invokes a named action and receives the result. " +
             "It never receives the credential, and it cannot choose the " +
@@ -147,7 +182,7 @@ const routes = {
    */
   "GET /fleet": (_req, res) => {
     json(res, 200, {
-      agents: Object.entries(AGENTS).map(([id, a]) => ({
+      agents: Object.entries(fleet().agents).map(([id, a]) => ({
         agent_id: id,
         label: a.label,
         slot: a.slot,
@@ -175,7 +210,7 @@ const server = createServer(async (req, res) => {
   if (!agent) return json(res, 401, { error: "present a bearer token" });
 
   const name = decodeURIComponent(m[1]);
-  const cap = CAPS[name];
+  const cap = fleet().capabilities[name];
   if (!cap) {
     return json(res, 404, { error: `no capability named '${name}'` });
   }
@@ -224,7 +259,7 @@ const server = createServer(async (req, res) => {
       headers: { [cap.header]: secret.value },
     });
     const body = await upstream.text();
-    used.set(useKey(agent.id, name), count + 1);
+    bump(useKey(agent.id, name), count + 1);
 
     json(res, 200, {
       ok: upstream.ok,
@@ -249,12 +284,12 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`vela broker on :${PORT}`);
-  for (const [name, c] of Object.entries(CAPS)) {
+  for (const [name, c] of Object.entries(fleet().capabilities)) {
     const b = backingFor(c.secret);
     const mark = b === RING ? "ring" : b === PLAINTEXT ? "PLAINTEXT" : "missing";
     console.log(`  capability ${name.padEnd(14)} secret: ${mark}`);
   }
-  for (const a of Object.values(AGENTS)) {
+  for (const a of Object.values(fleet().agents)) {
     console.log(`  agent ${a.label.padEnd(19)} slot ${a.slot}   ` +
                 Object.entries(a.grants).map(([n, l]) => `${n}×${l}`).join(" "));
   }

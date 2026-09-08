@@ -335,14 +335,22 @@ Requires a Ledger Flex in developer mode, Docker, Node 20+, and Python 3.9+.
 ./scripts/build.sh                # build the BOLOS app
 ./scripts/load.sh                 # sideload it (quit Ledger Wallet first)
 
+wallet-cli ring init              # this machine joins the Key Ring (device)
+node broker/enroll.mjs research-1 # mint that agent's token — printed once
+
 python3 host/bridge.py &          # APDU shim on :8099
 node broker/server.mjs &          # capability broker on :4060
 node hedera/seller.mjs &          # x402-gated service on :4021
 node hedera/gateway.mjs &         # payments, one slot per agent, on :4030
 node web/server.mjs &             # the console on :4050
 
-./agent/run.sh                    # an agent, in a container, with nothing on it
+node hedera/fleet.mjs             # revoke, create the audit topic, grant ×3
+AGENT_TOKEN=<minted> ./agent/run.sh
 ```
+
+The roster holds only a SHA-256 of each token, so `broker/fleet.json` can be
+read by anyone without handing them the fleet. Losing a token costs one
+re-enrolment.
 
 Open `http://127.0.0.1:4050` to see the fleet and stop one of them.
 

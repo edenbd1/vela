@@ -6,7 +6,9 @@
       "method": "GET",
       "url": "http://127.0.0.1:4040/risk/{account}",
       "header": "x-api-key",
-      "params": { "account": "^0\\.0\\.[0-9]{1,12}$" }
+      "params": {
+        "account": "^0\\.0\\.[0-9]{1,12}$"
+      }
     },
     "infer.triage": {
       "description": "Buy one triage inference",
@@ -17,25 +19,31 @@
       "params": {}
     }
   },
-
   "agents": {
     "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1": {
       "label": "research-1",
       "slot": 0,
-      "token": "research-1-token",
-      "grants": { "risk.screen": 50, "infer.triage": 20 }
+      "grants": {
+        "risk.screen": 50,
+        "infer.triage": 20
+      },
+      "token_sha256": "616e675cca03c3d60ad4786fb0e039e43d8783aa8357c619010f6fc81af24a9f"
     },
     "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": {
       "label": "ops-nightly",
       "slot": 1,
-      "token": "ops-nightly-token",
-      "grants": { "infer.triage": 5 }
+      "grants": {
+        "infer.triage": 5
+      },
+      "token_sha256": "c4fcc0d4fefdfe5948ccafbc512d42c2b31afe16c07fca41de674e934d09a779"
     },
     "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3": {
       "label": "watcher",
       "slot": 2,
-      "token": "watcher-token",
-      "grants": { "risk.screen": 200 }
+      "grants": {
+        "risk.screen": 200
+      },
+      "token_sha256": "2fc093f577d35d14d2777faf3fb0d559fa05e8c3426af2f772857e4e749f6517"
     }
   }
 }
