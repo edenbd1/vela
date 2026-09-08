@@ -41,8 +41,25 @@ SW = {
     0xB10B: "recipient_not_self",
 }
 
-PAYEE = 10_388_937
-SELF = 10_397_072
+def _env(key, default):
+    """
+    Accounts come from .env, not from a constant here.
+
+    Three separate bugs in this repository have been a Hedera account frozen
+    into a file while the device's seed moved underneath it, and each one
+    surfaced somewhere far from the constant.
+    """
+    import re
+    root = Path(__file__).resolve().parent.parent
+    try:
+        m = re.search(rf"^{key}=0\.0\.(\d+)", (root / ".env").read_text(), re.M)
+        return int(m.group(1)) if m else default
+    except OSError:
+        return default
+
+
+PAYEE = _env("HEDERA_TREASURY_ID", 10_388_937)
+SELF = _env("HEDERA_BUYER_ID", 10_397_072)
 ATTACKER = 66_666_666
 ROUTER = 5_000_001
 OTHER_ROUTER = 5_000_002

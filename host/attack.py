@@ -70,6 +70,25 @@ def attack_software():
         return 1
 
 
+def buyer_account() -> int:
+    """
+    The account this device controls, read rather than remembered.
+
+    It changes whenever the device's seed does. A hardcoded one still produces
+    the right refusal here — the chip checks the payee before it looks at the
+    payer — so the experiment goes on passing for a reason that is no longer
+    the reason, which is how a stale constant survives long enough to matter.
+    """
+    import os
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, ".env")) as f:
+        m = re.search(r"^HEDERA_BUYER_ID=0\.0\.(\d+)", f.read(), re.M)
+    if not m:
+        raise SystemExit("no HEDERA_BUYER_ID in .env")
+    return int(m.group(1))
+
+
 def attack_device():
     import ledgerblue.commException
     import transport
@@ -101,7 +120,8 @@ def attack_device():
     # slot | fee_payer | from | payee | node | amount | fee | valid_start
     #      | nanos | duration | now
     req = bytes([slot]) + struct.pack(
-        ">QQQQQQQIII", 7162784, 10392125, ATTACKER, 3, BIG, 100_000_000, now, 0, 120, now)
+        ">QQQQQQQIII", 7162784, buyer_account(), ATTACKER, 3, BIG,
+        100_000_000, now, 0, 120, now)
     try:
         d.exchange(bytes([0xE0, 0x12, 0, 0, len(req)]) + req)
         print("SETTLED — this is a bug")
