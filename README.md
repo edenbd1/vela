@@ -305,7 +305,6 @@ hedera/      x402-gated seller, the Ledger-backed signer, HCS anchoring, the
              public verifier, the multi-tenant gateway
 cre/         Chainlink CRE confidential workflow, running in an AWS Nitro
              enclave
-ens/         ENSv2 — an agent as a namespace with permissions
 web/         the console: the whole fleet, and the button that stops one
 host/        APDU bridge, device journal, Key Ring enrolment, the software
              control arm
@@ -494,10 +493,5 @@ shipping a false report.
 [x402](https://x402.org) with the Blocky402 facilitator ·
 [Chainlink CRE](https://docs.chain.link/cre) Confidential Workflows for the
 enclave half.
-
-An [ENSv2](https://docs.ens.domains/ensv2/overview) integration is sketched in
-[`ens/`](ens) with its interface verified against the deployed Sepolia
-contracts. It is not part of this submission: removing it would change
-nothing here, which is its own answer to whether it belongs.
 
 `app/` derives from [`LedgerHQ/app-boilerplate`](https://github.com/LedgerHQ/app-boilerplate), Apache-2.0.

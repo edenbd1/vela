@@ -126,36 +126,27 @@ read — and not because the key is hidden, but because the *questions* are: a
 node watching this workflow ask about four accounts has learned which accounts
 an agent may pay.
 
-### Why Chainlink over ENS, having first chosen the other way
+### Why Chainlink and not ENS
 
-ENS was picked first, on the strength of their own sentence — *"think agents
-as namespaces, each with their own identity and permissions"* — and a larger
-pool: $4,500 across four payouts against $2,000 across two.
+ENS was considered first, on the strength of their own sentence — *"think
+agents as namespaces, each with their own identity and permissions"* — and a
+larger pool: $4,500 across four payouts against $2,000 across two.
 
-Then their own bar was applied honestly: *"central to the product, not a
-cosmetic add-on."* Remove ENS tomorrow and this project works identically.
-The broker's roster is what decides an agent's capabilities; an ENS subname
-would **mirror** that decision without ever making it. That is the definition
-of cosmetic, and a judge would see it in thirty seconds.
-
-There is one way to make it central — have the broker read roles from ENS, so
-the chain becomes the source of truth for what an agent may invoke. That is
-more than a day, it puts a cross-chain read in the hot path of every call, and
-it still leaves the question of why identity sits on Sepolia when money
+Their own bar settled it: *"central to the product, not a cosmetic add-on."*
+Remove ENS and this project works identically. The broker's roster is what
+decides an agent's capabilities; a subname would **mirror** that decision
+without ever making it. Making it central would mean having the broker read
+roles from the chain — more than a day, a cross-chain read in the hot path of
+every call, and still the question of why identity sits on Sepolia when money
 settles on Hedera.
 
-The enclave is already the opposite of that. It is built, it works, and it
-**changes behaviour**: it removes a payee the chip would have signed for, and
-fails to add one the chip refuses. Tested in both directions. It is a
-mechanism, not a mirror, and it sits on the same axis as everything else here
-— one more boundary that can only narrow.
+The enclave is the opposite. It is built, and it **changes behaviour**: it
+removes a payee the chip would have signed for, and fails to add one the chip
+refuses. Tested in both directions. A mechanism, not a mirror, on the same
+axis as everything else here — one more boundary that can only narrow.
 
 A finished, genuinely integrated submission beats a rushed and arguably
 decorative one, particularly on a track whose stated bar is "not cosmetic".
-
-`ens/` stays in the repository. It cost an hour, its interface is verified
-against the deployed contract on Sepolia, and it is a credible direction after
-the hackathon. It is simply not one of the three.
 
 ---
 
@@ -178,8 +169,6 @@ Not built:
 - **enrolment of a host with no USB port** — a VPS or container joining the
   ring
 - **the fleet view** on the device, using the three slots for three agents
-- **ENSv2 subnames** with Enhanced Access Control — kept as a direction,
-  not submitted
 
 The first two are what Ledger asks for and makes mandatory. They come first.
 
