@@ -131,6 +131,17 @@ ring itself carries the scoping: a member enrolled for `vela.risk-feed` is not
 thereby enrolled for `vela.market-data`. That boundary survives the filesystem
 being copied, which a permission bit does not.
 
+The ring is live — member `vela-broker`, both secrets AES-256-GCM under
+hardware-derived keys, and `/capabilities` reports `ring` rather than
+`plaintext-dev`. The broker reads the ring password from the OS keychain at
+first use, so starting it needs no one to type anything, and with no password
+available it refuses rather than falling back.
+
+What that does **not** buy: the broker can decrypt while it runs, so a
+compromised broker can misuse a secret it currently holds. What changes is
+that nothing sensitive is at rest on that machine, and membership rotates away
+without touching the upstream key.
+
 ## A host with nothing on it
 
 [`agent/`](agent) runs in a container with no `--device`, no volume and no
