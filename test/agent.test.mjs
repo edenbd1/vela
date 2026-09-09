@@ -222,6 +222,32 @@ console.log("\nthe agent loop, against a chip that says no\n");
 
 /* ---------------------------------------------------------------------- */
 {
+  // A broker that answers with an error rather than a refusal. Handing the
+  // model `refused: undefined` would be worse than useless — a refusal with
+  // no reason in it is the one thing this loop is built to never produce.
+  const gw = await serve(() => ({ slot: 0, mandate: {
+    available: "50000000", per_call_max: "10000000", payees: [] } }));
+  const br = await serve(() => ({ status: 401,
+    body: { error: "present a bearer token" } }));
+  const llm = await serve(() => ({ message: { role: "assistant",
+    content: JSON.stringify({ thought: "…", tool: "screen_counterparty",
+                              account: "0.0.1" }) } }));
+  const r = await new Promise((resolve) => {
+    const p = spawn(process.execPath, [AGENT], {
+      env: { ...process.env, OLLAMA: `http://127.0.0.1:${llm.port}`,
+             GATEWAY: `http://127.0.0.1:${gw.port}`, BROKER: `http://127.0.0.1:${br.port}`,
+             AGENT_TOKEN: "test", AGENT_STEPS: "2" },
+      stdio: ["ignore", "pipe", "pipe"] });
+    let s = ""; p.stdout.on("data", (d) => (s += d)); p.stderr.on("data", (d) => (s += d));
+    p.on("close", () => resolve(s));
+  });
+  gw.close(); br.close(); llm.close();
+  ok("a broker error is reported as an error, not a reasonless refusal",
+     /error: present a bearer token/.test(r) && !/undefined/.test(r), r);
+}
+
+/* ---------------------------------------------------------------------- */
+{
   // The model is down. An agent that holds a mandate must fail loudly rather
   // than carry on with an empty head.
   const dead = await serve(() => ({ status: 500, body: { error: "model not found" } }));

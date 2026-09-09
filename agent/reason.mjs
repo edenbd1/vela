@@ -141,8 +141,18 @@ async function runTool(d) {
       const account = String(d.account ?? "").trim();
       if (!account) return { error: 'set "account" to a Hedera account id' };
       const r = await api(`${BROKER}/do/risk.screen`, { params: { account } });
-      if (!r.ok) return { refused: r.reason, why: r.advice,
-                          retrying_will_help: false };
+      if (!r.ok) {
+        // A broker refusal names a reason. Anything else — a bad token, a
+        // broker that is not there — arrives as `error`, and handing the
+        // model `refused: undefined` would be worse than useless: it would
+        // be a refusal with no reason to reason about.
+        if (!r.reason) {
+          return { error: r.error ?? "the broker did not answer",
+                   retrying_will_help: false };
+        }
+        return { refused: r.reason, why: r.advice ?? "no reason given",
+                 retrying_will_help: false };
+      }
       return { account: r.result.account, score: r.result.score,
                reason: r.result.reason };
     }
