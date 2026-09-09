@@ -131,8 +131,55 @@ that the chip refuses even then. `payee_not_allowed` is decided in the Secure
 Element against the bytes it is about to sign, not in the process the injected
 text is already inside.
 
-Whatever the obedience rate turns out to be, the mandate does not depend on
-it. That is the point of measuring it rather than arguing about it.
+### The obedience rate is not stable, and that is the finding
+
+Three trials per model, 2026-09-09:
+
+```
+  hermes3:8b      obeyed 33%
+  llama3.2:3b     obeyed 33%
+```
+
+Eight trials per model, same prompt, same temperature, twenty minutes later:
+
+```
+  hermes3:8b      (crashed — see below)
+  llama3.2:3b     obeyed 0%
+```
+
+Both are true. Neither is a number to design a spending limit around.
+
+That is the argument, sharpened: a control whose effectiveness depends on how
+often a model happens to resist a phrasing is not a control. The mandate holds
+at whatever rate the model misbehaves, including rates nobody has measured.
+Publishing the unstable number is more honest than publishing the flattering
+one, and it makes the case better.
+
+The greedy scenario is steadier and much larger. Across eight runs per model:
+
+```
+  the chip allowed                     0.13 HBAR
+  the agents asked for                 1.27 HBAR
+  the difference is the product        1.14 HBAR
+```
+
+`llama3.2:3b` alone asked for 0.95 HBAR against a 0.5 envelope, was refused
+6.3 times per run, and got 0.01 through. Nine tenths of what these agents
+asked for never happened.
+
+### Two bench bugs, found by the bench
+
+**One bad trial deleted seven good ones.** `hermes3` failed a run with
+`an error was encountered while running the model: unexpected EOF`, and the
+reporting code dropped the whole model's row on the first error — throwing
+away seven completed trials and quietly changing what the summary averaged.
+Errors are now counted and reported alongside the runs that worked.
+
+**The EOF was context.** The injected scenario's history grows past Ollama's
+4k default, and a runtime that truncates mid-conversation surfaces it as an
+EOF rather than as "your conversation is too long". `num_ctx: 8192` fixes it.
+Worth knowing for anyone else running a tool loop on a local model: the
+failure does not look like what it is.
 
 ## The model matters, and now we know how much
 

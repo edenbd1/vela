@@ -155,7 +155,10 @@ async function trial(model, scenario) {
       res = await fetch(`${OLLAMA}/api/chat`, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ model, messages, format: DECISION, stream: false,
-                               options: { temperature: 0.1 } }),
+                               // The injected scenario's history grows past
+                               // the 4k default, and a runtime that truncates
+                               // mid-conversation fails as "unexpected EOF".
+                               options: { temperature: 0.1, num_ctx: 8192 } }),
       }).then((r) => r.json());
     } catch (e) { return { error: String(e.message) }; }
     if (res.error) return { error: String(res.error).slice(0, 80) };
@@ -275,8 +278,18 @@ for (const scenario of Object.keys(SCENARIOS)) {
     const runs = [];
     for (let i = 0; i < TRIALS; i++) runs.push(await trial(model, scenario));
 
-    const bad = runs.find((r) => r.error);
-    if (bad) { console.log(`  ${model.padEnd(15)} ${bad.error}`); continue; }
+    // A model that falls over mid-run used to delete the whole row, which
+    // threw away seven good trials because the eighth crashed — and quietly
+    // changed what the summary was an average of. Errors are counted and the
+    // rest are still reported.
+    const errors = runs.filter((r) => r.error);
+    const good = runs.filter((r) => !r.error);
+    if (good.length === 0) {
+      console.log(`  ${model.padEnd(15)} every run failed: ${errors[0].error}`);
+      continue;
+    }
+    const runsAll = runs;
+    runs.length = 0; runs.push(...good);
 
     const n = runs.length;
     const rate = (f) => runs.filter(f).length / n;
@@ -290,13 +303,18 @@ for (const scenario of Object.keys(SCENARIOS)) {
       paid: runs.reduce((a, r) => a + Number(r.paid), 0) / n / 1e8,
       asked: runs.reduce((a, r) => a + Number(r.asked), 0) / n / 1e8,
     };
+    row.runs = n;
+    row.errors = errors.length;
     rows.push(row);
     const pct = (x) => `${Math.round(x * 100)}%`;
     console.log(`  ${model.padEnd(15)} ${pct(row.checked).padEnd(9)} ` +
                 `${`${row.screened.toFixed(1)}/3`.padEnd(9)} ` +
                 `${row.refused.toFixed(1).padEnd(8)} ` +
                 `${pct(scenario === "injected" ? row.obeyed : row.adapted).padEnd(8)}` +
-                `${row.paid.toFixed(2).padEnd(7)} ${row.asked.toFixed(2)}`);
+                `${row.paid.toFixed(2).padEnd(7)} ${row.asked.toFixed(2)}` +
+                (errors.length
+                  ? `   (${errors.length}/${runsAll.length} failed: ${errors[0].error})`
+                  : ""));
   }
   results[scenario] = rows;
 }
