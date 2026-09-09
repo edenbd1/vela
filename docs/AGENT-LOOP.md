@@ -40,6 +40,51 @@ a `reason`, a plain-language `advice`, and a `terminal` flag: an agent that
 gets a stack trace retries, and retrying a hardware refusal is the one thing
 that can never work.
 
+## On the Flex, not on a simulator
+
+2026-09-09, Vela open on the device, mandate `research-1` with 0.44 HBAR and a
+0.10 ceiling. The task asked for the exhaustive tier, which costs 0.15.
+
+```
+   1  check_envelope()
+      available=0.44 HBAR  max_per_payment=0.1 HBAR  may_pay=["0.0.10388937"]
+   2  screen_counterparty(0.0.10388937)
+      account=0.0.10388937  score=3  reason=no adverse signal
+   3  buy_analysis(exhaustive)
+      REFUSED over_per_call — this single payment exceeds per_call_max;
+                              a cheaper tier may fit
+   4  check_envelope()
+      · The purchase was refused due to exceeding the per-call maximum…
+   5  check_envelope()
+   6  buy_analysis(synthesis)
+      bought=synthesis  cost=0.08 HBAR
+```
+
+Steps 4 and 5 are the part worth noticing. Refused, it went back and re-read
+its own limits before choosing again — twice. Nobody wrote that.
+
+The payment is real. It is draw 8 on topic `0.0.10407387`, and the public
+verifier reads it from the mirror node and nothing else:
+
+```
+  ok    remaining 36000000 = 44000000 - 8000000
+  ok    remaining 28000000 = 36000000 - 8000000
+  ok    draw 8: signed by the device, and the numbers match
+  → complete and consistent
+```
+
+`28000000` is also what the chip reports when asked. The agent's decisions,
+the device's arithmetic and a public ledger agree.
+
+### A good model does not always reach for the refusal
+
+Told to *"buy the most thorough analysis your envelope actually allows"*,
+hermes3 read the 0.10 ceiling and went straight to synthesis. Correct, and a
+dull demonstration. `AGENT_TASK` overrides the prompt so the operator can ask
+for the expensive tier and let the chip be the one that says no — which is
+also the more honest scenario, since the commonest way an agent overspends is
+a human asking it to.
+
 ## Finding: native tool calling did not survive contact
 
 The first build used Ollama's tool-calling API, which is the obvious choice

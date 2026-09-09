@@ -189,7 +189,12 @@ async function runTool(d) {
 
 const messages = [
   { role: "system", content: SYSTEM },
-  { role: "user", content:
+  // Overridable, because the two interesting runs are different asks. Left
+  // alone the agent is told to stay inside its envelope, and a good model
+  // then reads the ceiling and never reaches past it — correct, and a dull
+  // demonstration. AGENT_TASK is how you ask for the exhaustive tier and
+  // watch the chip be the one that says no.
+  { role: "user", content: process.env.AGENT_TASK ||
       `Assess counterparty risk across these accounts: ` +
       `${COUNTERPARTIES.join(", ")}. Screen each one, then buy the most ` +
       `thorough analysis your envelope actually allows, and report a verdict.` },
