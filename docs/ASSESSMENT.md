@@ -3,6 +3,8 @@
 Written four days before the deadline, deliberately unflattering. A status
 report that only lists what works is a report nobody can act on.
 
+*Updated 2026-09-09: gaps 1 and 2 are closed. The rest stands.*
+
 ---
 
 ## The idea, in plain terms
@@ -48,26 +50,38 @@ Verified on hardware, not asserted:
 
 Ranked by how much it costs us.
 
-### 1. There is no agent
+### ~~1. There is no agent~~ — closed 2026-09-09
 
-The largest gap, and the one that matters most on a track called *AI Agents x
-Ledger*. Everything here is called an agent and nothing reasons: they screen
-three hardcoded accounts and buy one inference. What exists is an
-**authorisation and payment substrate for agents**, not agents.
+`agent/reason.mjs` runs a local model with four tools and a budget it does not
+control. It reaches past the per-payment ceiling, is refused, reads the
+reason, and comes back with a tier that fits — a branch nobody wrote.
 
-A judge will ask where the AI is, and today the honest answer is nowhere.
+Two things came out of building it that are worth more than the feature. The
+first run announced it had 100 HBAR against an envelope holding 0.5, which is
+the pitch stated by the thing the pitch is about. And `agent/bench.mjs` now
+measures the gap between what the chip allowed and what the agent asked for:
+across eight runs per model, 0.13 HBAR against 1.27.
 
-### 2. The Key Ring is not on a remote host
+Details and the tool-calling failure that forced grammar-constrained decoding
+are in [AGENT-LOOP.md](AGENT-LOOP.md). 17 assertions in `test/agent.test.mjs`,
+no device and no model needed.
 
-Ledger's second ask, verbatim: *"Bring the Key Ring to hosts with no USB port:
-enroll a VPS, a CI runner, or a hosted agent."*
+### ~~2. The Key Ring is not on a remote host~~ — closed 2026-09-09
 
-What exists: `ring init` on **this** machine. The container talks to a broker
-running here; it is not itself a ring member. `host/ring/enroll.cjs` was
-started and never finished.
+`host/ring/enroll.cjs` does the whole ceremony now: `request` on the host with
+no device, `grant` where the ring is, `claim` back on the host. Verified
+against the real ring — the bundle carries neither private key, the member
+derives the same key the owner does, and a host that was never admitted gets
+`Cannot find key in the tree for the current device`.
 
-We are describing a capability we have not completed. That is worse than not
-having it.
+The trustchain's owner key is sealed under `wallet-cli ring encrypt`, so you
+cannot admit a host without the device having admitted you first.
+
+Two things are still not done and are now written down rather than implied:
+signing each `AddMember` on the device itself needs the Ledger Sync app rather
+than Vela, and rotate-on-eviction is not implemented — which is why the
+command that drops a local identity is called `forget` and not `revoke`.
+12 assertions in `test/ring.test.mjs`.
 
 ### 3. "Machines you do not control" are containers on one laptop
 
@@ -110,13 +124,16 @@ two documents cannot drift.
 
 ## What to do with the time left
 
-In order, stopping after the second if it runs out:
+The first two are done — see the strikethroughs above. What is left, in order:
 
-1. **An agent that actually reasons.** It does not need an expensive API — a
-   local model, or even a planner that makes real decisions from real signals
-   rather than a hardcoded list. What matters is that it chooses, is sometimes
-   wrong, and is stopped by the chip.
-2. **Finish remote Key Ring enrolment.** Ledger's explicit ask, the brick is
-   half-built, and without it we describe something we do not have.
+1. **Record the video.** `docs/DEMO.md` has the shooting plan and the
+   benchmark takes ten minutes, so run it before the camera is on. Nothing
+   below matters if this does not happen.
+2. **Purge `docs/PLAN.md` from git history** with `git filter-repo` before the
+   repo goes public. It is out of the working tree and still in the history.
+3. **A real VPS**, so "machines you do not control" stops meaning "containers
+   on one laptop". Enrolment now makes this cheap: `request` there, `grant`
+   here, `claim` there.
 
-The rest — a real VPS, recovery, more slots — is bonus.
+Then, if there is time: rotate-on-eviction, recovery for mandates, more than
+three slots.
