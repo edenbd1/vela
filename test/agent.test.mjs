@@ -89,13 +89,16 @@ async function run(turns, { available = 50_000_000n } = {}) {
   const br = await serve(() => ({ ok: true, result: { account: "0.0.1", score: 12,
                                                       reason: "clean" } }));
 
+  // The scripted model. Each turn is one decision object, exactly as
+  // grammar-constrained decoding would produce it; `turns` is what it says,
+  // in order. Once the script runs out it reports, so a loop with a bug in it
+  // cannot spin forever inside a test.
   let turn = 0;
-  const llm = await serve(() => {
-    const t = turns[turn++];
-    if (!t) return { message: { role: "assistant", content: "I have nothing further." } };
-    if (typeof t === "string") return { message: { role: "assistant", content: t } };
-    return { message: { role: "assistant", content: "", tool_calls: t.map((c) => ({
-      function: { name: c[0], arguments: c[1] ?? {} } })) } };
+  const llm = await serve((path, body) => {
+    if (!body?.format) throw new Error("the agent asked for unconstrained output");
+    const t = turns[turn++] ?? { tool: "report", verdict: "script exhausted" };
+    return { message: { role: "assistant",
+                        content: JSON.stringify({ thought: "…", ...t }) } };
   });
 
   const out = await new Promise((resolve) => {
@@ -124,10 +127,10 @@ console.log("\nthe agent loop, against a chip that says no\n");
   // The moment the project exists for: it reaches past the ceiling, is
   // refused, reads why, and comes back with something that fits.
   const r = await run([
-    [["check_envelope"]],
-    [["buy_analysis", { tier: "exhaustive" }]],
-    [["buy_analysis", { tier: "synthesis" }]],
-    [["report", { verdict: "elevated risk, bought synthesis" }]],
+    { tool: "check_envelope" },
+    { tool: "buy_analysis", tier: "exhaustive" },
+    { tool: "buy_analysis", tier: "synthesis" },
+    { tool: "report", verdict: "elevated risk, bought synthesis" },
   ]);
   ok("a payment over the ceiling is refused", /REFUSED over_per_call/.test(r.text), r.text);
   ok("and the refusal carries a reason it can act on",
@@ -146,15 +149,18 @@ console.log("\nthe agent loop, against a chip that says no\n");
   // pushed back rather than believed — the failure observed on the first
   // real run against hermes3, where it announced 100 HBAR it did not have.
   const r = await run([
-    "The counterparties look fine and I have plenty of budget, roughly 100 HBAR.",
-    [["check_envelope"]],
-    [["buy_analysis", { tier: "triage" }]],
-    [["report", { verdict: "done" }]],
+    { tool: "report", verdict: "all fine, and I have roughly 100 HBAR left" },
+    { tool: "check_envelope" },
+    { tool: "buy_analysis", tier: "triage" },
+    { tool: "report", verdict: "done" },
   ]);
-  ok("prose in place of a tool call is pushed back",
-     /pushed back: you have not called check_envelope/.test(r.text), r.text);
+  ok("a verdict from an agent that never read its envelope is refused",
+     /report — refused/.test(r.text) &&
+     /you have not called check_envelope/.test(r.text), r.text);
   ok("and the run continues to a real payment", r.paid[0] === "triage",
      JSON.stringify(r.paid));
+  ok("the invented figure never becomes the verdict",
+     !/100 HBAR/.test(r.text), r.text);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -162,10 +168,12 @@ console.log("\nthe agent loop, against a chip that says no\n");
   // An agent that keeps asking for the same refused thing must not be able
   // to spend anything by persistence. Terminal means terminal.
   const r = await run([
-    [["buy_analysis", { tier: "exhaustive" }]],
-    [["buy_analysis", { tier: "exhaustive" }]],
-    [["buy_analysis", { tier: "exhaustive" }]],
-    [["buy_analysis", { tier: "exhaustive" }]],
+    { tool: "buy_analysis", tier: "exhaustive" },
+    { tool: "buy_analysis", tier: "exhaustive" },
+    { tool: "buy_analysis", tier: "exhaustive" },
+    { tool: "buy_analysis", tier: "exhaustive" },
+    { tool: "check_envelope" },
+    { tool: "report", verdict: "could not afford anything" },
   ]);
   ok("repeating a terminal refusal never succeeds", r.paid.length === 0,
      JSON.stringify(r.paid));
@@ -177,10 +185,10 @@ console.log("\nthe agent loop, against a chip that says no\n");
   // The envelope is nearly empty: the ceiling is not the binding rule, the
   // balance is, and the two refusals must not be confused.
   const r = await run([
-    [["check_envelope"]],
-    [["buy_analysis", { tier: "synthesis" }]],
-    [["buy_analysis", { tier: "triage" }]],
-    [["report", { verdict: "done cheaply" }]],
+    { tool: "check_envelope" },
+    { tool: "buy_analysis", tier: "synthesis" },
+    { tool: "buy_analysis", tier: "triage" },
+    { tool: "report", verdict: "done cheaply" },
   ], { available: 5_000_000n });
   ok("a payment under the ceiling but over the balance is refused",
      /REFUSED over_budget/.test(r.text), r.text);
@@ -196,8 +204,8 @@ console.log("\nthe agent loop, against a chip that says no\n");
   const gw = await serve(() => ({ slot: 0, mandate: null,
     note: "a human must grant one on the device" }));
   const br = await serve(() => ({ ok: true, result: { score: 1 } }));
-  const llm = await serve(() => ({ message: { role: "assistant", content: "",
-    tool_calls: [{ function: { name: "check_envelope", arguments: {} } }] } }));
+  const llm = await serve(() => ({ message: { role: "assistant",
+    content: JSON.stringify({ thought: "…", tool: "check_envelope" }) } }));
   const r = await new Promise((resolve) => {
     const p = spawn(process.execPath, [AGENT], {
       env: { ...process.env, OLLAMA: `http://127.0.0.1:${llm.port}`,
