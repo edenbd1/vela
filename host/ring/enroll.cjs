@@ -240,7 +240,7 @@ async function grant(pubkeyHex, name, seal) {
  * held the ring's private key: the derivation works because this host is a
  * member of the trustchain, and it stops working the moment it is not.
  */
-async function claim(bundlePath) {
+async function claim(bundlePath, quiet) {
   if (!existsSync(MEMBER_FILE)) {
     throw new Error("no member identity here — run `enroll.cjs request <name>` first");
   }
@@ -263,18 +263,25 @@ async function claim(bundlePath) {
       `It is either not a member of this trustchain, or it was removed.`);
   }
 
-  console.log(`'${me.name}' is a member of this trustchain`);
-  console.log(`  path        ${bundle.path}`);
-  console.log(`  key         ${hex(key).slice(0, 24)}…  derived, not received`);
+  if (!quiet) {
+    console.log(`'${me.name}' is a member of this trustchain`);
+    console.log(`  path        ${bundle.path}`);
+    console.log(`  key         ${hex(key).slice(0, 24)}…  derived, not received`);
+  }
 
   if (!bundle.sealed) {
-    console.log();
-    console.log("nothing was sealed into this bundle.");
+    if (!quiet) console.log("\nnothing was sealed into this bundle.");
+    else process.exit(1);
     return;
   }
 
   const value = Buffer.from(crypto.decrypt(
     key.slice(0, 32), unhex(bundle.sealed.nonce), unhex(bundle.sealed.data))).toString("utf8");
+
+  // --quiet writes the secret and nothing else, so a caller can do
+  // AGENT_TOKEN=$(… claim … --quiet). Everything explanatory goes to stdout
+  // in the normal mode and would corrupt that.
+  if (quiet) { process.stdout.write(value); return; }
 
   console.log();
   console.log("the sealed secret opens:");
@@ -329,14 +336,14 @@ async function main() {
   switch (verb) {
     case "request": return request(args[0] ?? `${process.env.USER ?? "host"}-agent`);
     case "grant":   return grant(args[0], args[1] ?? "enrolled-host", seal);
-    case "claim":   return claim(args[0]);
+    case "claim":   return claim(args[0], rest.includes("--quiet"));
     case "members": return members();
     case "forget":  return forget();
     default:
       console.log("usage:");
       console.log("  enroll.cjs request <name>                  on the host with no device");
       console.log("  enroll.cjs grant <pubkey> <name> [--seal V] where the ring is");
-      console.log("  enroll.cjs claim <bundle.json>             back on the host");
+      console.log("  enroll.cjs claim <bundle.json> [--quiet]   back on the host");
       console.log("  enroll.cjs members                         who is in");
       console.log("  enroll.cjs forget                          drop this host's identity");
       process.exit(2);

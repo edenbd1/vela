@@ -13,6 +13,27 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 docker build -q -t vela-agent . >/dev/null
 
+# Where the token comes from.
+#
+# AGENT_TOKEN in the environment is the direct path and the one that shows up
+# in a shell history. If this host has been enrolled in the Key Ring, prefer
+# the sealed bundle instead: the token is decrypted here, for the length of
+# one docker run, using a key this host derives from its own membership. It
+# was never on the wire in the clear and it is not in anyone's history.
+# The bundle is named for the *host* that was enrolled, not the agent — one
+# enrolled host may run several agents, and it is the host that holds the
+# membership. Its own name is in .member.json.
+MEMBER="../host/ring/.member.json"
+if [ -z "${VELA_BUNDLE:-}" ] && [ -f "$MEMBER" ]; then
+  VELA_BUNDLE="../host/ring/bundle-$(node -p "require('$MEMBER').name").json"
+fi
+BUNDLE="${VELA_BUNDLE:-}"
+if [ -z "${AGENT_TOKEN:-}" ] && [ -n "$BUNDLE" ] && [ -f "$BUNDLE" ]; then
+  echo "  token from the Key Ring bundle, not from the environment" >&2
+  AGENT_TOKEN="$(node ../host/ring/enroll.cjs claim "$BUNDLE" --quiet)"
+  export AGENT_TOKEN
+fi
+
 # Ollama binds to 127.0.0.1, and Docker Desktop's host.docker.internal proxies
 # through to the host loopback, so this works as written on macOS. On Linux,
 # where --add-host points at the real host IP, start it with
