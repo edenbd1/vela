@@ -87,6 +87,26 @@ async function paintFleet() {
     el.className = "agent" + (a.free ? " free" : "") +
                    (a.slot === selected ? " on" : "");
 
+    if (a.unknown) {
+      // Not free. The device did not answer, and saying "free" here would
+      // mean the console reports a wiped fleet for an app that is merely
+      // closed.
+      el.className = "agent free";
+      const name = document.createElement("div");
+      name.className = "name";
+      name.append(document.createTextNode(`Slot ${a.slot}`));
+      const tag = document.createElement("span");
+      tag.className = "slot";
+      tag.textContent = "unknown";
+      name.append(tag);
+      const why = document.createElement("div");
+      why.className = "unknown";
+      why.textContent = a.why ?? "the device did not answer";
+      el.append(name, why);
+      box.append(el);
+      continue;
+    }
+
     if (a.free) {
       el.innerHTML =
         `<div class="name">Slot ${a.slot}<span class="slot">free</span></div>` +

@@ -125,6 +125,11 @@ const server = createServer(async (req, res) => {
     );
 
     const agents = (mandates?.slots ?? []).map((slot) => {
+      // A slot the device would not answer for is not an empty slot. Drawing
+      // it as one would mean the console shows a fleet that has been wiped
+      // when the device is merely closed — and a wiped fleet is also what a
+      // successful revocation looks like.
+      if (slot.unknown) return { slot: slot.slot, unknown: true, why: slot.why };
       if (slot.free) return { slot: slot.slot, free: true };
       const known = byLabel.get(slot.label);
       return {

@@ -328,6 +328,9 @@ function contractTermsFrom(state) {
 
 /** The mandate, read from the chip on every call — it can be revoked mid-run. */
 async function envelope(slot = SLOT) {
+  if (!(await deviceReady())) {
+    throw new Error(signerError ?? "the device is not connected");
+  }
   const state = await signer.transport
     .exchange(Buffer.from([0xe0, 0x10, slot, 0, 0]))
     .catch((e) => (e.sw === 0xb102 ? null : Promise.reject(e)));
@@ -666,8 +669,17 @@ const routes = {
   "GET /mandates": async (_req, res) => {
     const slots = [];
     for (let i = 0; i < 3; i++) {
-      const e = await envelope(i).catch(() => null);
-      slots.push(e ? { slot: i, ...e } : { slot: i, free: true });
+      // "no mandate here" and "the device did not answer" are different
+      // facts, and collapsing them shows an empty fleet for a device that is
+      // merely closed — the most misleading picture this console could draw,
+      // since an empty fleet is also what a successful revocation looks like.
+      try {
+        const e = await envelope(i);
+        slots.push(e ? { slot: i, ...e } : { slot: i, free: true });
+      } catch (err) {
+        slots.push({ slot: i, unknown: true,
+                     why: String(err?.message ?? err).slice(0, 120) });
+      }
     }
     json(res, 200, {
       slots,
@@ -776,14 +788,49 @@ const server = createServer(async (req, res) => {
   }
 });
 
-signer = await createLedgerHederaSigner({
-  accountId: process.env.HEDERA_BUYER_ID,
-  slot: SLOT,
-  onDraw: (d) => { lastDraw = d; },
-});
+/**
+ * Connect to the device, and keep serving if it is not there.
+ *
+ * This used to be awaited at startup, so a closed Vela app took the whole
+ * gateway down — and with it the console, which is the only thing that could
+ * have said "open the Vela app". Losing the interface is the worst possible
+ * response to losing the device, and mid-demo it is the difference between
+ * one sentence and a dead screen.
+ *
+ * So it is attempted, and retried on the next request if it failed. The chip
+ * is still the authority; this only decides whether anyone gets told why.
+ */
+let signerError = null;
+
+async function connect() {
+  try {
+    signer = await createLedgerHederaSigner({
+      accountId: process.env.HEDERA_BUYER_ID,
+      slot: SLOT,
+      onDraw: (d) => { lastDraw = d; },
+    });
+    signerError = null;
+    return true;
+  } catch (e) {
+    signer = null;
+    signerError = String(e?.message ?? e);
+    return false;
+  }
+}
+
+/** True if the device is usable now, trying once more if it was not. */
+async function deviceReady() {
+  if (signer) return true;
+  return connect();
+}
+
+await connect();
 
 server.listen(PORT, () => {
   console.log(`vela gateway on :${PORT}`);
+  console.log(signer
+    ? `  device        connected`
+    : `  device        NOT connected — ${signerError}`);
   console.log(`  GET  /envelope   what the chip will allow`);
   console.log(`  POST /pay        {"service": "triage"} — buy it, if the chip agrees`);
   console.log(`  GET  /receipts   the public log`);
