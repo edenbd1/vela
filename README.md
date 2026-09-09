@@ -163,8 +163,27 @@ Then it screens three counterparties with a credential it has never seen, and
 pays for an inference with a signature made in a chip it cannot reach.
 
 The token is not nothing, and the inventory says so. It authenticates to one
-broker, unlocks one agent's grants, and is revoked by deleting a line. Key
-Ring membership replaces it once a device can enrol the host.
+broker, unlocks one agent's grants, and is revoked by deleting a line.
+
+It no longer arrives in the clear. If the host has been enrolled in the Key
+Ring, the token comes out of a sealed bundle instead of the environment —
+decrypted for the length of one `docker run`, with a key the host derives from
+its own trustchain membership:
+
+```console
+$ env -u AGENT_TOKEN ./agent/run.sh
+  token from the Key Ring bundle, not from the environment
+
+agent research-1  ·  hermes3:8b
+   1  check_envelope()
+      available=0.28 HBAR  max_per_payment=0.1 HBAR
+   3  buy_analysis(synthesis)
+      bought=synthesis  cost=0.08 HBAR
+```
+
+A container with no `--device`, no volume, no key and no plaintext token,
+running a model that decides, paying real HBAR authorised in a chip it cannot
+reach.
 
 ## An agent that actually decides
 
