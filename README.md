@@ -467,7 +467,24 @@ Key Ring — which required a physical Ledger at `ring init`. You cannot admit a
 host to the fleet without the device having admitted you first. Signing each
 `AddMember` on the device itself is one step further, and needs the Ledger
 Sync app rather than Vela; [docs/RING-ENROLL.md](docs/RING-ENROLL.md) says
-exactly what is and is not wired, including that rotate-on-eviction is not.
+exactly what is and is not wired.
+
+Eviction is the half that makes enrolment worth having, and it rotates:
+
+```console
+$ node host/ring/enroll.cjs revoke ci-runner
+'ci-runner' ejected
+  was         m/0'/16'/0'
+  now         m/0'/16'/1'   (the key rotated)
+  remaining   vps-frankfurt
+```
+
+The ejected host then gets `Cannot find key in the tree for the current
+device` on the new path, and the one that stayed derives the new key. Adding a
+member is cheap and needs no device; removing one closes the application
+stream and opens the next branch. Rotation is forward-only — a host that could
+read yesterday's data still can, because no later act reaches into a copy it
+already holds. What eviction buys is everything from now on.
 
 ## Run it
 

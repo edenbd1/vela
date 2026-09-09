@@ -181,10 +181,10 @@ async function grant(pubkeyHex, name, seal) {
 
   if (!state) {
     const kp = crypto.randomKeypair();
-    state = { ownerKey: hex(kp.privateKey), members: {} };
+    state = { ownerKey: hex(kp.privateKey), members: {}, increment: 0 };
     const owner = new SoftwareDevice(kp);
     tree = await StreamTree.createNewTree(owner, { topic: crypto.randomBytes(32) });
-    state.path = tree.getApplicationRootPath(APP_INDEX);
+    state.path = tree.getApplicationRootPath(APP_INDEX, 0);
     console.log(`new trustchain, sealed under the Key Ring as '${RING_KEY}'`);
   } else {
     tree = StreamTree.deserialize(state.tree);
@@ -298,12 +298,88 @@ function members() {
   const state = loadChain();
   if (!state) return console.log("no trustchain yet — grant someone first");
   console.log(`trustchain sealed under the Key Ring as '${RING_KEY}'`);
-  console.log(`path ${state.path}`);
+  console.log(`path ${state.path}${state.increment ? `   (rotated ${state.increment}×)` : ""}`);
   console.log();
   for (const [name, m] of Object.entries(state.members)) {
     console.log(`  ${name.padEnd(16)} ${m.publicKey.slice(0, 24)}…  ${m.at.slice(0, 10)}`);
   }
   if (!Object.keys(state.members).length) console.log("  (nobody)");
+}
+
+/**
+ * Eject a member, and rotate the key so it stays ejected.
+ *
+ * This is the half that makes enrolment worth having. Adding a member needs
+ * no device — it is cheap, do it for every runner you spin up. Removing one
+ * closes the current application stream and opens the next branch of the
+ * derivation tree, re-sharing it to everyone who remains. The ejected host
+ * derives nothing on the new path, however many bytes of the old bundle it
+ * kept.
+ *
+ * Rotation is forward-only, and pretending otherwise would be the dishonest
+ * version of this feature. A host that was a member yesterday can still open
+ * what was sealed to it yesterday, because it could already read that and no
+ * later act can reach into a copy it already has. What eviction buys is
+ * everything from now on. Anything long-lived has to be re-sealed on the new
+ * path — `grant <pubkey> <name> --seal <value>` does that for a member who
+ * is staying.
+ */
+async function revoke(name) {
+  const state = loadChain();
+  if (!state) throw new Error("no trustchain yet — nobody to eject");
+  if (!state.members[name]) {
+    throw new Error(
+      `'${name}' is not a member. In the ring: ` +
+      `${Object.keys(state.members).join(", ") || "(nobody)"}`);
+  }
+
+  const remaining = Object.entries(state.members).filter(([n]) => n !== name);
+  const owner = ownerOf(state);
+  let tree = StreamTree.deserialize(state.tree);
+
+  const oldPath = state.path;
+  tree = await tree.close(oldPath, owner);
+
+  const increment = (state.increment ?? 0) + 1;
+  const path = tree.getApplicationRootPath(APP_INDEX, increment);
+
+  for (const [n, m] of remaining) {
+    tree = await tree.share(path, owner, unhex(m.publicKey), n, Permissions.KEY_READER);
+  }
+
+  state.tree = tree.serialize();
+  state.path = path;
+  state.increment = increment;
+  delete state.members[name];
+  saveChain(state);
+
+  // Fresh bundles for whoever is left. Without a secret: re-sealing one is a
+  // deliberate act, and quietly re-issuing a token during an eviction is the
+  // sort of thing that should have to be typed.
+  const out = [];
+  for (const [n] of remaining) {
+    const file = join(HERE, `bundle-${n}.json`);
+    writeFileSync(file, JSON.stringify({ trustchain: state.tree, path, member: n }, null, 2));
+    out.push(file);
+  }
+
+  console.log(`'${name}' ejected`);
+  console.log(`  was         ${oldPath}`);
+  console.log(`  now         ${path}   (the key rotated)`);
+  console.log(`  remaining   ${remaining.map(([n]) => n).join(", ") || "(nobody)"}`);
+  console.log();
+  if (out.length) {
+    console.log("new bundles, without secrets in them:");
+    for (const f of out) console.log(`  ${f}`);
+    console.log();
+    console.log("re-seal anything they still need:");
+    console.log(`  node host/ring/enroll.cjs grant <pubkey> <name> --seal <value>`);
+  }
+  console.log();
+  console.log(`'${name}' derives nothing on ${path}, whatever it kept.`);
+  console.log(`It can still open what was sealed to it before now — rotation`);
+  console.log(`is forward-only, and no later act reaches into a copy someone`);
+  console.log(`already has.`);
 }
 
 /**
@@ -318,8 +394,9 @@ function forget() {
   if (!existsSync(MEMBER_FILE)) return console.log("no identity here to forget");
   unlinkSync(MEMBER_FILE);
   console.log("member identity deleted. Anything sealed to it is now unreadable here.");
-  console.log("Note: this does not eject the member from the ring — that is the");
-  console.log("owner's act, and it rotates the key. See docs/RING-ENROLL.md.");
+  console.log("Note: this does not eject the member from the ring. That is the");
+  console.log("owner's act, on the machine that holds it:");
+  console.log("  node host/ring/enroll.cjs revoke <name>");
 }
 
 async function main() {
@@ -337,6 +414,7 @@ async function main() {
     case "request": return request(args[0] ?? `${process.env.USER ?? "host"}-agent`);
     case "grant":   return grant(args[0], args[1] ?? "enrolled-host", seal);
     case "claim":   return claim(args[0], rest.includes("--quiet"));
+    case "revoke":  return revoke(args[0]);
     case "members": return members();
     case "forget":  return forget();
     default:
@@ -344,7 +422,8 @@ async function main() {
       console.log("  enroll.cjs request <name>                  on the host with no device");
       console.log("  enroll.cjs grant <pubkey> <name> [--seal V] where the ring is");
       console.log("  enroll.cjs claim <bundle.json> [--quiet]   back on the host");
-      console.log("  enroll.cjs members                         who is in");
+      console.log("  enroll.cjs revoke <name>                   eject, and rotate the key");
+  console.log("  enroll.cjs members                         who is in");
       console.log("  enroll.cjs forget                          drop this host's identity");
       process.exit(2);
   }

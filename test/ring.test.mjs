@@ -129,5 +129,49 @@ ok("the bundle does not carry the ring owner's private key",
      otherPath !== path, `${otherPath} vs ${path}`);
 }
 
+/* --------------------------------------------------------------------- */
+{
+  // Eviction, which is the half that makes enrolment worth having. Adding a
+  // member is cheap; removing one has to actually remove them, or the whole
+  // asymmetry is decoration.
+  const kept = crypto.randomKeypair();
+  const evicted = crypto.randomKeypair();
+
+  const oKp = crypto.randomKeypair();
+  const o = new SoftwareDevice(oKp);
+  let t = await StreamTree.createNewTree(o, { topic: crypto.randomBytes(32) });
+  const p0 = t.getApplicationRootPath(APP, 0);
+  t = await t.share(p0, o, kept.publicKey, "keeps", Permissions.KEY_READER);
+  t = await t.share(p0, o, evicted.publicKey, "goes", Permissions.KEY_READER);
+
+  const i0 = DerivationPath.toIndexArray(p0);
+  const before = await new SoftwareDevice(evicted).readKey(t, i0);
+  ok("before eviction, both members read the same key",
+     hex(before) === hex(await new SoftwareDevice(kept).readKey(t, i0)));
+
+  // Close the current application stream and open the next branch, re-shared
+  // to whoever remains.
+  t = await t.close(p0, o);
+  const p1 = t.getApplicationRootPath(APP, 1);
+  t = await t.share(p1, o, kept.publicKey, "keeps", Permissions.KEY_READER);
+  const i1 = DerivationPath.toIndexArray(p1);
+
+  const after = await new SoftwareDevice(kept).readKey(t, i1);
+  ok("eviction rotates the key", hex(after) !== hex(before));
+  ok("the member who stayed reads the new one", after.length === 64);
+
+  let got = null;
+  try { got = await new SoftwareDevice(evicted).readKey(t, i1); } catch { /* expected */ }
+  ok("the evicted member derives nothing on the new path", got === null,
+     got ? hex(got) : "");
+
+  // Stated rather than hidden: rotation is forward-only. A host that could
+  // read yesterday's data can still read the copy it already has, and no
+  // later act reaches into it.
+  const old = await new SoftwareDevice(evicted).readKey(t, i0).catch(() => null);
+  ok("and can still open what was sealed to it before — forward-only",
+     old !== null && hex(old) === hex(before));
+}
+
 console.log(`\n${pass}/${pass + fail} passed\n`);
 process.exit(fail ? 1 : 0);

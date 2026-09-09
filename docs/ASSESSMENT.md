@@ -77,11 +77,13 @@ derives the same key the owner does, and a host that was never admitted gets
 The trustchain's owner key is sealed under `wallet-cli ring encrypt`, so you
 cannot admit a host without the device having admitted you first.
 
-Two things are still not done and are now written down rather than implied:
-signing each `AddMember` on the device itself needs the Ledger Sync app rather
-than Vela, and rotate-on-eviction is not implemented — which is why the
-command that drops a local identity is called `forget` and not `revoke`.
-12 assertions in `test/ring.test.mjs`.
+`revoke` ejects a member and rotates the key: the application stream closes,
+the next branch opens, everyone who remains is re-shared. The ejected host
+derives nothing on the new path. Verified on the real ring.
+
+One thing is still not done and is written down rather than implied: signing
+each `AddMember` on the device itself needs the Ledger Sync app rather than
+Vela. 17 assertions in `test/ring.test.mjs`.
 
 ### 3. "Machines you do not control" are containers on one laptop
 

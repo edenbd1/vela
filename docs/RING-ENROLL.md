@@ -122,15 +122,45 @@ This is the same shape as the mandate itself: granting is deliberate and
 bounded, and the only way to take something away for good runs through
 hardware.
 
-### Rotation on removal is not implemented
+### Eviction, as built
 
-`removeMember` rotating the ring key is the SDK's behaviour and the reason the
-asymmetry is worth having. `enroll.cjs` does not do it: it has `forget`, which
-deletes *this* host's own identity, and that is deliberately a smaller thing
-with a smaller name. Ejecting someone else is the owner's act, it needs
-`StreamTree.close` plus re-sharing to everyone who remains, and it is not
-written yet. Saying `revoke` for something that only forgets locally would be
-the worst of both.
+```console
+$ node host/ring/enroll.cjs revoke ci-runner
+'ci-runner' ejected
+  was         m/0'/16'/0'
+  now         m/0'/16'/1'   (the key rotated)
+  remaining   vps-frankfurt
+```
+
+Closing the current application stream and opening the next branch of the
+derivation tree, re-shared to everyone who remains. Then, on the ejected host:
+
+```console
+$ node host/ring/enroll.cjs claim bundle-vps-frankfurt.json
+this host cannot derive the key: Cannot find key in the tree for the current device
+```
+
+and on the one that stayed:
+
+```console
+  path        m/0'/16'/1'
+  key         c233765b786a33beed18d16a…  derived, not received
+```
+
+**Rotation is forward-only, and pretending otherwise would be the dishonest
+version of this feature.** A host that was a member yesterday can still open
+what was sealed to it yesterday: it could already read that, and no later act
+reaches into a copy someone already has. What eviction buys is everything from
+now on. Anything long-lived has to be re-sealed on the new path —
+`grant <pubkey> <name> --seal <value>` for a member who is staying.
+
+`revoke` rotates and re-issues bundles **without** secrets in them. Quietly
+re-sealing a token during an eviction is the sort of thing that should have to
+be typed.
+
+`forget` is the smaller, local thing: it deletes *this* host's own identity
+and ejects nobody. Two names, because one of them needs the owner and one does
+not.
 
 ## The cost, stated plainly
 
