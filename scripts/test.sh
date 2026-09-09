@@ -22,6 +22,10 @@ if [ "${1:-}" = "--device" ]; then
     echo "no bridge on :8099 — start host/bridge.py, with Vela open" >&2
     exit 1
   fi
+  echo "host logic"
+  node --test test/logic.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^# /  /'
+  node --test test/logic.test.mjs >/dev/null 2>&1 || exit 1
+  echo ""
   exec python3 test/chip_test.py
 fi
 
@@ -30,6 +34,18 @@ NAME="vela-test"
 
 cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
+
+# The host-side logic first: it needs nothing, runs in a fifth of a second,
+# and covers the two places on this side where being wrong is expensive —
+# what a broker will let an agent make it fetch, and whether a published
+# chain adds up. No reason to boot an emulator to find out one of those broke.
+echo "host logic"
+if ! node --test test/logic.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^# /  /'; then
+  echo "  host-side tests failed" >&2
+  exit 1
+fi
+node --test test/logic.test.mjs >/dev/null 2>&1 || exit 1
+echo ""
 
 if [ ! -f app/bin/app.elf ]; then
   echo "no build — run ./scripts/build.sh first" >&2

@@ -353,13 +353,20 @@ re-enrolment.
 
 Open `http://127.0.0.1:4050` to see the fleet and stop one of them.
 
-`./scripts/test.sh` asserts what the chip enforces — seventeen cases against
-Speculos, including the four refusals, the contract-call bindings, settlement
-arithmetic, label validation, and expiry. It boots the emulator, runs, and
-tears it down; no device and no tapping.
+`./scripts/test.sh` runs both suites. Seventeen host-side assertions in a
+fifth of a second — what a broker will let an agent make it fetch, and whether
+a published chain adds up — then seventeen against the chip on Speculos: the
+four refusals, the contract-call bindings, settlement arithmetic, label
+validation, and expiry. It boots the emulator, runs, and tears it down; no
+device and no tapping. `--device` runs the same chip assertions on the Flex,
+which is where they have also passed.
 
 ```console
 $ ./scripts/test.sh
+host logic
+  pass 17
+  fail 0
+
   PASS  a payee not on the allowlist
   PASS  the same swap, proceeds to an attacker
   PASS  a mandate with an expiry can be granted

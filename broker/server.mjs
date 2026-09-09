@@ -29,6 +29,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { backingFor, reveal, PLAINTEXT, RING } from "./secrets.mjs";
+import { buildUrl } from "./capability.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.BROKER_PORT ?? 4060);
@@ -112,36 +113,6 @@ const readBody = (req) =>
     req.on("data", (c) => (b += c));
     req.on("end", () => { try { resolve(JSON.parse(b || "{}")); } catch { resolve(null); } });
   });
-
-/**
- * Build the upstream URL from the manifest template and validated params.
- *
- * Every placeholder must be filled, every supplied param must be declared,
- * and each value must match its declared pattern. Anything else is refused
- * before a secret is touched — the point is that an invalid request never
- * gets far enough to have a credential attached to it.
- */
-function buildUrl(cap, params) {
-  const declared = Object.keys(cap.params ?? {});
-  for (const key of Object.keys(params ?? {})) {
-    if (!declared.includes(key)) {
-      throw new Error(`parameter '${key}' is not part of this capability`);
-    }
-  }
-  let url = cap.url;
-  for (const key of declared) {
-    const value = params?.[key];
-    if (value === undefined) throw new Error(`missing parameter '${key}'`);
-    if (!new RegExp(cap.params[key]).test(String(value))) {
-      throw new Error(`parameter '${key}' does not match ${cap.params[key]}`);
-    }
-    url = url.replaceAll(`{${key}}`, encodeURIComponent(String(value)));
-  }
-  if (/\{[a-z_]+\}/i.test(url)) {
-    throw new Error("the capability template has an unfilled placeholder");
-  }
-  return url;
-}
 
 const routes = {
   /**
