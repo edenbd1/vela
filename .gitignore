@@ -24,6 +24,13 @@ out/
 # Member private key for the Key Ring — never commit
 host/ring/.member.json
 
+# The trustchain is sealed under the Key Ring, so committing it would leak
+# nothing — but it is the fleet's membership roster, and a roster is worth
+# reading even when the keys in it are not. Bundles carry sealed secrets,
+# which are only as private as the members list they were sealed for.
+host/ring/trustchain.enc
+host/ring/bundle-*.json
+
 # Node
 hedera/node_modules/
 host/ring/node_modules/

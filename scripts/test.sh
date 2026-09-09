@@ -35,6 +35,16 @@ if ! node test/agent.test.mjs | tail -2 | sed 's/^/  /'; then
   echo "  agent tests failed" >&2
   exit 1
 fi
+
+# Enrolment. The trustchain arithmetic is the same whether the owner key came
+# out of the Key Ring or out of the test, so the properties that matter — a
+# member derives rather than receives, a stranger cannot — are checkable with
+# no device attached.
+echo "ring enrolment"
+if ! node test/ring.test.mjs | tail -2 | sed 's/^/  /'; then
+  echo "  enrolment tests failed" >&2
+  exit 1
+fi
   exec python3 test/chip_test.py
 fi
 
@@ -62,6 +72,16 @@ node --test test/logic.test.mjs >/dev/null 2>&1 || exit 1
 echo "the agent loop"
 if ! node test/agent.test.mjs | tail -2 | sed 's/^/  /'; then
   echo "  agent tests failed" >&2
+  exit 1
+fi
+
+# Enrolment. The trustchain arithmetic is the same whether the owner key came
+# out of the Key Ring or out of the test, so the properties that matter — a
+# member derives rather than receives, a stranger cannot — are checkable with
+# no device attached.
+echo "ring enrolment"
+if ! node test/ring.test.mjs | tail -2 | sed 's/^/  /'; then
+  echo "  enrolment tests failed" >&2
   exit 1
 fi
 
