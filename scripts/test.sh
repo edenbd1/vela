@@ -25,7 +25,16 @@ if [ "${1:-}" = "--device" ]; then
   echo "host logic"
   node --test test/logic.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^# /  /'
   node --test test/logic.test.mjs >/dev/null 2>&1 || exit 1
-  echo ""
+
+# The agent loop. Refusal-handling is a property of the loop, not of the
+# model's mood on the day, so it is tested against a fake gateway, a fake
+# broker and a scripted model on ephemeral ports — with the real
+# agent/reason.mjs run as a child process exactly as it ships.
+echo "the agent loop"
+if ! node test/agent.test.mjs | tail -2 | sed 's/^/  /'; then
+  echo "  agent tests failed" >&2
+  exit 1
+fi
   exec python3 test/chip_test.py
 fi
 
@@ -45,7 +54,16 @@ if ! node --test test/logic.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^#
   exit 1
 fi
 node --test test/logic.test.mjs >/dev/null 2>&1 || exit 1
-echo ""
+
+# The agent loop. Refusal-handling is a property of the loop, not of the
+# model's mood on the day, so it is tested against a fake gateway, a fake
+# broker and a scripted model on ephemeral ports — with the real
+# agent/reason.mjs run as a child process exactly as it ships.
+echo "the agent loop"
+if ! node test/agent.test.mjs | tail -2 | sed 's/^/  /'; then
+  echo "  agent tests failed" >&2
+  exit 1
+fi
 
 if [ ! -f app/bin/app.elf ]; then
   echo "no build — run ./scripts/build.sh first" >&2
