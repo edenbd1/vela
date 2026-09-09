@@ -27,32 +27,84 @@ From the Ledger Sync SDK reference:
 That asymmetry is the whole design, and it points the right way: it is easy to
 grant a machine access, and it takes the physical device to take it away.
 
-## The flow
+## The flow, as built
 
-```
-  VPS                              laptop (already a member)        Ledger
-   │                                        │                          │
-   │ 1. initMemberCredentials()             │                          │
-   │    keypair generated here;             │                          │
-   │    the private half never leaves       │                          │
-   │                                        │                          │
-   │ 2. ───── public key ─────────────────► │                          │
-   │         (a member id, not a secret)    │                          │
-   │                                        │                          │
-   │                                        │ 3. addMember(pubkey)     │
-   │                                        │    no device needed      │
-   │                                        │                          │
-   │ 4. restoreTrustchain()                 │                          │
-   │    derives the ring keys, can now      │                          │
-   │    decrypt what was sealed to the ring │                          │
-   │                                        │                          │
-   │                                        │ 5. removeMember() ─────► │ tap
-   │ ✗ ejected, and the key rotates         │                          │
+Three commands on two machines. This is a real run.
+
+**On the host with no device** — it makes its identity and sends 33 bytes:
+
+```console
+$ node host/ring/enroll.cjs request vps-frankfurt
+member identity created for 'vps-frankfurt'
+  private key stays in host/ring/.member.json (0600) and does not travel
+  public key  028b209a51be33ed26f913159abffeea40cc51d263c4d529c6444eae1a9cee6fa9
 ```
 
-Step 2 is the only thing that crosses the network, and it is a public key. No
-secret is ever copied to the VPS — which is the difference between this and
-the obvious shortcut of scp'ing member credentials over.
+**Where the ring is** — it admits the host and seals that agent's broker token
+to a key both of them can derive:
+
+```console
+$ node host/ring/enroll.cjs grant 028b209a…6fa9 vps-frankfurt --seal "$AGENT_TOKEN"
+Fetching key from your Ledger Key Ring…
+Encrypting with key "vela-trustchain"…
+'vps-frankfurt' admitted as a key reader
+  member      028b209a51be33ed26f91315…
+  path        m/0'/16'/0'
+  in the ring vps-frankfurt
+
+bundle written to host/ring/bundle-vps-frankfurt.json
+  it carries the trustchain and one sealed secret. Neither the ring's
+  private key nor the member's is in it — send it over anything.
+```
+
+**Back on the host** — it derives the key from its own membership:
+
+```console
+$ node host/ring/enroll.cjs claim host/ring/bundle-vps-frankfurt.json
+'vps-frankfurt' is a member of this trustchain
+  path        m/0'/16'/0'
+  key         c7a1954f928a23efaf6f5b09…  derived, not received
+
+the sealed secret opens:
+
+   L1xVsaV9p4EJb-Xi0N1nG_f7VoxOGDG2
+```
+
+Two things travelled: a public key one way, and a bundle the other. The bundle
+carries the trustchain and one ciphertext. It carries neither private key, and
+it does not carry the derived key either — `readKey` computes it from the
+tree and the member's own secret.
+
+A host that was never admitted gets:
+
+```
+Cannot find key in the tree for the current device
+```
+
+which is why the bundle is safe to send over anything at all.
+
+### What roots this in the device
+
+The trustchain's owner key is not kept in the clear. It is sealed with
+`wallet-cli ring encrypt --key vela-trustchain`, so admitting a host requires
+being able to decrypt under the Key Ring — which requires this machine to be a
+ring member, which required a physical Ledger at `ring init`.
+
+You cannot admit a host to the fleet without the device having admitted you
+first.
+
+That is one level of indirection from the device signing each `AddMember`
+block itself. The library ships an `ApduDevice` that would do exactly that,
+and it speaks to the **Ledger Sync** app — a different app on the same
+device. Wiring it means the operator quitting Vela, opening Ledger Sync, and
+coming back. It is worth doing and it is not something to pretend we did.
+
+### What it replaces
+
+Before this, the agent's token reached its container as
+`-e AGENT_TOKEN=<plaintext>`: in the shell history, in the container's
+environment, and in anything on the host that reads `/proc`. Now it arrives
+sealed to a key the host derives from membership it can lose.
 
 ## Why revocation is the interesting half
 
@@ -69,6 +121,16 @@ So the two ends of a host's life have different costs on purpose:
 This is the same shape as the mandate itself: granting is deliberate and
 bounded, and the only way to take something away for good runs through
 hardware.
+
+### Rotation on removal is not implemented
+
+`removeMember` rotating the ring key is the SDK's behaviour and the reason the
+asymmetry is worth having. `enroll.cjs` does not do it: it has `forget`, which
+deletes *this* host's own identity, and that is deliberately a smaller thing
+with a smaller name. Ejecting someone else is the owner's act, it needs
+`StreamTree.close` plus re-sharing to everyone who remains, and it is not
+written yet. Saying `revoke` for something that only forgets locally would be
+the worst of both.
 
 ## The cost, stated plainly
 

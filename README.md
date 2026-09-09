@@ -406,10 +406,41 @@ control, so it is the home screen rather than a settings sub-page.
 
 ### Key Ring enrolment
 
-`host/ring/enroll.cjs` runs the Ledger Key Ring Protocol ceremony: an agent
-*requests* membership, and a human *grants* it on the device. Removal requires
-the device and rotates the key, so revocation is not a database update someone
-can undo.
+Ledger's second ask: *"Bring the Key Ring to hosts with no USB port: enroll a
+VPS, a CI runner, or a hosted agent."* `wallet-cli ring init` needs a device,
+and a VPS has nowhere to plug one in. The protocol does not.
+
+[`host/ring/enroll.cjs`](host/ring/enroll.cjs) is three commands on two
+machines:
+
+```console
+$ node host/ring/enroll.cjs request vps-frankfurt          # on the VPS
+  public key  028b209a51be33ed26f913159abffeea40cc51d263c4d529c6444eae1a9cee6fa9
+
+$ node host/ring/enroll.cjs grant 028b209a…6fa9 vps-frankfurt --seal "$TOKEN"
+Fetching key from your Ledger Key Ring…
+'vps-frankfurt' admitted as a key reader
+
+$ node host/ring/enroll.cjs claim bundle-vps-frankfurt.json # back on the VPS
+  key         c7a1954f928a23efaf6f5b09…  derived, not received
+```
+
+A public key goes one way and a bundle comes back. The bundle carries the
+trustchain and one ciphertext — neither private key is in it, and neither is
+the derived key: the host computes that from the tree and its own secret. A
+host that was never admitted gets `Cannot find key in the tree for the current
+device`, which is why the bundle is safe to send over anything.
+
+This replaces handing a container `-e AGENT_TOKEN=<plaintext>`, where the
+token sits in an environment anything on the host can read.
+
+The trustchain's owner key is sealed with `wallet-cli ring encrypt --key
+vela-trustchain`, so admitting a host requires being able to decrypt under the
+Key Ring — which required a physical Ledger at `ring init`. You cannot admit a
+host to the fleet without the device having admitted you first. Signing each
+`AddMember` on the device itself is one step further, and needs the Ledger
+Sync app rather than Vela; [docs/RING-ENROLL.md](docs/RING-ENROLL.md) says
+exactly what is and is not wired, including that rotate-on-eviction is not.
 
 ## Run it
 
