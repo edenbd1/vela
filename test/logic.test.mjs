@@ -144,3 +144,83 @@ test("a draw record without a chip signature reports null, not an empty string",
   assert.equal(r.a, null);
   assert.equal(r.s, null);
 });
+
+/* ------------------------------------------------------------------------ *
+ * Values that change under a running process.
+ *
+ * The gateway anchored three agents' payments to a topic that .env had
+ * stopped naming twenty minutes earlier, because dotenv reads once at import
+ * and fleet.mjs rewrites the file. The chain was intact on a topic nobody was
+ * reading, and the verifier correctly reported an empty log while money was
+ * visibly moving.
+ * ------------------------------------------------------------------------ */
+test("live() reads .env as it is now, not as it was at import", async (t) => {
+  const { writeFileSync, readFileSync, existsSync, unlinkSync } = await import("node:fs");
+  const { join, dirname } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const ENV = join(ROOT, ".env");
+
+  const had = existsSync(ENV);
+  const before = had ? readFileSync(ENV, "utf8") : null;
+  t.after(() => { if (had) writeFileSync(ENV, before); else unlinkSync(ENV); });
+
+  const { live, liveTopic } = await import("../hedera/live-env.mjs");
+
+  writeFileSync(ENV, "HEDERA_TOPIC_ID=0.0.111\n");
+  assert.equal(liveTopic(), "0.0.111");
+
+  // The case that mattered: another process rewrites the file while this one
+  // is running. Nothing is re-imported and nothing is restarted.
+  writeFileSync(ENV, "HEDERA_TOPIC_ID=0.0.222\n");
+  assert.equal(liveTopic(), "0.0.222", "a rotated topic must be picked up");
+
+  // Last assignment wins within the file, as dotenv does — fleet.mjs comments
+  // out superseded lines rather than deleting them.
+  writeFileSync(ENV,
+    "# superseded, kept for provenance: HEDERA_TOPIC_ID=0.0.222\n" +
+    "HEDERA_TOPIC_ID=0.0.333\n");
+  assert.equal(liveTopic(), "0.0.333", "a commented-out line is not a value");
+
+  assert.equal(live("NOT_IN_THE_FILE", "fallback"), "fallback");
+});
+
+/* ------------------------------------------------------------------------ *
+ * The epoch carries its topic.
+ *
+ * They have to rotate together or not at all. When they did not, one
+ * envelope's first draw landed on one topic and its second on another, and
+ * the verifier read a draw numbered 2 with no 1 in front of it.
+ * ------------------------------------------------------------------------ */
+test("a grant epoch remembers the topic it was opened with", async (t) => {
+  const { writeFileSync, readFileSync, existsSync, unlinkSync } = await import("node:fs");
+  const { join, dirname } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const FILE = join(ROOT, ".vela-instance");
+
+  const had = existsSync(FILE);
+  const before = had ? readFileSync(FILE, "utf8") : null;
+  t.after(() => { if (had) writeFileSync(FILE, before); else if (existsSync(FILE)) unlinkSync(FILE); });
+
+  const { openInstance, currentInstance } = await import("../hedera/instance.mjs");
+
+  const id = openInstance("0.0.4242");
+  const cur = currentInstance();
+  assert.equal(cur.id, id);
+  assert.equal(cur.topic, "0.0.4242", "the topic must survive the round trip");
+  assert.equal(cur.minted, false);
+
+  // The old format: a bare timestamp, no topic. Reading it rather than
+  // minting a new epoch matters — a fresh epoch would split the chain of a
+  // mandate still live in the chip, which is what this file prevents.
+  writeFileSync(FILE, "1788000000");
+  const old = currentInstance();
+  assert.equal(old.id, "1788000000", "an old bare-timestamp file is still an epoch");
+  assert.equal(old.topic, null);
+  assert.equal(old.minted, false, "reading an old file must not mint a new epoch");
+
+  // No file at all: mint, and say so.
+  unlinkSync(FILE);
+  assert.equal(currentInstance().minted, true);
+});

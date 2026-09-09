@@ -87,7 +87,10 @@ for (const a of FLEET) {
 // agent id, different budget — so they separate in the log on their own; the
 // epoch is what separates *this* fleet from the last one granted with the
 // same terms.
-const instance = openInstance();
+// The epoch carries the topic that was made for it a moment ago. A gateway
+// already running then anchors to this one rather than to whatever it read
+// from .env when it started.
+const instance = openInstance(topic);
 console.log(`\n  grant epoch ${instance}`);
 console.log(`  every draw from now on is anchored under it, on ${topic},`);
 console.log(`  and every chain there starts at draw 1.`);

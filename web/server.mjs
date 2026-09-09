@@ -34,6 +34,18 @@ const env = (() => {
   return { ...out, ...process.env };
 })();
 
+/** One variable, from .env as it is right now. See hedera/live-env.mjs. */
+function liveEnv(key) {
+  try {
+    let found;
+    for (const line of readFileSync(join(ROOT, ".env"), "utf8").split("\n")) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
+      if (m && m[1] === key) found = m[2].trim();
+    }
+    return found ?? null;
+  } catch { return null; }
+}
+
 const PORT = Number(env.WEB_PORT ?? 4050);
 const GATEWAY = `http://127.0.0.1:${env.GATEWAY_PORT ?? 4030}`;
 const BROKER = `http://127.0.0.1:${env.BROKER_PORT ?? 4060}`;
@@ -106,7 +118,10 @@ const server = createServer(async (req, res) => {
   if (path === "/api/config") {
     return send(res, 200, "application/json", JSON.stringify({
       seller: SELLER,
-      topic: env.HEDERA_TOPIC_ID ?? null,
+      // Re-read rather than served from the snapshot taken at startup: the
+      // topic rotates whenever the fleet is granted, and a console linking to
+      // a stale one sends a judge to an empty log.
+      topic: liveEnv("HEDERA_TOPIC_ID") ?? env.HEDERA_TOPIC_ID ?? null,
       buyer: env.HEDERA_BUYER_ID ?? null,
       tiers: [
         { path: "/infer/triage", label: "triage", price: "0.01" },

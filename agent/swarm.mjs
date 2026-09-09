@@ -36,22 +36,41 @@ const DIM = "\x1b[2m", OFF = "\x1b[0m";
  * three copies of one run. These are the asks, not the limits — the limits
  * are in the chip and none of these agents can read them from here.
  */
+/**
+ * Different agents want different things and run different models.
+ *
+ * The model choice is not decoration. Three 8B models competing for one
+ * runtime takes about four minutes and degrades all of them — the first run
+ * of this had research-1 call check_envelope seven times in a row under that
+ * contention. Hosts you do not control would not be running the same weights
+ * anyway. So the agent whose refusal is the point gets the capable model, and
+ * the two background jobs get the small fast one, which is what an operator
+ * would actually do.
+ */
 const BRIEFS = {
-  "research-1":
-    "Assess counterparty risk on 0.0.10388937. Screen it, then buy the " +
-    "exhaustive analysis — I want the most thorough result available, " +
-    "nothing less. Then report a verdict.",
-  "ops-nightly":
-    "Do the cheapest useful check on 0.0.10388937 and report. Spend as " +
-    "little as possible; this runs every night.",
-  "watcher":
-    "Screen 0.0.10388937 and 0.0.66666666, then buy whatever analysis you " +
-    "can afford and report which one is riskier.",
+  "research-1": {
+    model: process.env.AGENT_MODEL ?? "hermes3:8b",
+    task: "Assess counterparty risk on 0.0.10388937. Screen it, then buy the " +
+          "exhaustive analysis — I want the most thorough result available, " +
+          "nothing less. Then report a verdict.",
+  },
+  "ops-nightly": {
+    model: "llama3.2:3b",
+    task: "Do the cheapest useful check on 0.0.10388937 and report. Spend as " +
+          "little as possible; this runs every night.",
+  },
+  "watcher": {
+    model: "llama3.2:3b",
+    task: "Screen 0.0.10388937 and 0.0.66666666, then buy whatever analysis " +
+          "you can afford and report which one is riskier.",
+  },
 };
 
-const DEFAULT_BRIEF =
-  "Screen 0.0.10388937 and buy the most thorough analysis your envelope " +
-  "allows. Report a verdict.";
+const DEFAULT = {
+  model: process.env.AGENT_MODEL ?? "hermes3:8b",
+  task: "Screen 0.0.10388937 and buy the most thorough analysis your " +
+        "envelope allows. Report a verdict.",
+};
 
 /** Whatever token this label has, from wherever it is kept. */
 function tokenFor(label) {
@@ -95,14 +114,16 @@ const chosen = live
 console.log();
 console.log(`${chosen.length} agent(s), one chip\n`);
 for (const [i, a] of chosen.entries()) {
+  const b = BRIEFS[a.label] ?? DEFAULT;
   console.log(`  ${TINT[i % TINT.length]}${a.label.padEnd(14)}${OFF}` +
-              `${DIM}slot ${a.slot}${OFF}`);
+              `${DIM}slot ${a.slot}   ${b.model}${OFF}`);
 }
 console.log();
 console.log(`${DIM}They do not know about each other. The device does.${OFF}\n`);
 
 /** Run one, streaming its lines out prefixed so the interleaving reads. */
 function run(agent, tint) {
+  const brief = BRIEFS[agent.label] ?? DEFAULT;
   return new Promise(async (resolve) => {
     const tok = tokenFor(agent.label);
     if (!tok) {
@@ -127,7 +148,8 @@ function run(agent, tint) {
       env: { ...process.env,
              AGENT_NAME: agent.label,
              AGENT_TOKEN: token,
-             AGENT_TASK: BRIEFS[agent.label] ?? DEFAULT_BRIEF,
+             AGENT_MODEL: brief.model,
+             AGENT_TASK: brief.task,
              AGENT_STEPS: process.env.AGENT_STEPS ?? "10" },
       stdio: ["ignore", "pipe", "pipe"],
     });

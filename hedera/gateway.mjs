@@ -29,6 +29,7 @@ import { ExactHederaScheme } from "@x402/hedera/exact/client";
 
 import { createLedgerHederaSigner } from "./ledger-signer.mjs";
 import { drawRecord, makeAnchor, mandateDigest, releaseRecord } from "./anchor.mjs";
+import { liveTopic } from "./live-env.mjs";
 import { currentInstance } from "./instance.mjs";
 import { createHash } from "node:crypto";
 import { randomBytes } from "node:crypto";
@@ -379,7 +380,12 @@ function recordFields(envelopeBefore, accepts, price) {
 
 async function submit(record) {
   const anchor = makeAnchor({
-    topicId: process.env.HEDERA_TOPIC_ID,
+    // The topic that belongs to this grant epoch, not whatever .env said when
+    // this process started — fleet.mjs rotates both together and a gateway
+    // that was already running would otherwise keep writing to the old one.
+    // Falling back to .env covers a mandate granted before epochs carried a
+    // topic; that chain is already whole wherever it started.
+    topicId: currentInstance().topic ?? liveTopic(),
     operatorId: process.env.HEDERA_TREASURY_ID,
     operatorKey: process.env.HEDERA_TREASURY_KEY,
   });
@@ -390,7 +396,8 @@ async function submit(record) {
   }
 }
 
-const publishable = (e) => process.env.HEDERA_TOPIC_ID && lastDraw && e?.payees;
+const publishable = (e) =>
+  (currentInstance().topic ?? liveTopic()) && lastDraw && e?.payees;
 
 async function publishDraw(before, accepts, price, tx) {
   if (!publishable(before)) return null;
@@ -759,7 +766,7 @@ const routes = {
   },
 
   "GET /receipts": async (_req, res) => {
-    const topic = process.env.HEDERA_TOPIC_ID;
+    const topic = currentInstance().topic ?? liveTopic();
     if (!topic) return json(res, 200, { receipts: [], note: "no topic configured" });
     const url = `${process.env.HEDERA_MIRROR}/topics/${topic}/messages?limit=25&order=desc`;
     const r = await fetch(url).then((x) => x.json()).catch(() => null);
