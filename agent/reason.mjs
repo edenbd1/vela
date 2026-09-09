@@ -34,6 +34,15 @@ const TOKEN = process.env.AGENT_TOKEN ?? "";
 const NAME = process.env.AGENT_NAME ?? "research-1";
 const MAX_STEPS = Number(process.env.AGENT_STEPS ?? 12);
 
+// Where this agent says what it is doing, if anywhere.
+//
+// The console is not watching this process — it cannot, because the point is
+// that the process runs somewhere else. So the agent reports. What it sends
+// is what it decided and what came back, never a credential and never its
+// token, because a feed that carried those would undo the inventory this
+// agent prints about itself.
+const EVENTS = process.env.VELA_EVENTS ?? "";
+
 const COUNTERPARTIES = (process.env.COUNTERPARTIES ??
   "0.0.10388937,0.0.66666666,0.0.10365984").split(",");
 
@@ -200,6 +209,23 @@ const messages = [
       `thorough analysis your envelope actually allows, and report a verdict.` },
 ];
 
+/**
+ * Tell the console, and never let it matter.
+ *
+ * Fire and forget with a short timeout: an agent holding a mandate must not
+ * stall because a dashboard is down, and must not fail differently depending
+ * on whether anyone is watching.
+ */
+function report(event) {
+  if (!EVENTS) return;
+  fetch(EVENTS, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ agent: NAME, at: Date.now(), ...event }),
+    signal: AbortSignal.timeout(1500),
+  }).catch(() => {});
+}
+
 /** Only the fields that tool takes, so the log reads like what happened. */
 function callSig(d) {
   const arg = d.tool === "screen_counterparty" ? d.account
@@ -214,6 +240,8 @@ console.log(`  it holds no keys. It decides; the chip decides whether it may.\n`
 let checked = false;    // it read its envelope
 let attempted = false;  // it tried to, whatever came back
 let pushbacks = 0;
+let lastCall = null;    // the same decision, over and over
+let repeats = 0;
 
 for (let step = 1; step <= MAX_STEPS && finished === null; step++) {
   let res;
@@ -270,8 +298,41 @@ for (let step = 1; step <= MAX_STEPS && finished === null; step++) {
     continue;
   }
 
-  console.log(`  ${String(step).padStart(2)}  ${callSig(d)}`);
+  // A model that keeps making the same call is not deciding, it is stuck.
+  // Seen for real: research-1, refused at the ceiling with three other models
+  // competing for the same runtime, then called check_envelope seven times
+  // and never recovered. The envelope had not moved and could not — it is
+  // read from a chip that nothing in this process can change.
+  //
+  // Worth being exact about what this is. It is not a spending control: the
+  // chip already refused, and none of these repeats could have cost anything.
+  // It is the loop noticing that a turn is being wasted, and saying so in the
+  // one place the model is listening.
+  const sig = callSig(d);
+  repeats = sig === lastCall ? repeats + 1 : 0;
+  lastCall = sig;
+  if (repeats >= 2) {
+    console.log(`  ${String(step).padStart(2)}  ${sig}  — same call ${repeats + 1}×`);
+    console.log(`      pushed back: nothing about it has changed`);
+    report({ kind: "stuck", step, tool: d.tool, call: sig,
+             why: `called ${sig} ${repeats + 1} times with the same result` });
+    messages.push(res.message, { role: "user", content:
+      `You have called ${sig} ${repeats + 1} times and the answer has not ` +
+      `changed. It will not: nothing you can do from here alters it. Choose ` +
+      `a different tool, or call report.` });
+    if (repeats >= 4) {
+      // Told twice and still repeating. Ending the run is more honest than
+      // burning the remaining steps to produce the same line again.
+      console.log(`      giving up on this run`);
+      break;
+    }
+    continue;
+  }
+
+  console.log(`  ${String(step).padStart(2)}  ${sig}`);
   if (d.thought) console.log(`      · ${d.thought.slice(0, 100)}`);
+  report({ kind: "decision", step, tool: d.tool, call: sig,
+           thought: (d.thought ?? "").slice(0, 240) });
 
   const out = await runTool(d);
   if (d.tool === "check_envelope") {
@@ -287,12 +348,24 @@ for (let step = 1; step <= MAX_STEPS && finished === null; step++) {
           .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`)
           .join("  ");
   if (d.tool !== "report") console.log(`      ${summary}`);
+  report({
+    kind: out.refused ? "refused" : out.error ? "error" : "result",
+    step, tool: d.tool,
+    reason: out.refused ?? null,
+    why: out.why ?? out.error ?? null,
+    // The one number worth putting on a screen, and it comes from the chip.
+    cost: out.cost ?? null,
+    left: out.left ?? out.available ?? null,
+    summary: summary.slice(0, 200),
+  });
 
   messages.push(res.message,
                 { role: "user", content: `Result of ${d.tool}: ${JSON.stringify(out)}` });
 }
 
 console.log();
+report({ kind: "done", verdict: (finished ?? "").slice(0, 300),
+         spent: spent.reduce((a, b) => a + b, 0), payments: spent.length });
 if (finished) {
   console.log(`verdict  ${finished.slice(0, 400)}`);
 } else {

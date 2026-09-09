@@ -178,6 +178,9 @@ async function paintFleet() {
 
 async function refresh() {
   const fleet = await paintFleet();
+  // Kept for the thinking columns, which need to label an agent with the slot
+  // the *device* put it in rather than the one it says it is in.
+  window.__fleet = fleet?.agents ?? [];
   const row = fleet?.agents?.find((a) => a.slot === selected && !a.free);
 
   $("sel-name").textContent = row?.label ?? "no agent selected";
@@ -308,7 +311,110 @@ async function buy(tier) {
   } catch (e) {
     busy = false;
     $("hint").textContent = `request failed: ${e.message}`;
-    await refresh();
+  
+/* ------------------------------------------------- the fleet, thinking --- */
+/*
+ * One column per agent, fed by an EventSource. The agents post their own
+ * decisions here — they run on hosts this page cannot see into, so the only
+ * honest way to show what they are doing is to let them say it.
+ *
+ * Everything is written with textContent. What arrives is a report from a
+ * process running a language model that a third party may have written into,
+ * and putting that through innerHTML would mean the one component in this
+ * project that trusts an agent is the dashboard.
+ */
+const minds = new Map();
+
+function mindFor(agent) {
+  if (minds.has(agent)) return minds.get(agent);
+
+  const box = document.createElement("div");
+  box.className = "mind live";
+
+  const head = document.createElement("header");
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = agent;
+  const slot = document.createElement("span");
+  slot.className = "slot";
+  // The slot is the chip's fact, not the agent's claim, so it is read from
+  // the fleet the device reported rather than from the message.
+  const known = (window.__fleet ?? []).find((a) => a.label === agent);
+  slot.textContent = known ? `slot ${known.slot}` : "unclaimed slot";
+  head.append(who, slot);
+
+  const steps = document.createElement("ol");
+  steps.className = "steps";
+
+  box.append(head, steps);
+
+  const host = document.getElementById("minds");
+  const empty = host.querySelector(".none");
+  if (empty) empty.remove();
+  host.append(box);
+
+  const m = { box, steps, last: null };
+  minds.set(agent, m);
+  return m;
+}
+
+function onAgentEvent(e) {
+  const m = mindFor(e.agent);
+
+  if (e.kind === "decision") {
+    const li = document.createElement("li");
+    const call = document.createElement("span");
+    call.className = "call";
+    call.textContent = e.call || e.tool;
+    li.append(call);
+    if (e.thought) {
+      const t = document.createElement("span");
+      t.className = "thought";
+      t.textContent = e.thought;
+      li.append(t);
+    }
+    m.steps.append(li);
+    m.last = li;
+    m.box.scrollTop = m.box.scrollHeight;
+    return;
+  }
+
+  if (e.kind === "done") {
+    m.box.classList.remove("live");
+    const p = document.createElement("p");
+    p.className = "verdict";
+    p.textContent = e.verdict || "(no verdict)";
+    m.box.append(p);
+    // The device's numbers may have moved. They are read from the chip, not
+    // from what the agent just claimed about itself.
+    refresh();
+    return;
+  }
+
+  // A result attaches to the decision it answers, so a refusal reads as the
+  // reply to the thing that was refused rather than as a separate line.
+  const out = document.createElement("span");
+  out.className = "out " + (e.kind === "refused" ? "refused"
+                          : e.kind === "error" ? "error"
+                          : /bought=/.test(e.summary ?? "") ? "bought" : "");
+  out.textContent = e.kind === "refused"
+    ? `refused: ${e.reason} — ${e.why ?? ""}`
+    : (e.summary || "");
+  (m.last ?? m.steps).append(out);
+}
+
+function watchAgents() {
+  const src = new EventSource("/api/events/stream");
+  src.onmessage = (msg) => {
+    try { onAgentEvent(JSON.parse(msg.data)); } catch { /* drop it */ }
+  };
+  // EventSource reconnects on its own; the only thing worth handling is that
+  // a console left open overnight should not stack up dead columns.
+  src.onerror = () => { for (const m of minds.values()) m.box.classList.remove("live"); };
+}
+
+  await refresh();
+  watchAgents();
     return;
   }
 
@@ -414,7 +520,110 @@ async function runScenario(name) {
             text: d.error ?? "no answer", detail: JSON.stringify(d).slice(0, 200) });
   }
   $("defi-hint").textContent = "";
+
+/* ------------------------------------------------- the fleet, thinking --- */
+/*
+ * One column per agent, fed by an EventSource. The agents post their own
+ * decisions here — they run on hosts this page cannot see into, so the only
+ * honest way to show what they are doing is to let them say it.
+ *
+ * Everything is written with textContent. What arrives is a report from a
+ * process running a language model that a third party may have written into,
+ * and putting that through innerHTML would mean the one component in this
+ * project that trusts an agent is the dashboard.
+ */
+const minds = new Map();
+
+function mindFor(agent) {
+  if (minds.has(agent)) return minds.get(agent);
+
+  const box = document.createElement("div");
+  box.className = "mind live";
+
+  const head = document.createElement("header");
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = agent;
+  const slot = document.createElement("span");
+  slot.className = "slot";
+  // The slot is the chip's fact, not the agent's claim, so it is read from
+  // the fleet the device reported rather than from the message.
+  const known = (window.__fleet ?? []).find((a) => a.label === agent);
+  slot.textContent = known ? `slot ${known.slot}` : "unclaimed slot";
+  head.append(who, slot);
+
+  const steps = document.createElement("ol");
+  steps.className = "steps";
+
+  box.append(head, steps);
+
+  const host = document.getElementById("minds");
+  const empty = host.querySelector(".none");
+  if (empty) empty.remove();
+  host.append(box);
+
+  const m = { box, steps, last: null };
+  minds.set(agent, m);
+  return m;
+}
+
+function onAgentEvent(e) {
+  const m = mindFor(e.agent);
+
+  if (e.kind === "decision") {
+    const li = document.createElement("li");
+    const call = document.createElement("span");
+    call.className = "call";
+    call.textContent = e.call || e.tool;
+    li.append(call);
+    if (e.thought) {
+      const t = document.createElement("span");
+      t.className = "thought";
+      t.textContent = e.thought;
+      li.append(t);
+    }
+    m.steps.append(li);
+    m.last = li;
+    m.box.scrollTop = m.box.scrollHeight;
+    return;
+  }
+
+  if (e.kind === "done") {
+    m.box.classList.remove("live");
+    const p = document.createElement("p");
+    p.className = "verdict";
+    p.textContent = e.verdict || "(no verdict)";
+    m.box.append(p);
+    // The device's numbers may have moved. They are read from the chip, not
+    // from what the agent just claimed about itself.
+    refresh();
+    return;
+  }
+
+  // A result attaches to the decision it answers, so a refusal reads as the
+  // reply to the thing that was refused rather than as a separate line.
+  const out = document.createElement("span");
+  out.className = "out " + (e.kind === "refused" ? "refused"
+                          : e.kind === "error" ? "error"
+                          : /bought=/.test(e.summary ?? "") ? "bought" : "");
+  out.textContent = e.kind === "refused"
+    ? `refused: ${e.reason} — ${e.why ?? ""}`
+    : (e.summary || "");
+  (m.last ?? m.steps).append(out);
+}
+
+function watchAgents() {
+  const src = new EventSource("/api/events/stream");
+  src.onmessage = (msg) => {
+    try { onAgentEvent(JSON.parse(msg.data)); } catch { /* drop it */ }
+  };
+  // EventSource reconnects on its own; the only thing worth handling is that
+  // a console left open overnight should not stack up dead columns.
+  src.onerror = () => { for (const m of minds.values()) m.box.classList.remove("live"); };
+}
+
   await refresh();
+  watchAgents();
 }
 
 /* ------------------------------------------------------------- revoke -- */
@@ -458,7 +667,110 @@ async function revoke() {
   } else {
     $("revoke-hint").textContent = d.advice ?? d.reason ?? "not revoked";
   }
+
+/* ------------------------------------------------- the fleet, thinking --- */
+/*
+ * One column per agent, fed by an EventSource. The agents post their own
+ * decisions here — they run on hosts this page cannot see into, so the only
+ * honest way to show what they are doing is to let them say it.
+ *
+ * Everything is written with textContent. What arrives is a report from a
+ * process running a language model that a third party may have written into,
+ * and putting that through innerHTML would mean the one component in this
+ * project that trusts an agent is the dashboard.
+ */
+const minds = new Map();
+
+function mindFor(agent) {
+  if (minds.has(agent)) return minds.get(agent);
+
+  const box = document.createElement("div");
+  box.className = "mind live";
+
+  const head = document.createElement("header");
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = agent;
+  const slot = document.createElement("span");
+  slot.className = "slot";
+  // The slot is the chip's fact, not the agent's claim, so it is read from
+  // the fleet the device reported rather than from the message.
+  const known = (window.__fleet ?? []).find((a) => a.label === agent);
+  slot.textContent = known ? `slot ${known.slot}` : "unclaimed slot";
+  head.append(who, slot);
+
+  const steps = document.createElement("ol");
+  steps.className = "steps";
+
+  box.append(head, steps);
+
+  const host = document.getElementById("minds");
+  const empty = host.querySelector(".none");
+  if (empty) empty.remove();
+  host.append(box);
+
+  const m = { box, steps, last: null };
+  minds.set(agent, m);
+  return m;
+}
+
+function onAgentEvent(e) {
+  const m = mindFor(e.agent);
+
+  if (e.kind === "decision") {
+    const li = document.createElement("li");
+    const call = document.createElement("span");
+    call.className = "call";
+    call.textContent = e.call || e.tool;
+    li.append(call);
+    if (e.thought) {
+      const t = document.createElement("span");
+      t.className = "thought";
+      t.textContent = e.thought;
+      li.append(t);
+    }
+    m.steps.append(li);
+    m.last = li;
+    m.box.scrollTop = m.box.scrollHeight;
+    return;
+  }
+
+  if (e.kind === "done") {
+    m.box.classList.remove("live");
+    const p = document.createElement("p");
+    p.className = "verdict";
+    p.textContent = e.verdict || "(no verdict)";
+    m.box.append(p);
+    // The device's numbers may have moved. They are read from the chip, not
+    // from what the agent just claimed about itself.
+    refresh();
+    return;
+  }
+
+  // A result attaches to the decision it answers, so a refusal reads as the
+  // reply to the thing that was refused rather than as a separate line.
+  const out = document.createElement("span");
+  out.className = "out " + (e.kind === "refused" ? "refused"
+                          : e.kind === "error" ? "error"
+                          : /bought=/.test(e.summary ?? "") ? "bought" : "");
+  out.textContent = e.kind === "refused"
+    ? `refused: ${e.reason} — ${e.why ?? ""}`
+    : (e.summary || "");
+  (m.last ?? m.steps).append(out);
+}
+
+function watchAgents() {
+  const src = new EventSource("/api/events/stream");
+  src.onmessage = (msg) => {
+    try { onAgentEvent(JSON.parse(msg.data)); } catch { /* drop it */ }
+  };
+  // EventSource reconnects on its own; the only thing worth handling is that
+  // a console left open overnight should not stack up dead columns.
+  src.onerror = () => { for (const m of minds.values()) m.box.classList.remove("live"); };
+}
+
   await refresh();
+  watchAgents();
 }
 
 /* ----------------------------------------------------------- the proof -- */
@@ -509,7 +821,110 @@ async function loadReceipts() {
   }
   $("sig-good").textContent = CONFIG.defi.swap.sig;
   $("sig-steal").textContent = CONFIG.defi.swap.sig;
+
+/* ------------------------------------------------- the fleet, thinking --- */
+/*
+ * One column per agent, fed by an EventSource. The agents post their own
+ * decisions here — they run on hosts this page cannot see into, so the only
+ * honest way to show what they are doing is to let them say it.
+ *
+ * Everything is written with textContent. What arrives is a report from a
+ * process running a language model that a third party may have written into,
+ * and putting that through innerHTML would mean the one component in this
+ * project that trusts an agent is the dashboard.
+ */
+const minds = new Map();
+
+function mindFor(agent) {
+  if (minds.has(agent)) return minds.get(agent);
+
+  const box = document.createElement("div");
+  box.className = "mind live";
+
+  const head = document.createElement("header");
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = agent;
+  const slot = document.createElement("span");
+  slot.className = "slot";
+  // The slot is the chip's fact, not the agent's claim, so it is read from
+  // the fleet the device reported rather than from the message.
+  const known = (window.__fleet ?? []).find((a) => a.label === agent);
+  slot.textContent = known ? `slot ${known.slot}` : "unclaimed slot";
+  head.append(who, slot);
+
+  const steps = document.createElement("ol");
+  steps.className = "steps";
+
+  box.append(head, steps);
+
+  const host = document.getElementById("minds");
+  const empty = host.querySelector(".none");
+  if (empty) empty.remove();
+  host.append(box);
+
+  const m = { box, steps, last: null };
+  minds.set(agent, m);
+  return m;
+}
+
+function onAgentEvent(e) {
+  const m = mindFor(e.agent);
+
+  if (e.kind === "decision") {
+    const li = document.createElement("li");
+    const call = document.createElement("span");
+    call.className = "call";
+    call.textContent = e.call || e.tool;
+    li.append(call);
+    if (e.thought) {
+      const t = document.createElement("span");
+      t.className = "thought";
+      t.textContent = e.thought;
+      li.append(t);
+    }
+    m.steps.append(li);
+    m.last = li;
+    m.box.scrollTop = m.box.scrollHeight;
+    return;
+  }
+
+  if (e.kind === "done") {
+    m.box.classList.remove("live");
+    const p = document.createElement("p");
+    p.className = "verdict";
+    p.textContent = e.verdict || "(no verdict)";
+    m.box.append(p);
+    // The device's numbers may have moved. They are read from the chip, not
+    // from what the agent just claimed about itself.
+    refresh();
+    return;
+  }
+
+  // A result attaches to the decision it answers, so a refusal reads as the
+  // reply to the thing that was refused rather than as a separate line.
+  const out = document.createElement("span");
+  out.className = "out " + (e.kind === "refused" ? "refused"
+                          : e.kind === "error" ? "error"
+                          : /bought=/.test(e.summary ?? "") ? "bought" : "");
+  out.textContent = e.kind === "refused"
+    ? `refused: ${e.reason} — ${e.why ?? ""}`
+    : (e.summary || "");
+  (m.last ?? m.steps).append(out);
+}
+
+function watchAgents() {
+  const src = new EventSource("/api/events/stream");
+  src.onmessage = (msg) => {
+    try { onAgentEvent(JSON.parse(msg.data)); } catch { /* drop it */ }
+  };
+  // EventSource reconnects on its own; the only thing worth handling is that
+  // a console left open overnight should not stack up dead columns.
+  src.onerror = () => { for (const m of minds.values()) m.box.classList.remove("live"); };
+}
+
   await refresh();
+  watchAgents();
   // The envelope can change without this page doing anything — another agent
   // draws on it, or a human revokes it on the device.
   setInterval(() => { if (!busy) refresh(); }, 5000);

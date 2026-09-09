@@ -63,6 +63,36 @@ const TYPES = {
   ".png": "image/png",
 };
 
+/**
+ * What the fleet is thinking, wherever it is thinking it.
+ *
+ * The console cannot watch the agents: the whole point is that they run
+ * somewhere else. So they report — `VELA_EVENTS` on an agent points at
+ * POST /api/events here, and this holds the last few hundred and fans them
+ * out to any open page.
+ *
+ * Deliberately not authenticated, and deliberately not trusted. An agent has
+ * an agent token and no operator credential, so demanding one would mean
+ * handing every agent the key to the console. Instead nothing here can *do*
+ * anything: it is an append-only ring buffer that gets drawn as text. The
+ * page renders it with textContent, so a hostile agent's best move is to
+ * write something rude on a screen its operator is already looking at.
+ *
+ * The chip's numbers are never taken from here. Spending comes from
+ * /api/fleet, which reads the Secure Element.
+ */
+const FEED_MAX = 400;
+const feed = [];
+const watchers = new Set();
+
+function publish(event) {
+  const e = { ...event, seq: (feed.at(-1)?.seq ?? 0) + 1 };
+  feed.push(e);
+  if (feed.length > FEED_MAX) feed.shift();
+  const line = `data: ${JSON.stringify(e)}\n\n`;
+  for (const w of watchers) { try { w.write(line); } catch { watchers.delete(w); } }
+}
+
 const send = (res, code, type, body) => {
   res.writeHead(code, { "content-type": type });
   res.end(body);
@@ -164,6 +194,48 @@ const server = createServer(async (req, res) => {
     }));
   }
 
+  // --- what the fleet is thinking ----------------------------------------
+  if (path === "/api/events" && req.method === "POST") {
+    let body = "";
+    for await (const c of req) {
+      body += c;
+      // A report is a few hundred bytes. Anything larger is not one.
+      if (body.length > 8192) { req.destroy(); return; }
+    }
+    try {
+      const e = JSON.parse(body);
+      publish({
+        agent: String(e.agent ?? "?").slice(0, 32),
+        kind: String(e.kind ?? "?").slice(0, 16),
+        step: Number(e.step) || null,
+        tool: String(e.tool ?? "").slice(0, 32),
+        call: String(e.call ?? "").slice(0, 64),
+        thought: String(e.thought ?? "").slice(0, 240),
+        reason: e.reason ? String(e.reason).slice(0, 40) : null,
+        why: e.why ? String(e.why).slice(0, 200) : null,
+        cost: e.cost ? String(e.cost).slice(0, 24) : null,
+        left: e.left ? String(e.left).slice(0, 24) : null,
+        summary: String(e.summary ?? "").slice(0, 200),
+        verdict: String(e.verdict ?? "").slice(0, 300),
+        at: Date.now(),
+      });
+    } catch { /* a malformed report is dropped, not fatal */ }
+    return send(res, 204, "text/plain", "");
+  }
+
+  if (path === "/api/events/stream") {
+    res.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    });
+    // Replay so a page opened mid-run is not blank.
+    for (const e of feed.slice(-60)) res.write(`data: ${JSON.stringify(e)}\n\n`);
+    watchers.add(res);
+    req.on("close", () => watchers.delete(res));
+    return;
+  }
+
   // --- straight through to the gateway -----------------------------------
   if (path.startsWith("/api/")) {
     const target = `${GATEWAY}/${path.slice(5)}${url.search}`;
@@ -203,4 +275,6 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`vela web on http://127.0.0.1:${PORT}`);
   console.log(`  proxying /api/* to ${GATEWAY}`);
+  console.log(`  agents report to POST /api/events — point them at it with:`);
+  console.log(`    VELA_EVENTS=http://127.0.0.1:${PORT}/api/events`);
 });

@@ -182,6 +182,35 @@ console.log("\nthe agent loop, against a chip that says no\n");
 
 /* ---------------------------------------------------------------------- */
 {
+  // Stuck, not deciding. Observed for real: refused at the ceiling with three
+  // models competing for one runtime, research-1 called check_envelope seven
+  // times and never recovered. The envelope had not moved and could not.
+  const r = await run([
+    { tool: "check_envelope" },
+    { tool: "check_envelope" },
+    { tool: "check_envelope" },
+    { tool: "check_envelope" },
+    { tool: "buy_analysis", tier: "triage" },
+    { tool: "report", verdict: "unstuck" },
+  ]);
+  ok("a call repeated with no change is pushed back",
+     /same call 3×/.test(r.text) && /nothing about it has changed/.test(r.text), r.text);
+  ok("and the run continues once it moves on", r.paid[0] === "triage",
+     JSON.stringify(r.paid));
+}
+
+/* ---------------------------------------------------------------------- */
+{
+  // Told twice and still repeating. Ending is more honest than burning the
+  // remaining steps to print the same line again.
+  const r = await run(Array(8).fill({ tool: "check_envelope" }));
+  ok("a model that will not move on ends the run",
+     /giving up on this run/.test(r.text), r.text);
+  ok("and it is reported as unfinished", r.code === 1, `exit ${r.code}`);
+}
+
+/* ---------------------------------------------------------------------- */
+{
   // The envelope is nearly empty: the ceiling is not the binding rule, the
   // balance is, and the two refusals must not be confused.
   const r = await run([
