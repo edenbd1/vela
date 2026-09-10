@@ -53,10 +53,16 @@ const {
   DerivationPath,
   crypto,
 } = require("@ledgerhq/hw-ledger-key-ring-protocol");
+// Not re-exported from the package root, despite being the only way to make
+// the device itself the trustchain owner.
+const { createApduDevice } =
+  require("@ledgerhq/hw-ledger-key-ring-protocol/lib/ApduDevice");
+const { BridgeTransport } = require("./bridge-transport.cjs");
 
 const HERE = __dirname;
 const MEMBER_FILE = join(HERE, ".member.json");     // the remote host's identity
-const CHAIN_FILE = join(HERE, "trustchain.enc");    // the ring's, sealed
+const CHAIN_FILE = join(HERE, "trustchain.enc");        // software-owned, sealed
+const CHAIN_FILE_DEVICE = join(HERE, "trustchain.device.json");  // device-owned
 const RING_KEY = process.env.VELA_TRUSTCHAIN_KEY ?? "vela-trustchain";
 
 // 16 is arbitrary and only has to be stable: it is the application index
@@ -103,18 +109,63 @@ function ring(args, input) {
 }
 
 /** Read the trustchain, or say there isn't one yet. */
-function loadChain() {
-  if (!existsSync(CHAIN_FILE)) return null;
-  return JSON.parse(ring(["decrypt", "--key", RING_KEY, "-i", CHAIN_FILE]));
+function loadChain(file = CHAIN_FILE) {
+  if (!existsSync(file)) return null;
+  // A device-owned chain holds no private key, so there is nothing to seal
+  // and nothing the Key Ring needs to unlock. Sealing it would only mean the
+  // device could not admit anyone without the ring, which is the dependency
+  // --device exists to remove.
+  if (file === CHAIN_FILE_DEVICE) return JSON.parse(readFileSync(file, "utf8"));
+  return JSON.parse(ring(["decrypt", "--key", RING_KEY, "-i", file]));
 }
 
-function saveChain(state) {
-  ring(["encrypt", "--key", RING_KEY, "-o", CHAIN_FILE], JSON.stringify(state));
+function saveChain(state, file = CHAIN_FILE) {
+  if (file === CHAIN_FILE_DEVICE) {
+    writeFileSync(file, JSON.stringify(state, null, 1));
+    return;
+  }
+  ring(["encrypt", "--key", RING_KEY, "-o", file], JSON.stringify(state));
 }
 
-/** The owner device, rebuilt from the sealed private key. */
+/**
+ * Who admits a member.
+ *
+ * Two answers, and the difference is the whole of Ledger's second ask.
+ *
+ * By default the owner is a software key sealed under the Key Ring, so
+ * admitting a host requires being able to decrypt under the ring — which
+ * required a physical Ledger at `ring init`. That is real, and it is one
+ * level of indirection from the device.
+ *
+ * With `--device`, the owner is the Secure Element itself: every AddMember
+ * block is signed on the chip, with a person approving it. Nobody admits a
+ * host to the fleet without a finger on a screen.
+ *
+ * It speaks to the **Ledger Sync** app rather than to Vela, because that is
+ * where the trustchain instruction set lives. Different app, same device,
+ * and the operator has to switch — which is a real cost and the reason this
+ * is a flag rather than the default.
+ */
 function ownerOf(state) {
   return new SoftwareDevice(crypto.keypairFromSecretKey(unhex(state.ownerKey)));
+}
+
+async function deviceOwner() {
+  const t = new BridgeTransport(300_000);
+  const device = createApduDevice(t);
+  try {
+    const pk = await device.getPublicKey();
+    console.log(`device key   ${hex(pk.publicKey ?? pk).slice(0, 32)}…`);
+  } catch (e) {
+    if (e?.statusCode === 0x6a87 || /6a87|6d00/i.test(String(e.message))) {
+      throw new Error(
+        "the device answered, but not to a trustchain instruction.\n" +
+        "  Those live in the Ledger Sync app, not in Vela. Open Ledger Sync\n" +
+        "  on the Flex and run this again.");
+    }
+    throw e;
+  }
+  return device;
 }
 
 /* ----------------------------------------------------------- the host ---- */
@@ -170,32 +221,53 @@ function request(name) {
  * can read. After this it arrives sealed to a key the host derives from its
  * own membership.
  */
-async function grant(pubkeyHex, name, seal) {
+async function grant(pubkeyHex, name, seal, onDevice = false) {
   const publicKey = unhex(String(pubkeyHex ?? ""));
   if (publicKey.length !== 33) {
     throw new Error(`a member public key is 33 bytes, got ${publicKey.length}`);
   }
 
-  let state = loadChain();
+  // A device-owned trustchain and a software-owned one are different chains
+  // with different roots, so they are kept in different files. Mixing them
+  // would mean a member admitted by a tap and a member admitted by a
+  // decryptable key sitting in one list, indistinguishable.
+  const file = onDevice ? CHAIN_FILE_DEVICE : CHAIN_FILE;
+  let state = loadChain(file);
   let tree;
+  let owner;
 
-  if (!state) {
+  if (onDevice) {
+    owner = await deviceOwner();
+    if (!state) {
+      console.log(">>> approve the new trustchain on the device <<<");
+      tree = await StreamTree.createNewTree(owner, { topic: crypto.randomBytes(32) });
+      state = { members: {}, increment: 0, device: true };
+      state.path = tree.getApplicationRootPath(APP_INDEX, 0);
+      console.log("new trustchain, rooted in the Secure Element");
+    } else {
+      tree = StreamTree.deserialize(state.tree);
+    }
+  } else if (!state) {
     const kp = crypto.randomKeypair();
     state = { ownerKey: hex(kp.privateKey), members: {}, increment: 0 };
-    const owner = new SoftwareDevice(kp);
+    owner = new SoftwareDevice(kp);
     tree = await StreamTree.createNewTree(owner, { topic: crypto.randomBytes(32) });
     state.path = tree.getApplicationRootPath(APP_INDEX, 0);
     console.log(`new trustchain, sealed under the Key Ring as '${RING_KEY}'`);
   } else {
     tree = StreamTree.deserialize(state.tree);
+    owner = ownerOf(state);
   }
 
-  const owner = ownerOf(state);
+  if (onDevice) {
+    console.log(`>>> approve admitting '${name}' on the device <<<`);
+  }
   tree = await tree.share(state.path, owner, publicKey, name, Permissions.KEY_READER);
 
   state.tree = tree.serialize();
-  state.members[name] = { publicKey: hex(publicKey), at: new Date().toISOString() };
-  saveChain(state);
+  state.members[name] = { publicKey: hex(publicKey), at: new Date().toISOString(),
+                          ...(onDevice ? { admitted_on_device: true } : {}) };
+  saveChain(state, file);
 
   const bundle = {
     trustchain: state.tree,
@@ -204,6 +276,7 @@ async function grant(pubkeyHex, name, seal) {
   };
 
   if (seal) {
+    if (onDevice) console.log(`>>> approve reading the key on the device <<<`);
     const key = await owner.readKey(tree, DerivationPath.toIndexArray(state.path));
     const nonce = crypto.randomBytes(16);
     bundle.sealed = {
@@ -412,7 +485,8 @@ async function main() {
 
   switch (verb) {
     case "request": return request(args[0] ?? `${process.env.USER ?? "host"}-agent`);
-    case "grant":   return grant(args[0], args[1] ?? "enrolled-host", seal);
+    case "grant":   return grant(args[0], args[1] ?? "enrolled-host", seal,
+                                 rest.includes("--device"));
     case "claim":   return claim(args[0], rest.includes("--quiet"));
     case "revoke":  return revoke(args[0]);
     case "members": return members();
@@ -420,7 +494,8 @@ async function main() {
     default:
       console.log("usage:");
       console.log("  enroll.cjs request <name>                  on the host with no device");
-      console.log("  enroll.cjs grant <pubkey> <name> [--seal V] where the ring is");
+      console.log("  enroll.cjs grant <pubkey> <name> [--seal V] [--device]");
+  console.log("       --device signs each admission on the Flex (needs Ledger Sync)");
       console.log("  enroll.cjs claim <bundle.json> [--quiet]   back on the host");
       console.log("  enroll.cjs revoke <name>                   eject, and rotate the key");
   console.log("  enroll.cjs members                         who is in");

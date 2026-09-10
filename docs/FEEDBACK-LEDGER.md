@@ -678,6 +678,46 @@ have the restore instruction"* rather than as a stack trace. A hosted tool
 could do the same: ask the dashboard which app is running before blaming the
 app.
 
+## 17. The Key Ring protocol's first instruction returns an undocumented `0xb00d`
+
+**What we were doing.** Ledger's second ask is to bring the Key Ring to hosts
+with no USB port. We built the ceremony on
+`@ledgerhq/hw-ledger-key-ring-protocol`, and it works with a `SoftwareDevice`
+as the trustchain owner. The stronger version — the *device* signing each
+`AddMember`, so nobody joins a fleet without a finger on a screen — needs
+`ApduDevice`, which speaks to the **Ledger Sync** app.
+
+**What happens.** With Ledger Sync open and answering `b001` (get app name)
+correctly, the protocol's first two calls both fail:
+
+```
+  getPublicKey: Ledger device: UNKNOWN_ERROR (0xb00d)
+  getSeedId:    Ledger device: UNKNOWN_ERROR (0xb00d)
+```
+
+`getPublicKey` is `INS 0x05` and takes no arguments. `initFlow` exists but the
+library only calls it from `sign()`, so it is not a missing precondition for
+this instruction.
+
+**Why it costs.** `0xb00d` appears nowhere: not in the protocol package, not
+in `@ledgerhq/errors`, not in the SDK status words we could find. The tooling
+renders it as `UNKNOWN_ERROR`, which is accurate and unactionable. There is no
+way to tell from the host whether the app needs a screen tapped, a session
+opened by Ledger Live first, a pairing that does not exist yet, or something
+else entirely.
+
+**What would fix it.** A table of the Ledger Sync app's status words, or a
+line in the protocol package's README saying what state the app must be in
+before `ApduDevice` will answer. The package documents the objects well and
+says nothing about the device-side preconditions for using them.
+
+**Where we left it.** The transport and the `--device` code path are written
+and committed; `host/bridge.py` can now guard a named app so the same USB
+shim serves both Vela and Ledger Sync. What is missing is one sentence of
+documentation we could not find. Enrolment ships rooted in the Key Ring
+instead — real, and one level of indirection from the device, which
+`docs/RING-ENROLL.md` says plainly rather than implying otherwise.
+
 ## Tutorial we would have wanted
 
 Nothing linked from the "getting started" path covers the actual arc of writing

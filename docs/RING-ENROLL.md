@@ -94,10 +94,26 @@ You cannot admit a host to the fleet without the device having admitted you
 first.
 
 That is one level of indirection from the device signing each `AddMember`
-block itself. The library ships an `ApduDevice` that would do exactly that,
-and it speaks to the **Ledger Sync** app — a different app on the same
-device. Wiring it means the operator quitting Vela, opening Ledger Sync, and
-coming back. It is worth doing and it is not something to pretend we did.
+block itself, and we tried to close it.
+
+`enroll.cjs grant --device` is written: it makes the Secure Element the
+trustchain owner, so every admission is a block signed on the chip with a
+person approving it. `host/ring/bridge-transport.cjs` carries the protocol
+over the same APDU shim everything else here uses, and `host/bridge.py` takes
+`VELA_BRIDGE_APP` so one USB handle serves both Vela and Ledger Sync.
+
+It does not work, and the reason is not ours. With Ledger Sync open and
+answering correctly to `b001`, the protocol's first instruction —
+`getPublicKey`, `INS 0x05`, no arguments — returns `0xb00d`. That status word
+appears nowhere in the protocol package, in `@ledgerhq/errors`, or in any SDK
+table we could find, and the tooling renders it as `UNKNOWN_ERROR`. There is
+no way from the host to tell whether the app wants a screen tapped, a session
+Ledger Live would have opened, or something else. Written up as finding 17 in
+[FEEDBACK-LEDGER.md](FEEDBACK-LEDGER.md).
+
+So enrolment ships rooted in the Key Ring rather than in a tap. That is real —
+you cannot admit a host without the device having admitted you first — and it
+is one step short of what we wanted.
 
 ### What it replaces
 

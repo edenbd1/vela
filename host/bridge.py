@@ -24,6 +24,17 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import journal
+
+# Which app this bridge is guarding.
+#
+# The check exists because the dashboard answers app APDUs with plausible
+# bytes and a success status, so a closed app surfaces much later as a
+# protocol mismatch. That reasoning holds for any app — but the app was
+# hardcoded, so reaching the Key Ring protocol, which lives in Ledger Sync,
+# meant the bridge refused every command with advice to open Vela.
+#
+#   VELA_BRIDGE_APP="Ledger Sync" python3 host/bridge.py
+EXPECT_APP = os.environ.get("VELA_BRIDGE_APP", "Vela")
 from transport import open_device, where
 
 PORT = int(os.environ.get("VELA_BRIDGE_PORT", "8099"))
@@ -58,13 +69,14 @@ def exchange(apdu: bytes):
         # as a wrong number nobody questions.
         if apdu[:2] != bytes.fromhex("b001"):
             app = running_app(device)
-            if app != "Vela":
+            if app != EXPECT_APP:
                 # Worth a journal line: the app vanishing between two commands
                 # is how a crash looks from here, and a crash is one of the
                 # things protection mode may be reacting to.
                 journal.record("app_not_running", saw=app, ins=apdu[1])
                 raise RuntimeError(
-                    f"the device is on '{app}', not Vela — open the app and stay on it"
+                    f"the device is on '{app}', not {EXPECT_APP} — open the app "
+                    f"and stay on it"
                 )
 
         try:
