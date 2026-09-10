@@ -145,8 +145,31 @@ if (inst.topic) {
 ' 2>/dev/null
 }
 
+# --- is the public log whole? ---------------------------------------------
+#
+# The last shot of the demo is a verifier reading this topic. Finding out
+# there that the chain starts at draw 2 is finding out too late — and it is
+# not hypothetical: a gateway that outlived a topic rotation put exactly that
+# gap in ours.
+chain_state() {
+  echo
+  echo "the public log"
+  local out
+  out=$(node hedera/verify.mjs 2>/dev/null | tail -30)
+  if [ -z "$out" ]; then bad "the verifier did not run"; return; fi
+  if echo "$out" | grep -q "no draws anchored yet"; then
+    note "nothing anchored yet on this topic"
+  elif echo "$out" | grep -q "incomplete"; then
+    bad "the chain has a gap"
+    echo "$out" | grep -E "FAIL" | head -3 | sed "s/^/      /"
+    note "node hedera/fleet.mjs starts a clean one (taps required)"
+  else
+    ok "$(echo "$out" | grep -E "envelope\(s\) verify" | head -1)"
+  fi
+}
+
 case "${1:-}" in
-  --status) status; fleet_state; epoch_state; echo; exit 0 ;;
+  --status) status; fleet_state; epoch_state; chain_state; echo; exit 0 ;;
   --down)
     echo
     for s in "${SERVICES[@]}"; do
@@ -181,6 +204,7 @@ done
 status
 fleet_state
 epoch_state
+chain_state
 
 echo
 echo "next"

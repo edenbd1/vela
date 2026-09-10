@@ -28,9 +28,12 @@ const NAME = process.env.AGENT_NAME ?? "research-1";
  * buy the risk feed's API key, which is what this process would otherwise be
  * carrying and what would have to be rotated everywhere.
  *
- * `wallet-cli ring init` replaces it with Key Ring membership once a device
- * is available to enrol this host, which is the difference between a shared
- * string and a credential the trustchain can rotate away.
+ * It no longer has to arrive in the clear. If this host has been enrolled in
+ * the Key Ring, agent/run.sh takes the token out of a sealed bundle and
+ * decrypts it here for the length of one run, using a key derived from
+ * membership — see host/ring/enroll.cjs. That is the difference between a
+ * shared string and a credential the trustchain can rotate away: eject the
+ * host and the application key rotates, whatever bytes it kept.
  */
 const TOKEN = process.env.AGENT_TOKEN ?? "";
 
