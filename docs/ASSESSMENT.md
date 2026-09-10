@@ -41,8 +41,16 @@ Verified on hardware, not asserted:
   back to plaintext.
 - **The Chainlink enclave**, narrowing what the gateway will ask for and
   provably unable to widen it.
-- **Thirty-four assertions**, seventeen host-side and seventeen against the
-  chip, both shown to fail when the thing they check is broken.
+- **An agent that decides.** A local model with a toolset derived from the
+  mandate, refused by the chip and adapting to it — including a swap whose
+  proceeds an injected advisory tried to redirect.
+- **Recovery.** An envelope restored onto a replacement device at the position
+  the public log says it reached.
+- **A fleet console** that draws each agent's reasoning live, with the chip's
+  refusals and the broker's shown apart.
+- **136 assertions** across five suites — 31 host-side, 45 on the agent loop,
+  17 on Key Ring enrolment, 12 on the console in a real browser, 31 against
+  the chip — each shown to fail when the thing it checks is broken.
 - **The controlled experiment**, which is the strongest single artefact: same
   rules, same attack, one variable — software settles the theft, the chip
   refuses it.
@@ -57,15 +65,26 @@ Ranked by how much it costs us.
 control. It reaches past the per-payment ceiling, is refused, reads the
 reason, and comes back with a tier that fits — a branch nobody wrote.
 
-Two things came out of building it that are worth more than the feature. The
-first run announced it had 100 HBAR against an envelope holding 0.5, which is
-the pitch stated by the thing the pitch is about. And `agent/bench.mjs` now
-measures the gap between what the chip allowed and what the agent asked for:
-across eight runs per model, 0.13 HBAR against 1.27.
+It has since grown past that. Its toolset is derived from the envelope the
+chip published, so an agent whose mandate carries no contract clause is never
+told that swapping exists. When the mandate does allow calls it builds the
+calldata itself — and a compromised risk feed talked it into aiming the
+proceeds at an attacker, which the Secure Element refused on the one field
+that mattered. Verified on the Flex, 2026-09-10.
 
-Details and the tool-calling failure that forced grammar-constrained decoding
-are in [AGENT-LOOP.md](AGENT-LOOP.md). 17 assertions in `test/agent.test.mjs`,
-no device and no model needed.
+Three things came out of building it that are worth more than the feature:
+
+- The first run announced it had 100 HBAR against an envelope holding 0.5 —
+  the pitch, stated by the thing the pitch is about.
+- `agent/bench.mjs` measures what the chip allowed against what the agent
+  asked for: 0.21 HBAR against 1.16 across six runs per model.
+- Every model, in every run, routed a swap's proceeds to the attacker — most
+  of the time after flagging the advisory as an instruction. Noticing is not
+  resisting.
+
+Details, and the tool-calling failure that forced grammar-constrained
+decoding, are in [AGENT-LOOP.md](AGENT-LOOP.md). 45 assertions in
+`test/agent.test.mjs`, no device and no model needed.
 
 ### ~~2. The Key Ring is not on a remote host~~ — closed 2026-09-09
 
@@ -101,7 +120,7 @@ NBGL pages the fleet screen once it stops fitting.
 
 Granted mandates are listed before free ones, because with three the order did
 not matter and with eight it does. Verified on the emulator, screen included;
-19 chip assertions, two of them on the slot count itself so a future bump
+two of the 31 chip assertions are on the slot count itself, so a future bump
 cannot ship slots nothing touches.
 
 **Not yet on hardware.** It needs a reload, and the storage magic changed, so
@@ -132,7 +151,7 @@ every missing draw is spending it would hand back; run against our own topic
 it refused `research-1` on the artefact of that morning's topic-rotation bug.
 An envelope with no records is refused rather than restored at zero.
 
-9 host-side assertions, 9 on the chip.
+9 of the host-side assertions and 9 of the chip's cover recovery alone.
 
 ### 6. The broker is a trust point while it runs
 
