@@ -558,6 +558,29 @@ host/        APDU bridge, device journal, Key Ring enrolment, the software
 docs/        Ledger developer-experience feedback, the direction, the canvas
 ```
 
+### The fleet, thinking
+
+Agents run on hosts the console cannot see into — that is the point — so they
+report. `VELA_EVENTS` points an agent at the console and it draws one column
+per agent, live.
+
+<p align="center">
+  <img src="docs/console-thinking.png" alt="Three agents reasoning, with two kinds of refusal" width="560">
+</p>
+
+Three agents, three kinds of line, one screen: `research-1` flagging the
+injected advisory in amber and quoting it, being refused by the **chip** in
+red on `recipient_not_self`, then swapping to its own account in green.
+`ops-nightly` refused by the **broker** — a different authority, and the only
+one of the two that a host can edit.
+
+Everything is written with `textContent`. What arrives is a report from a
+process running a language model that a third party may have written into;
+putting that through `innerHTML` would make the dashboard the one component
+here that trusts an agent. `python3 test/console_test.py` asserts that,
+among other things, by posting `<img src=x onerror=…>` through the feed and
+checking no node is created.
+
 ### On-device control panel
 
 The app is not a dialog that appears when the host asks. Opening Vela lands

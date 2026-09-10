@@ -45,6 +45,18 @@ if ! node test/ring.test.mjs | tail -2 | sed 's/^/  /'; then
   echo "  enrolment tests failed" >&2
   exit 1
 fi
+
+# The console, if one is running. It is the only surface here a person looks
+# at rather than reads, and nothing was checking it worked — app.js spent
+# several commits referencing three elements index.html did not have, dying on
+# page load, while the fleet list still painted.
+if curl -s -m 3 http://127.0.0.1:4050/api/config >/dev/null 2>&1; then
+  echo "the console"
+  python3 test/console_test.py | tail -1 | sed 's/^/  /'
+else
+  echo "the console"
+  echo "  not running on :4050 — skipped"
+fi
   exec python3 test/chip_test.py
 fi
 
@@ -83,6 +95,18 @@ echo "ring enrolment"
 if ! node test/ring.test.mjs | tail -2 | sed 's/^/  /'; then
   echo "  enrolment tests failed" >&2
   exit 1
+fi
+
+# The console, if one is running. It is the only surface here a person looks
+# at rather than reads, and nothing was checking it worked — app.js spent
+# several commits referencing three elements index.html did not have, dying on
+# page load, while the fleet list still painted.
+if curl -s -m 3 http://127.0.0.1:4050/api/config >/dev/null 2>&1; then
+  echo "the console"
+  python3 test/console_test.py | tail -1 | sed 's/^/  /'
+else
+  echo "the console"
+  echo "  not running on :4050 — skipped"
 fi
 
 if [ ! -f app/bin/app.elf ]; then

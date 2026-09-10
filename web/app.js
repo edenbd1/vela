@@ -5,7 +5,32 @@
  * the hardware, which is the one thing this project cannot afford to look
  * like it does.
  */
-const $ = (id) => document.getElementById(id);
+/**
+ * An element, or a stand-in that swallows writes.
+ *
+ * `document.getElementById` returning null used to take the whole page down:
+ * app.js referenced three ids that index.html no longer had, `refresh()` threw
+ * on the first of them, and everything downstream — the envelope figures, the
+ * buy buttons, the live agent feed — silently never ran. The fleet list
+ * painted, so it looked fine.
+ *
+ * Found with a headless browser rather than by reading, which is the lesson:
+ * nothing in this repository was checking that the page still worked.
+ */
+const MISSING = new Set();
+const $ = (id) => {
+  const el = document.getElementById(id);
+  if (el) return el;
+  if (!MISSING.has(id)) {
+    MISSING.add(id);
+    console.warn(`[vela] no element #${id} — that part of the page is dead`);
+  }
+  // A sink, so one absent node degrades one feature instead of the page.
+  return new Proxy({ style: {}, classList: { add() {}, remove() {} } }, {
+    get: (t, k) => (k in t ? t[k] : (typeof k === "string" ? () => {} : undefined)),
+    set: () => true,
+  });
+};
 const hbar = (tinybars) => `${Number(tinybars) / 1e8} HBAR`;
 
 let CONFIG = null;
