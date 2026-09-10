@@ -106,10 +106,12 @@ cannot ship slots nothing touches.
 **Not yet on hardware.** It needs a reload, and the storage magic changed, so
 it wipes what is there. See below.
 
-### ~~4b. The old note~~
-
-A fleet is thirty. The canvas says so; the demo cannot show it. 512 bytes of
-NVRAM is the ceiling, and a real answer needs a different storage story.
+Eight is not thirty, and the honest reason to stop there is not the one this
+document gave. "512 bytes of NVRAM is the ceiling" was wrong: the loader sizes
+that section from the struct. What actually bounds it is that every slot costs
+NVRAM whether it is used or not, at 152 bytes each, and nobody here has run
+more than eight agents at once to find out where the real wall is. Thirty
+would be 4.6 KB, which is plausible and untested.
 
 ### 5. Nothing recovers
 
