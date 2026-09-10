@@ -652,6 +652,32 @@ Earlier loads went over a *different* app name, or over nothing. The first
 time you rename an app or reinstall a same-named build is the first time you
 see it, which is exactly when you are least equipped to read `680f`.
 
+## 16. Two different failures share one status word: `6d00`
+
+`6d00` is what the device answers when an instruction is not one the running
+application knows. Two very different situations produce it, and the tooling
+cannot tell them apart:
+
+- **The wrong app is open.** `ledgerblue.listApps` and `loadApp` speak to the
+  dashboard; run them while any app is open and every one of them fails this
+  way. The message ledgerblue prints — *"verify that the right application is
+  opened?"* — is right, and it is the only place that question is asked.
+
+- **The right app is open and lacks the instruction.** An older build of your
+  own app answers `6d00` to an APDU you added since. Nothing distinguishes
+  this from the case above, and the tooling's suggestion — open the right
+  application — is exactly what you have already done.
+
+We met both in one session, twenty minutes apart. The second cost longer,
+because the printed advice fits the first perfectly and sends you to check a
+thing that is already true.
+
+`hedera/recover.mjs` now probes for its instruction before it asks anyone to
+approve a screen, precisely so this failure surfaces as *"this device does not
+have the restore instruction"* rather than as a stack trace. A hosted tool
+could do the same: ask the dashboard which app is running before blaming the
+app.
+
 ## Tutorial we would have wanted
 
 Nothing linked from the "getting started" path covers the actual arc of writing
