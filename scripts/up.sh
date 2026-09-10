@@ -168,8 +168,29 @@ chain_state() {
   fi
 }
 
+# --- does the log reconstruct the chip? -----------------------------------
+#
+# The verifier above says the chain is internally whole. This says it is
+# *about* the envelopes actually in the Secure Element — the property recovery
+# rests on, and the only one that can be marked while the device is still
+# here. It caught a real one: a chain ending on a released reservation
+# restored short by that draw, silently, in the safe direction.
+agreement_state() {
+  echo
+  echo "the log against the chip"
+  local out
+  out=$(node hedera/recover.mjs --check 2>/dev/null | grep -E "agrees|DISAGREES|to the tinybar|disagree\(s\)|nothing was")
+  if [ -z "$out" ]; then note "no backup or no chip — nothing to compare"; return; fi
+  if echo "$out" | grep -q DISAGREES; then
+    bad "the log does not reconstruct the chip"
+    echo "$out" | grep DISAGREES | head -3 | sed "s/^/      /"
+  else
+    ok "$(echo "$out" | grep -c "chip agrees") envelope(s) reconstruct to the tinybar"
+  fi
+}
+
 case "${1:-}" in
-  --status) status; fleet_state; epoch_state; chain_state; echo; exit 0 ;;
+  --status) status; fleet_state; epoch_state; chain_state; agreement_state; echo; exit 0 ;;
   --down)
     echo
     for s in "${SERVICES[@]}"; do

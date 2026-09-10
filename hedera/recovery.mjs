@@ -36,7 +36,21 @@ export function positions(records) {
     // public verifier runs is run here too, and a broken chain yields no
     // position at all.
     const failures = checkChain(rs).filter(([ok]) => !ok).map(([, why]) => why);
-    out.set(key, { last: rs.at(-1), count: rs.length, failures });
+    // Two different "last" here, and conflating them costs budget.
+    //
+    // `last` is where the chip's counter got to, releases included: a release
+    // consumed a sequence number and the replacement device has to continue
+    // past it or the next draw collides with one already on the log.
+    //
+    // `lastPaid` is where the money got to. A release gives its headroom back
+    // — checkChain enforces exactly that, one screen up — but the release
+    // record itself is published with the *pre-release* balance, and its
+    // remaining is deliberately only bounded rather than exact. Reading spend
+    // off it restores an envelope short by the whole released draw, silently,
+    // every time a chain happens to end on a release. hedera/refusals.mjs
+    // ends every run that way.
+    out.set(key, { last: rs.at(-1), lastPaid: rs.filter((r) => !r.r).at(-1),
+                   count: rs.length, failures });
   }
   return out;
 }
@@ -71,7 +85,9 @@ export function plan({ mandates, instance, seen, digestOf, assumeUnused = false 
       continue;
     }
 
-    const remaining = BigInt(found.last.remaining);
+    // Nothing paid on this chain — every record is a release — so the
+    // envelope is where it was granted, at the sequence the releases reached.
+    const remaining = found.lastPaid ? BigInt(found.lastPaid.remaining) : budget;
     // A chain claiming more left than the envelope ever held describes some
     // other envelope, whatever its digest says. The chip refuses this too;
     // catching it here means saying why rather than reading `bad_request`.

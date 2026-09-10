@@ -732,6 +732,27 @@ topic it refused `research-1` on a real gap left by a bug earlier the same day
 — which is the behaviour you want from the tool that decides how much money an
 agent gets back.
 
+Recovery is for a device that is gone, and against a gone device there is
+nothing to compare the answer to — which is why an error here would be silent.
+So `--check` runs it against a device that is *still holding the fleet*, where
+the answer is markable:
+
+```console
+$ node hedera/recover.mjs --check
+  research-1     chip agrees  chain 0.4000 spent, chip 0.4000 (0.2500 settled + 0.1500 reserved)
+  ops-nightly    chip agrees  chain 0.0400 spent, chip 0.0400 (0.0400 settled + 0.0000 reserved)
+  watcher        chip agrees  chain 0.0200 spent, chip 0.0200 (0.0200 settled + 0.0000 reserved)
+
+  The log reconstructs what the Secure Element is holding, to the tinybar.
+```
+
+It found one immediately. A chain that ends on a *released* reservation was
+restoring short by that whole draw: the release record carries the balance
+from before the release, and reading spend off the last record rather than the
+last paying one handed back an envelope with less in it than the chip had.
+Wrong in the safe direction, which is how it survived — `scripts/up.sh
+--status` now runs this check on every bring-up.
+
 ### A runner with no USB port, in public
 
 Ledger's ask names "a VPS, **a CI runner**, or a hosted agent". The runner is
@@ -850,7 +871,7 @@ Open `http://127.0.0.1:4050` to see the fleet and stop one of them.
 `./scripts/test.sh` runs everything that does not need a device, then the chip
 suite on Speculos.
 
-Thirty-one host-side assertions in a fifth of a second — what a broker will
+Thirty-three host-side assertions in a fifth of a second — what a broker will
 let an agent make it fetch, whether a published chain adds up, and whether the
 browser verifier agrees with the Node one line for line. Sixty on the agent
 loop, against a fake gateway, a fake broker and a scripted model, so

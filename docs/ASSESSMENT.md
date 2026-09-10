@@ -51,7 +51,7 @@ Verified on hardware, not asserted:
   the public log says it reached.
 - **A fleet console** that draws each agent's reasoning live, with the chip's
   refusals and the broker's shown apart.
-- **192 assertions** across seven suites — 31 host-side, 11 checking the
+- **194 assertions** across seven suites — 33 host-side, 11 checking the
   browser verifier agrees with the Node one, 60 on the agent loop, 17 on Key
   Ring enrolment, 22 on the console in a real browser, 6 on a public CI
   runner, and 45 against the chip — each shown to fail when the thing it

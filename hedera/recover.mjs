@@ -156,6 +156,52 @@ if (plan.length === 0) {
   process.exit(1);
 }
 
+/**
+ * The one case where the reconstruction can be marked.
+ *
+ * Recovery exists for a device that is gone, and against a gone device there
+ * is nothing to compare a position to — which is exactly why an error here is
+ * silent. But run it against a device that is still holding the fleet and the
+ * answer is checkable: the chain says how much is left, the chip says how
+ * much is left, and they either agree or the reconstruction is wrong.
+ *
+ * The chip's own figure is spent + reserved, not spent: a reservation the
+ * host never settled is budget the envelope has already committed, and the
+ * remaining balance the chip signed into each draw says so.
+ */
+if (process.argv.includes("--check")) {
+  const gw = process.env.GATEWAY ?? "http://127.0.0.1:4030";
+  let slots;
+  try {
+    slots = (await json(`${gw}/mandates`)).slots.filter((s) => s.label);
+  } catch (e) {
+    console.log(`  the chip could not be read (${e.message}), so nothing was`);
+    console.log("  compared. That is the ordinary case for recovery.");
+    console.log();
+    process.exit(0);
+  }
+  let disagreed = 0;
+  for (const r of plan) {
+    const s = slots.find((x) => x.label === r.label);
+    if (!s) {
+      console.log(`  ${r.label.padEnd(14)} not on this device — nothing to compare`);
+      continue;
+    }
+    const chip = BigInt(s.spent) + BigInt(s.reserved);
+    const ok = chip === r.spent;
+    if (!ok) disagreed++;
+    console.log(`  ${r.label.padEnd(14)} ${ok ? "chip agrees" : "DISAGREES"}  ` +
+                `chain ${hbar(r.spent)} spent, chip ${hbar(chip)} ` +
+                `(${hbar(s.spent)} settled + ${hbar(s.reserved)} reserved)`);
+  }
+  console.log();
+  console.log(disagreed === 0
+    ? "  The log reconstructs what the Secure Element is holding, to the tinybar."
+    : `  ${disagreed} envelope(s) disagree. The restore would be wrong.`);
+  console.log();
+  process.exit(disagreed === 0 ? 0 : 1);
+}
+
 if (!process.argv.includes("--restore")) {
   console.log("Nothing was written. Check those positions against the log —");
   console.log(`  https://hashscan.io/testnet/topic/${topic}`);

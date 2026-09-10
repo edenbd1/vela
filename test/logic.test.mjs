@@ -400,3 +400,29 @@ test("recovery reads a position from a chain containing swaps", async () => {
   // envelope for good. Restoring anything less would hand the budget back.
   assert.equal(row.spent, 15_000_000n);
 });
+
+test("a chain that ends on a release restores at the last paying position", () => {
+  // refusals.mjs ends every run exactly like this: reserve, release, publish.
+  // The release carries the pre-release balance, so reading spend off the
+  // last record restored the envelope short by the whole released draw.
+  const seen = positions([
+    draw(D, 7, 1, 10_000_000, 40_000_000),
+    draw(D, 7, 2, 10_000_000, 30_000_000),
+    draw(D, 7, 3, 10_000_000, 20_000_000, { r: true, tx: null }),
+  ]);
+  const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  assert.equal(r.refused, undefined, JSON.stringify(r.failures));
+  assert.equal(r.spent, 20_000_000n, "the released draw came back");
+  assert.equal(r.seq, 3, "but its sequence number did not");
+});
+
+test("a chain of nothing but releases restores at zero spent", () => {
+  const seen = positions([
+    draw(D, 7, 1, 10_000_000, 40_000_000, { r: true, tx: null }),
+    draw(D, 7, 2, 10_000_000, 40_000_000, { r: true, tx: null }),
+  ]);
+  const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  assert.equal(r.refused, undefined, JSON.stringify(r.failures));
+  assert.equal(r.spent, 0n);
+  assert.equal(r.seq, 2);
+});
