@@ -447,13 +447,19 @@ typedef struct {
     uint8_t  in_use;
     uint8_t  n_payees;
     uint8_t  agent_id[AGENT_ID_LEN];      // 20
+    char     label[MANDATE_LABEL_LEN];    // what the human calls it
     uint64_t payees[MANDATE_MAX_PAYEES];  // Hedera account numbers, not hashes
     uint64_t budget_total, reserved, spent, per_call_max;
     uint32_t expiry, seq;
-} mandate_t;                              // 96 bytes; 3 slots fit in NVRAM
+    uint32_t window_secs, window_start;   // how fast, not how much
+    uint16_t window_draws, max_per_window;
+    uint8_t  n_contracts, n_selectors, recipient_arg;
+    uint64_t contracts[MANDATE_MAX_CONTRACTS];
+    uint32_t selectors[MANDATE_MAX_SELECTORS];
+} mandate_t;                              // 8 of these live in NVRAM
 ```
 
-Every `AUTHORIZE` runs five checks in the Secure Element, in order, before a
+Every `AUTHORIZE` runs its checks in the Secure Element, in order, before a
 signature exists:
 
 1. **expiry** — has the envelope run out of time
@@ -461,9 +467,21 @@ signature exists:
    Hedera account number, not a truncated hash
 3. **per-draw ceiling** — is this single payment under `per_call_max`
 4. **budget** — is it under `budget_total − reserved − spent`
-5. **reserve, then sign** — `reserved` is committed to NVRAM *before* the
+5. **velocity** — has this envelope already used its draws for the current
+   window. A budget bounds the total and says nothing about the rate, and rate
+   is where an agent differs from a person: the envelope that survives forty
+   honest payments a night is the one a compromised agent drains in ninety
+   seconds. There is no clock in a Secure Element, so `now` is the host's
+   word — a host that winds it forward only resets a counter it could have
+   waited out, and one that winds it backward is refused.
+6. **reserve, then sign** — `reserved` is committed to NVRAM *before* the
    signature is produced, so a host that takes a signature and never reports
    back has still spent the budget
+
+A contract call adds three more before any of those: the callee must be on the
+mandate, the function selector must be one it was granted, and the recipient
+argument in the calldata must be this device. Velocity counts calls too — a
+call moved the agent's authority whether or not it drew budget.
 
 Refuse and the host gets a status word and nothing else. There is no signature
 to salvage, because none was ever computed.

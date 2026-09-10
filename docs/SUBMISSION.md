@@ -75,9 +75,13 @@ Their framing is *"Agents propose. Humans approve."* — one tap per
 transaction, and no limit enforced by the device. Vela is the missing half:
 the device enforcing terms **between** taps.
 
-- A native BOLOS app, ~4.6k lines of C in the Secure Element: NVRAM mandate
-  storage, an on-chip Hedera protobuf serialiser, five ordered refusals, a
-  fleet screen, revocation by finger, and mandate recovery.
+- A native BOLOS app, ~4.8k lines of C in the Secure Element: NVRAM mandate
+  storage for eight agents, an on-chip Hedera protobuf serialiser, ordered
+  refusals on expiry, payee, ceiling, budget and **rate**, a fleet screen,
+  revocation by finger, and mandate recovery from the public log.
+- A rate limit enforced in silicon — draws per window, on transfers and
+  contract calls alike. A budget bounds the total; this bounds the speed,
+  which is where an agent differs from a person.
 - The refusal nothing on a host can make: a transfer names its payee in the
   transaction body, but a **contract call names only the contract**. Where the
   value lands is an ABI argument the body does not interpret — exactly what an

@@ -162,6 +162,18 @@ An envelope with no records is refused rather than restored at zero.
 
 9 of the host-side assertions and 9 of the chip's cover recovery alone.
 
+### A capability nobody asked for: velocity
+
+Added because the gap was real rather than because it was on the list. A
+mandate can cap draws per window, checked on chip. `ops-nightly` is granted
+four an hour: a nightly job that suddenly wants six a minute is the shape of a
+compromised agent, and the budget alone would let it have them.
+
+Nine chip assertions, including the two that matter — a refused draw does not
+consume the window it was refused for, and a host that winds the clock back is
+refused. Proven on the emulator; like slots and recovery, it needs a reload to
+be true on hardware.
+
 ### 6. The broker is a trust point while it runs
 
 Documented rather than solved: it can decrypt while alive, so a compromised
