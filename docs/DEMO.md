@@ -13,28 +13,43 @@ half the point.
 ## Before recording
 
 ```bash
-./scripts/build.sh && ./scripts/load.sh      # appFlags must print 0x0
-python3 host/bridge.py &
-node broker/server.mjs &
-node hedera/risk.mjs &
-node hedera/seller.mjs &
-node hedera/gateway.mjs &
-node web/server.mjs &
-node hedera/fleet.mjs                         # 5 taps: revoke, revoke, grant ×3
+ollama serve &                     # the agents' model
+ollama pull hermes3:8b && ollama pull llama3.2:3b
 
-ollama serve &                                # the agent's model
-ollama pull hermes3:8b
+./scripts/build.sh && ./scripts/load.sh    # only if the app changed; appFlags must print 0x0
+
+./scripts/up.sh                    # bridge, broker, seller, gateway, console
+node hedera/fleet.mjs              # 4-6 taps: revoke what is there, grant ×3
+
+./scripts/up.sh --status           # run this again after granting
+export VELA_EVENTS=http://127.0.0.1:4050/api/events
 ```
 
-`fleet.mjs` creates the audit topic as part of granting, so every chain on it
-starts at draw 1. Note the topic id it prints — the last shot needs it.
+`up.sh --status` is the thing to trust, not your memory of what you started.
+It reads the fleet from the chip and prints which topic draws will actually
+land on — the one piece of state that goes silently wrong rather than visibly
+missing. If it says a slot is *unknown* rather than *free*, the Flex is locked
+or Vela is closed; unlock it and run it again. Do not grant on top of an
+unknown slot.
 
-Check the console shows three agents before you start.
+`fleet.mjs` makes the audit topic as part of granting and binds it to the
+grant epoch, so every chain on that topic starts at draw 1. Run it even if the
+fleet looks fine: a chain granted under an older build can start mid-sequence,
+and the verifier will correctly call that a gap in the last shot.
 
-Run `node agent/bench.mjs --trials 8` once before recording and keep the
-output. It takes about ten minutes, which is nine and a half more than the
-video has, and the numbers move between runs — you want a result on screen,
-not a progress bar.
+Two things to have ready before the camera is on, because both take longer
+than the video:
+
+```bash
+node agent/bench.mjs --trials 6    # ~15 minutes. Keep the output.
+```
+
+Run it with nothing else competing for the model. Three model runs at once
+starve each other and the numbers come back wrong — that happened, and the
+first set of figures had to be thrown away.
+
+Check the console shows three agents, then run `node agent/swarm.mjs` once as
+a rehearsal. It takes about 150 seconds and its columns are the 1:30 beat.
 
 ---
 
@@ -54,8 +69,18 @@ Then the line that sets up everything else:
 ## 0:40 — a host with nothing on it
 
 ```bash
-./agent/run.sh
+env -u AGENT_TOKEN ./agent/run.sh
 ```
+
+The first line is the point of unsetting it:
+
+```
+  token from the Key Ring bundle, not from the environment
+```
+
+> "There is no credential in this command. The host derives its token from
+> being a member of the Key Ring, and stops being able to the moment it is
+> evicted."
 
 Let the inventory sit on screen. It is the whole claim, written by the thing
 being claimed about:
@@ -73,30 +98,45 @@ being claimed about:
 
 Point at the tx hash. It is real HBAR on testnet.
 
-## 1:30 — what the chip refuses
+## 1:30 — three agents, one chip
+
+Console open at `http://127.0.0.1:4050`, scrolled to **The fleet, thinking**.
 
 ```bash
-AGENT_TOKEN=$RESEARCH node agent/reason.mjs
+node agent/swarm.mjs
 ```
 
-Nobody is driving this. A local model has four tools and a budget it does not
-control, and it picks. Let it run. The two lines that matter:
+Nobody is driving this. Three local models, three hosts, three briefs, and a
+budget none of them controls. Let the columns fill.
+
+The three lines to point at, in this order:
 
 ```
-   5  buy_analysis(exhaustive)
-      REFUSED over_per_call — this single payment exceeds per_call_max;
-                              a cheaper tier may fit
-   6  buy_analysis(synthesis)
-      bought=synthesis  cost=0.08 HBAR  left=0.42 HBAR
+research-1    buy_analysis(exhaustive)
+research-1    REFUSED over_per_call — this single payment exceeds per_call_max
+research-1    bought=synthesis  cost=0.08 HBAR
 ```
 
-> "It wanted the expensive one. The chip said no, and told it why. It read
-> that and took the deepest analysis that fits. Nobody wrote that branch —
-> the refusal is part of the environment it reasons about."
+> "It wanted the expensive one. The chip said no and told it why. It read that
+> and took the deepest analysis that fits. Nobody wrote that branch."
 
-If it does not reach for `exhaustive` on the take, run it again; it is a
-model, not a script. The scripted path — `./agent/run.sh agent.mjs` — hits
-the same refusal every time if the recording has to be certain.
+```
+ops-nightly   REFUSED not_granted — 'ops-nightly' has no grant for 'risk.screen'
+```
+
+> "Different refusal, different authority. That one is the broker — a host,
+> and it can be edited. The one above is a Secure Element, and it cannot."
+
+Then the device.
+
+> "Same numbers. The console is reading them out of the chip; it does not hold
+> them and cannot correct them."
+
+If a model does not reach for the expensive tier on the take, run it again —
+they are models, not scripts. `./agent/run.sh agent.mjs` hits the same refusal
+every time if the recording has to be certain.
+
+## 2:10 — what the chip refuses, in one field
 
 Then the DeFi pair, side by side:
 
@@ -224,13 +264,14 @@ End on:
 
 ## What to cut if it runs long
 
-In order: the DeFi pair at 1:30 (the refusal before it already lands), then
+In order: the DeFi pair at 2:10 (the refusal before it already lands), then
 the enclave at 4:00, then the benchmark at 2:40 — keeping only its last three
-lines, which is the number, without the table.
+lines, which is the number without the table.
 
-**Never cut the revoke**, and never cut the agent being refused at 1:30. The
-revoke is the only thirty seconds that cannot be replaced by a paragraph. The
-refusal is the only place the thesis is visible rather than described.
+**Never cut the revoke, and never cut the swarm at 1:30.** The revoke is the
+only thirty seconds that cannot be replaced by a paragraph. The swarm is the
+only place the thesis is visible rather than described — and it is the only
+place the track's own subject, an agent, is on screen doing something.
 
 ## What not to do
 
@@ -239,3 +280,9 @@ refusal is the only place the thesis is visible rather than described.
 - Do not narrate over the device screens. Let them be read.
 - Do not claim the Key Ring is holding the secrets unless `ring init` has run;
   `/capabilities` reports `plaintext-dev` and a viewer can see it.
+- Do not run the benchmark, the swarm and a live agent at the same time. They
+  compete for one model runtime and all three degrade — a refused agent went
+  into a seven-turn loop the first time that happened.
+- Do not say the models "obey the injection X% of the time". It moved between
+  33%, 0% and 83% across runs, and the last one only after a context-window
+  bug was fixed. Say that it varies, and that the mandate does not.
