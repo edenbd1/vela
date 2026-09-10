@@ -44,6 +44,14 @@
         "risk.screen": 200
       },
       "token_sha256": "2fc093f577d35d14d2777faf3fb0d559fa05e8c3426af2f772857e4e749f6517"
+    },
+    "9de980aa335df2af27ea4c640c09878ca7d9dd91": {
+      "label": "remote-1",
+      "slot": 3,
+      "grants": {
+        "infer.triage": 5
+      },
+      "token_sha256": "4d46f8457bd3410d6f30a56ffab0afefc0aeba27b4b6e65f8c9022fbf48b01ce"
     }
   }
 }

@@ -207,6 +207,40 @@ A container with no `--device`, no volume, no key and no plaintext token,
 running a model that decides, paying real HBAR authorised in a chip it cannot
 reach.
 
+### On hardware neither of us owns
+
+That container runs on the same laptop as the Flex, and a reader is entitled
+to ask whether "holds nothing" is doing any work. It is not: the only thing
+between an agent and a mandate is HTTP.
+[`.github/workflows/remote-spend.yml`](.github/workflows/remote-spend.yml)
+runs on GitHub's hardware against a gateway on a tunnel.
+
+```console
+host      Linux 6.17.0-1022-azure x86_64
+usb       no usb bus
+ledger    no ledger tooling
+seed      none
+envelope  none — it is in NVRAM on a device this job cannot address
+
+  "slot": 3, "agent": "remote-1", "ceiling": "1000000"
+
+  "paid": true,  "tx": "0.0.7162784@1789076298.000000000"     # 0.01 HBAR
+  "paid": false, "refused": true, "reason": "over_per_call"   # asked for 0.08
+```
+
+An Azure VM asked a Secure Element in a flat in Paris for money, got some,
+asked for eight times the ceiling, and was refused. The refusal did not happen
+on the runner, in the gateway, or in a policy file — it happened in NVRAM that
+job cannot read, cannot raise and cannot route around. The draw is message 15
+on the public topic and `hedera/verify.mjs` counts it among *4 of 4 envelopes
+verify*.
+
+`scripts/remote-agent.sh` opens the tunnel and says in its own header what
+that costs while it is open: two loopback services reachable from the
+internet, bounded by token auth, a URL that dies with the process, and — the
+part that is the whole argument — an envelope that caps what a fully
+compromised token is worth.
+
 ## An agent that actually decides
 
 For most of this project the word *agent* was doing no work: `agent/agent.mjs`

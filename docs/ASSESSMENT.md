@@ -124,31 +124,52 @@ because the chip does not hand out the key it protects. Both are on the screen
 and in the listing rather than buried. 28 assertions in `test/ring.test.mjs`,
 eleven of them on the shape of the challenge the app accepts.
 
-### 3. "Machines you do not control" are containers on one laptop — half closed
+### ~~3. "Machines you do not control" are containers on one laptop~~ — closed 2026-09-10
 
-A GitHub Actions runner now enrols in a Key Ring on every push:
-`.github/workflows/enrol.yml`, and the log is public. It prints that it has no
-USB bus and no Ledger tooling, generates its own identity, and shows that a
-host never admitted derives nothing while one that was derives the key rather
-than receiving it. That is a machine neither of us controls, which is Ledger's
-ask in Ledger's own words — "a VPS, a CI runner, or a hosted agent".
+Both halves now happen somewhere neither of us owns, and the log is public.
 
-What is still true: no agent *pays* from a machine we do not control. The
-runner cannot reach the broker or the gateway, both of which are on the
-laptop. The container reaches the gateway over HTTP and does not care where it
-is, so this is a routing problem rather than a design one, and
-`scripts/remote-agent.sh` closes it — two cloudflared tunnels, and an agent
-anywhere spends inside a mandate held in a chip it has no address for.
+**Enrolment.** A GitHub Actions runner joins the Key Ring on every push:
+`.github/workflows/enrol.yml`. It prints that it has no USB bus and no Ledger
+tooling, generates its own identity, and shows that a host never admitted
+derives nothing while one that was derives the key rather than receiving it.
+That is Ledger's ask in Ledger's own words — "a VPS, a CI runner, or a hosted
+agent".
 
-It is written and **not run**, deliberately. It makes two loopback services
-public for as long as it runs, and that is a decision rather than a detail.
-Three things bound it — every write path needs a token, the URL is random and
-dies with the process, and a fully compromised token still buys only what its
-envelope allows — but the third is the claim this repository is making, and
-running it turns that claim into an experiment with real testnet HBAR at
-stake. The script says so in its own header. Until someone runs it, the
-spending half is still containers on one laptop, and this document is not
-going to say otherwise.
+**Spending.** `.github/workflows/remote-spend.yml`, run against a gateway on a
+tunnel:
+
+```
+host      Linux 6.17.0-1022-azure x86_64
+usb       no usb bus
+ledger    no ledger tooling
+seed      none
+envelope  none — it is in NVRAM on a device this job cannot address
+
+  "slot": 3, "agent": "remote-1",
+  "budget": "5000000", "ceiling": "1000000", "available": "5000000"
+
+  "paid": true, "tx": "0.0.7162784@1789076298.000000000"
+
+  "paid": false, "refused": true, "reason": "over_per_call"
+```
+
+Azure hardware asked a Secure Element in a flat in Paris for money, got
+0.01 HBAR of it on Hedera testnet, asked for eight times the ceiling, and was
+refused. The refusal did not happen on the runner, in the gateway, or in any
+policy file: it happened in NVRAM the runner cannot read, cannot raise and
+cannot route around. The draw is anchored as message 15 on
+`0.0.10463705` and `hedera/verify.mjs` reports 4 of 4 envelopes verifying.
+
+The envelope was disposable on purpose — 0.05 HBAR, one payee, granted with
+`hedera/grant-one.mjs` into a free slot under the epoch already open, and
+revoked afterwards. `fleet.mjs` would have revoked slots 0-2 and rotated the
+topic to add a fourth agent, ending three working chains to run an experiment.
+
+What this cost while it ran: two loopback services were reachable from the
+internet. Three things bounded that — every write path needs a token, the URL
+died with the process, and a fully compromised token still buys only its
+envelope. `scripts/remote-agent.sh` says all of that in its own header, and it
+is not something to leave running.
 
 ### ~~4. Three slots is three agents~~ — closed 2026-09-10
 
@@ -279,14 +300,17 @@ device rather than the emulator. What is left, in order:
    not automatic: every hash changes, the push is a force push, and a clone
    made beforehand still has the file.
 
-4. **A real VPS**, so "machines you do not control" stops meaning "containers
-   on one laptop" for the half that spends. Enrolment already runs on a public
-   CI runner; what is missing is an agent *paying* from somewhere we do not
-   own, which needs the broker and gateway reachable from it.
+Off this list as of 2026-09-10, both on the same day:
 
-Off this list as of 2026-09-10: signing `AddMember` on the device, which was
-here as "written, blocked on an undocumented status word". It was not blocked.
-The status word meant something else, twice.
+**Signing `AddMember` on the device**, which was here as "written, blocked on
+an undocumented status word". It was not blocked. The status word meant
+something else, twice.
+
+**A real VPS.** The entry read "what is missing is an agent *paying* from
+somewhere we do not own, which needs the broker and gateway reachable from
+it" — and it turned out to want a tunnel rather than a host. Azure hardware
+running a GitHub Actions job bought an inference on Hedera testnet and was
+refused a larger one by the chip, both in a public log. Gap 3 above has it.
 
 And a broker that cannot decrypt while it runs, which is the last honest gap
 and too large for the time left.
