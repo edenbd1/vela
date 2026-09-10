@@ -113,10 +113,25 @@ NVRAM whether it is used or not, at 152 bytes each, and nobody here has run
 more than eight agents at once to find out where the real wall is. Thirty
 would be 4.6 KB, which is plausible and untested.
 
-### 5. Nothing recovers
+### ~~5. Nothing recovers~~ — closed 2026-09-10
 
-Lose the device and every envelope is gone. The Key Ring has recovery.
-Mandates do not.
+`VELA_RESTORE_MANDATE` puts an envelope back at the position the public log
+says it reached, and `hedera/recover.mjs` reads that position off the mirror
+node. The terms come from a backup `fleet.mjs` writes; the log carries a
+digest of them, so an edited backup matches no envelope the chain ever saw.
+
+The chip does not verify the position and the code says why: it signs whatever
+it is handed, so a record fabricated a second ago verifies as well as a real
+one. Ed25519 over your own key is not evidence to yourself. What checks it is
+the log, which is public, and the person holding the device, who is standing
+there anyway — the same trust model as granting.
+
+It refuses more than it accepts. A chain with a gap yields no position, since
+every missing draw is spending it would hand back; run against our own topic
+it refused `research-1` on the artefact of that morning's topic-rotation bug.
+An envelope with no records is refused rather than restored at zero.
+
+9 host-side assertions, 9 on the chip.
 
 ### 6. The broker is a trust point while it runs
 

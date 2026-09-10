@@ -472,6 +472,42 @@ left, who it may pay — with per-mandate detail and revocation, plus a
 *Revoke all mandates* button. Authority you cannot see is not authority you
 control, so it is the home screen rather than a settings sub-page.
 
+### Losing the device
+
+A mandate is NVRAM state, not something derived from a seed. Restore your 24
+words onto a replacement Flex and the keys come back while every envelope is
+gone — which, without recovery, means an agent that had spent 0.38 of 0.5 HBAR
+gets a fresh 0.5.
+
+```console
+$ node hedera/recover.mjs
+topic    0.0.10449044
+source   https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
+
+  research-1     draw 12   0.38 spent, 0.12 left of 0.50
+                 digest 0f39b1086dbf4421…  matches the chain
+                 12 draw(s), no gaps
+```
+
+The position comes from the public log. The terms come from a backup granting
+writes — and the log carries a digest of exactly those fields, so a backup
+someone edited into a larger budget matches no envelope the chain ever saw.
+
+The chip does not verify the position, and the code says why rather than
+implying otherwise. It could check a signature it made over the last draw, and
+that would prove nothing: this chip signs whatever it is handed, so a record
+fabricated a second ago verifies exactly as well as a real one. Ed25519 over
+your own key is not evidence to yourself. What checks it is a log anyone can
+read and the person holding the device, who is standing there anyway. The
+screen says **Restore**, shows the position in the same units printed above,
+and asks them to compare before tapping.
+
+It refuses more than it accepts. A chain with a gap yields no position at all,
+because every missing draw is spending it would hand back. Run against our own
+topic it refused `research-1` on a real gap left by a bug earlier the same day
+— which is the behaviour you want from the tool that decides how much money an
+agent gets back.
+
 ### Key Ring enrolment
 
 Ledger's second ask: *"Bring the Key Ring to hosts with no USB port: enroll a
