@@ -678,45 +678,63 @@ have the restore instruction"* rather than as a stack trace. A hosted tool
 could do the same: ask the dashboard which app is running before blaming the
 app.
 
-## 17. The Key Ring protocol's first instruction returns an undocumented `0xb00d`
+## 17. A device-rooted Key Ring needs Ledger's backend, and nothing says so
 
-**What we were doing.** Ledger's second ask is to bring the Key Ring to hosts
-with no USB port. We built the ceremony on
-`@ledgerhq/hw-ledger-key-ring-protocol`, and it works with a `SoftwareDevice`
+**What we were trying to do.** Ledger's second ask is to bring the Key Ring to
+hosts with no USB port. We built the ceremony on
+`@ledgerhq/hw-ledger-key-ring-protocol` and it works with a `SoftwareDevice`
 as the trustchain owner. The stronger version — the *device* signing each
 `AddMember`, so nobody joins a fleet without a finger on a screen — needs
 `ApduDevice`, which speaks to the **Ledger Sync** app.
 
-**What happens.** With Ledger Sync open and answering `b001` (get app name)
-correctly, the protocol's first two calls both fail:
+**Where it stops, precisely.** We chased it to the exact gate:
 
 ```
-  getPublicKey: Ledger device: UNKNOWN_ERROR (0xb00d)
-  getSeedId:    Ledger device: UNKNOWN_ERROR (0xb00d)
+  APDU.getPublicKey(transport)            → 0xB00D  SW_PARSER_INVALID_FORMAT
+  a well-formed challenge TLV             → 0xB00F  SW_CHALLENGE_NOT_VERIFIED
 ```
 
-`getPublicKey` is `INS 0x05` and takes no arguments. `initFlow` exists but the
-library only calls it from `sign()`, so it is not a missing precondition for
-this instruction.
+The first is a library/app mismatch: `getPublicKey` sends `e0 05 00 00 00`,
+an empty payload, and `INS 0x05` in the app is the challenge instruction —
+`src/challenge_parser.c` rejects the empty body as a malformed TLV.
 
-**Why it costs.** `0xb00d` appears nowhere: not in the protocol package, not
-in `@ledgerhq/errors`, not in the SDK status words we could find. The tooling
-renders it as `UNKNOWN_ERROR`, which is accurate and unactionable. There is no
-way to tell from the host whether the app needs a screen tapped, a session
-opened by Ledger Live first, a pairing that does not exist yet, or something
-else entirely.
+The second is the real answer. Rebuilding the challenge in the shape Ledger
+Live's own mocks use — `STRUCTURE_TYPE`, `CHALLENGE`, `DER_SIGNATURE`,
+`TRUSTED_NAME`, `PUBLIC_KEY`, from `src/challenge_parser.h` — gets past the
+parser and lands on `SW_CHALLENGE_NOT_VERIFIED`. The challenge must be signed
+by a key the device already trusts; `src/crypto_data.h` carries the PROD and
+TEST attestation public keys, and the mocks name the signer:
+`trustchain-backend.api.aws.stg.ldg-tech.com`.
 
-**What would fix it.** A table of the Ledger Sync app's status words, or a
-line in the protocol package's README saying what state the app must be in
-before `ApduDevice` will answer. The package documents the objects well and
-says nothing about the device-side preconditions for using them.
+**So: a trustchain rooted in the Secure Element requires a challenge issued
+and signed by Ledger's hosted backend.** That is a design decision, not an
+omission, and it is a reasonable one. What is missing is anyone saying it.
 
-**Where we left it.** The transport and the `--device` code path are written
-and committed; `host/bridge.py` can now guard a named app so the same USB
-shim serves both Vela and Ledger Sync. What is missing is one sentence of
-documentation we could not find. Enrolment ships rooted in the Key Ring
-instead — real, and one level of indirection from the device, which
-`docs/RING-ENROLL.md` says plainly rather than implying otherwise.
+**What it costs.** The protocol package documents its objects well —
+`StreamTree`, `AddMember`, `Permissions`, `SoftwareDevice`, `ApduDevice` — and
+says nothing about the device-side preconditions for the one class that uses
+the device. A builder reads `createApduDevice(transport)`, sees a `Device`
+implementation beside `SoftwareDevice`, and reasonably concludes the two are
+interchangeable. They are not: one is local, and the other needs your servers.
+
+Two hours went into that gap, and the only way out was reading the app's C
+source and Ledger Live's APDU fixtures.
+
+**What would fix it.** One paragraph in the protocol package's README:
+*"`ApduDevice` requires a challenge signed by Ledger's trustchain backend.
+Self-hosted or offline use is not supported; use `SoftwareDevice` for a
+locally-rooted trustchain."* That sentence would have saved every hour of it.
+
+**Also worth fixing.** `createApduDevice` is not re-exported from the package
+root, though it is the only entry point to device-rooted use — it has to be
+required from `lib/ApduDevice`. And `APDU.getPublicKey` sends a payload the
+app cannot parse, so the first call anyone tries fails in a way that points
+at the wrong thing.
+
+**Where we left it.** `grant --device`, the transport, and a bridge that can
+guard a named app are all committed and work up to the gate. Enrolment ships
+rooted in the Key Ring instead: you cannot admit a host without the device
+having admitted you first, which is real and one step short of a tap.
 
 ## Tutorial we would have wanted
 

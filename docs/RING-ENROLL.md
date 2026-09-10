@@ -102,13 +102,20 @@ person approving it. `host/ring/bridge-transport.cjs` carries the protocol
 over the same APDU shim everything else here uses, and `host/bridge.py` takes
 `VELA_BRIDGE_APP` so one USB handle serves both Vela and Ledger Sync.
 
-It does not work, and the reason is not ours. With Ledger Sync open and
-answering correctly to `b001`, the protocol's first instruction —
-`getPublicKey`, `INS 0x05`, no arguments — returns `0xb00d`. That status word
-appears nowhere in the protocol package, in `@ledgerhq/errors`, or in any SDK
-table we could find, and the tooling renders it as `UNKNOWN_ERROR`. There is
-no way from the host to tell whether the app wants a screen tapped, a session
-Ledger Live would have opened, or something else. Written up as finding 17 in
+It does not work, and we found out exactly why by reading the app's own
+source. `INS 0x05` is not "get a public key" — it is the challenge
+instruction, and it wants a TLV. An empty payload gets `0xB00D`
+(`SW_PARSER_INVALID_FORMAT`). Rebuilding the TLV in the shape Ledger Live's
+mocks use gets past the parser and lands on `0xB00F` —
+**`SW_CHALLENGE_NOT_VERIFIED`**.
+
+The challenge has to be signed by a key the device already trusts. The app
+carries Ledger's attestation public keys in `src/crypto_data.h`, and the mocks
+name the signer: `trustchain-backend.api.aws.stg.ldg-tech.com`.
+
+**A trustchain rooted in the Secure Element requires Ledger's hosted backend
+to issue and sign a challenge.** That is a design decision and a defensible
+one. Nothing in the protocol package says it, which is finding 17 in
 [FEEDBACK-LEDGER.md](FEEDBACK-LEDGER.md).
 
 So enrolment ships rooted in the Key Ring rather than in a tap. That is real —
