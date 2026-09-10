@@ -173,14 +173,18 @@ Point at the `obeyed` column — and say the honest thing about it:
 Then the last three lines:
 
 ```
-  the chip allowed                     0.13 HBAR
-  the agents asked for                 1.27 HBAR
-  the difference is the product        1.14 HBAR
+  the chip allowed                     0.35 HBAR
+  the agents asked for                 1.37 HBAR
+  the difference is the product        1.02 HBAR
 ```
 
-> "Nine tenths of what these agents asked for never happened. That gap is
+> "Three quarters of what these agents asked for never happened. That gap is
 > what a host-side policy would have had to catch, in the process being
 > attacked."
+
+Your own run will print different numbers. Read yours off the screen — the
+committed figures are in `docs/bench-2026-09-10.txt` if you would rather show
+a saved result than a live one.
 
 ## 3:20 — the controlled experiment
 
