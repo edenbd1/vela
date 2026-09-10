@@ -114,12 +114,27 @@ async function run(turns, { available = 50_000_000n, env = {}, calls = null } = 
   // cannot spin forever inside a test.
   let turn = 0;
   const sent = [];
+  // The agent decodes twice a turn: which tool, then that tool's arguments.
+  // The scripted model answers whichever half it was asked for, told apart by
+  // the schema it was handed — the same way the real runtime tells them apart.
+  let pending = null;
   const llm = await serve((path, body) => {
     if (!body?.format) throw new Error("the agent asked for unconstrained output");
     sent.push(body.messages);
-    const t = turns[turn++] ?? { tool: "report", verdict: "script exhausted" };
-    return { message: { role: "assistant",
-                        content: JSON.stringify({ thought: "…", ...t }) } };
+
+    if (body.format.properties?.tool) {
+      pending = turns[turn++] ?? { tool: "report", verdict: "script exhausted" };
+      return { message: { role: "assistant",
+                          content: JSON.stringify({ thought: "…", tool: pending.tool }) } };
+    }
+
+    // The arguments half, narrowed to the fields this schema actually asks
+    // for — so a script that sets a field the tool does not take cannot
+    // smuggle it through.
+    const want = Object.keys(body.format.properties ?? {});
+    const args = {};
+    for (const k of want) args[k] = (pending ?? {})[k] ?? "";
+    return { message: { role: "assistant", content: JSON.stringify(args) } };
   });
 
   const out = await new Promise((resolve) => {

@@ -81,7 +81,26 @@ async function api(url, body) {
  * reasoning before it commits to a tool, which is the cheap version of
  * thinking out loud and measurably improves what it picks.
  */
-function decisionSchema(canTrade) {
+/**
+ * Two decodes per turn: which tool, then its arguments.
+ *
+ * One flat schema was the obvious build and it has the failure that has cost
+ * this agent more turns than anything else. Every argument has to be optional
+ * there — `account` means nothing to check_envelope — so a
+ * grammar-constrained model is free to emit `{thought, tool}` and stop, and
+ * hermes3 under contention does exactly that: `screen_counterparty()` with no
+ * account, twice, then a run that accomplished nothing.
+ *
+ * Splitting it makes the argument mandatory. The first decode picks a tool
+ * from an enum; the second is given a schema in which that tool's arguments
+ * are `required`, so the grammar cannot produce a call without them. Tools
+ * that take nothing skip the second decode entirely.
+ *
+ * It costs one extra model call on the turns that need arguments, which on a
+ * local 8B is about a second. A wasted turn costs more than that, and a run
+ * that ends having done nothing costs more again.
+ */
+function toolSchema(canTrade) {
   return {
     type: "object",
     properties: {
@@ -91,26 +110,38 @@ function decisionSchema(canTrade) {
         enum: ["check_envelope", "screen_counterparty", "buy_analysis",
                ...(canTrade ? ["swap"] : []), "flag_instruction", "report"],
       },
-      account: { type: "string" },
-      tier: { type: "string", enum: ["triage", "synthesis", "exhaustive"] },
-      // What a tool result told it to do. Quoted, not summarised: an agent
-      // that paraphrases an injection has already started reasoning from it.
-      quote: { type: "string" },
-      source: { type: "string" },
-      ...(canTrade ? {
-        amount: { type: "string" },
-        // The field this whole project is about. A transfer names its payee
-        // in the transaction body; a contract call names only the contract,
-        // and where the value lands is decided by an ABI argument the body
-        // does not interpret. An injected agent rewrites exactly this,
-        // because it turns a plausible swap into a theft while the contract,
-        // the function and the amount all stay reasonable.
-        proceeds_to: { type: "string" },
-      } : {}),
-      verdict: { type: "string" },
     },
     required: ["thought", "tool"],
   };
+}
+
+/** What that tool needs, with nothing optional. Null means it takes nothing. */
+function argsSchema(tool) {
+  const S = {
+    screen_counterparty: {
+      account: { type: "string", description: "a Hedera account id, e.g. 0.0.10388937" },
+    },
+    buy_analysis: {
+      tier: { type: "string", enum: ["triage", "synthesis", "exhaustive"] },
+    },
+    swap: {
+      amount: { type: "string", description: "HBAR, e.g. 0.05" },
+      // The field this whole project is about. A transfer names its payee in
+      // the transaction body; a contract call names only the contract, and
+      // where the value lands is an ABI argument the body does not interpret.
+      // An injected agent rewrites exactly this.
+      proceeds_to: { type: "string", description: "the account receiving the output" },
+    },
+    flag_instruction: {
+      quote: { type: "string", description: "the words that instructed you, verbatim" },
+      source: { type: "string", description: "the tool the instruction came from" },
+    },
+    report: {
+      verdict: { type: "string", description: "what you concluded, in a sentence" },
+    },
+  }[tool];
+  if (!S) return null;
+  return { type: "object", properties: S, required: Object.keys(S) };
 }
 
 const TRADING_TOOLS = `
@@ -457,22 +488,20 @@ let pushbacks = 0;
 let lastCall = null;    // the same decision, over and over
 let repeats = 0;
 
-for (let step = 1; step <= MAX_STEPS && finished === null; step++) {
+/**
+ * One constrained decode. Returns the parsed object, or null after saying why.
+ */
+async function decode(schema) {
   let res;
   try {
     res = await fetch(`${OLLAMA}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        // Both derived from the mandate, and both re-derived each turn: the
-        // first check_envelope is what tells this process whether trading is
-        // on the table at all. Until then the schema cannot express a swap
-        // and the prompt does not mention one.
-        model: MODEL, messages: window(), format: decisionSchema(Boolean(terms)),
-        stream: false,
+        model: MODEL, messages: window(), format: schema, stream: false,
         // Low, because this agent spends money. Sampling variety is a fine
         // thing in a chatbot and a liability in something holding a mandate.
-        options: { temperature: 0.1 },
+        options: { temperature: 0.1, num_ctx: 8192 },
       }),
     }).then((r) => r.json());
   } catch (e) {
@@ -480,23 +509,46 @@ for (let step = 1; step <= MAX_STEPS && finished === null; step++) {
     console.log(`  start it with: ollama serve`);
     process.exit(1);
   }
-
   if (res.error) {
     console.log(`  the model refused the request: ${res.error}`);
     console.log(`  pull a model first: ollama pull ${MODEL}`);
     process.exit(1);
   }
-
-  let d;
   try {
-    d = JSON.parse(res.message?.content ?? "");
+    return { value: JSON.parse(res.message?.content ?? ""), message: res.message };
   } catch {
     // Grammar-constrained decoding should make this impossible. If a runtime
     // ignores `format` it is better to stop than to guess at intent with a
     // mandate in hand.
     console.log(`  the model did not return a decision: ` +
                 `${(res.message?.content ?? "").slice(0, 120)}`);
-    break;
+    return null;
+  }
+}
+
+for (let step = 1; step <= MAX_STEPS && finished === null; step++) {
+  // Which tool. The enum is derived from the mandate, re-derived each turn,
+  // because the first check_envelope is what tells this process whether
+  // trading is on the table at all.
+  const picked = await decode(toolSchema(Boolean(terms)));
+  if (!picked) break;
+
+  const d = { ...picked.value };
+  const res = { message: picked.message };
+
+  // Then its arguments, with nothing optional, so the grammar cannot produce
+  // a call missing the field it needs.
+  const wants = argsSchema(d.tool);
+  if (wants) {
+    messages.push(picked.message, { role: "user", content:
+      `Now give the arguments for ${d.tool}.` });
+    const args = await decode(wants);
+    messages.length -= 2;               // that exchange was scaffolding
+    if (!args) break;
+    Object.assign(d, args.value);
+    // The turn the conversation keeps is one message, carrying both halves,
+    // so the history reads as a sequence of decisions rather than of prompts.
+    res.message = { role: "assistant", content: JSON.stringify(d) };
   }
 
   // A model that reports without ever having looked at its envelope is

@@ -34,7 +34,10 @@ function mindFor(agent) {
   who.className = "who";
   who.textContent = agent;
   const slot = document.createElement("span");
-  slot.className = "slot";
+  // .meta, right-aligned by the sheet, and one element rather than a slot
+  // label with a model tag nested inside it — which is what it was, so the
+  // two overlapped and the text read twice in the DOM.
+  slot.className = "meta";
   // The slot is the chip's fact, not the agent's claim, so it is read from
   // the fleet the device reported rather than from the message.
   const known = (window.__fleet ?? []).find((a) => a.label === agent);
@@ -69,10 +72,8 @@ function onAgentEvent(e) {
     if (empty) empty.hidden = true;
     const m = mindFor(e.agent);
     if (e.model) {
-      const tag = document.createElement("span");
-      tag.className = "slot";
-      tag.textContent = ` · ${e.model}`;
-      m.box.querySelector("header .slot")?.append(tag);
+      const meta = m.box.querySelector("header .meta");
+      if (meta) meta.textContent = `${meta.textContent} · ${e.model}`;
     }
     return;
   }
@@ -136,6 +137,48 @@ function onAgentEvent(e) {
     ? `refused: ${e.reason} — ${e.why ?? ""}`
     : (e.summary || "");
   (m.last ?? m.steps).append(out);
+}
+
+/**
+ * Play a recording instead of listening for one.
+ *
+ * A reader with no Ledger, no broker and no model runtime still deserves to
+ * see what the refusal looks like. The events are the ones the console
+ * actually received — captured from /api/events/recording — replayed at the
+ * pace they arrived, capped so a run with a slow model in it does not make
+ * the page look broken.
+ *
+ * The banner above says these are recorded, and every button is disabled.
+ * A console that let you press "buy" against a recording would be a console
+ * lying about what it is.
+ */
+async function replayAgents(url = "/demo-run.json") {
+  let rec;
+  try {
+    rec = await (await fetch(url)).json();
+  } catch {
+    return false;
+  }
+  if (!rec?.events?.length) return false;
+
+  const when = document.getElementById("demo-when");
+  if (when && rec.recorded) when.textContent = rec.recorded.slice(0, 10);
+
+  const events = rec.events;
+  let previous = events[0].at ?? 0;
+  for (const e of events) {
+    // Real gaps, but bounded: a model that thought for nine seconds should
+    // not make a reader wait nine seconds to find out the page works.
+    const gap = Math.min(Math.max((e.at ?? previous) - previous, 0), 900);
+    previous = e.at ?? previous;
+    await new Promise((r) => setTimeout(r, gap));
+    onAgentEvent(e);
+  }
+  // The recording has run out, so nothing here is live any more. Leaving the
+  // pulse on would say an agent is still thinking about a run that ended
+  // before the reader opened the page.
+  for (const m of minds.values()) m.box.classList.remove("live");
+  return true;
 }
 
 function watchAgents() {

@@ -114,6 +114,17 @@ async function paintFleet() {
     return null;
   }
   FLEET = d;
+  return paintFleetFrom(d);
+}
+
+/**
+ * Draw a fleet, whatever it came from.
+ *
+ * Split from the fetch so a recording can be painted with exactly the same
+ * code as a live device. Two painters would be two things to keep in step,
+ * and the one nobody looks at is the one that rots.
+ */
+function paintFleetFrom(d) {
 
   const live = d.agents.filter((a) => !a.free);
   if (selected === null && live.length) selected = live[0].slot;
@@ -268,10 +279,20 @@ async function refresh() {
     return null;
   }
 
-  const m = d.mandate;
   $("dot").className = "dot on";
   $("device-text").textContent = CONFIG?.buyer ?? "device";
+  paintEnvelopeFrom(d, fleet);
+  return d;
+}
 
+/**
+ * Draw an envelope, live or recorded.
+ *
+ * Same code either way. Two painters would be two things to keep in step, and
+ * the one nobody looks at is the one that rots.
+ */
+function paintEnvelopeFrom(d, fleet = null) {
+  const m = d.mandate;
   $("available").textContent = hbar(m.available);
   $("percall").textContent = hbar(m.per_call_max);
   $("draws").textContent = m.draws_so_far;
@@ -580,8 +601,82 @@ async function loadReceipts() {
 
 /* ---------------------------------------------------------------- boot -- */
 
+/**
+ * Everything the page needs to admit it is a recording.
+ *
+ * Called when there is no gateway to talk to, or when ?demo says so. The
+ * banner appears, every control is disabled, and the fleet is painted from
+ * the recording's own snapshot rather than from a device — because a console
+ * showing live-looking numbers with nothing behind them is the one thing this
+ * project cannot afford to ship.
+ */
+async function enterDemo(reason) {
+  DEMO = true;
+  $("demo-banner").hidden = false;
+  $("dot").className = "dot demo";
+  $("device-text").textContent = "recorded — no device";
+
+  for (const b of document.querySelectorAll("button.act, button.scenario")) {
+    b.disabled = true;
+    b.title = "inert: this page is replaying a recording";
+  }
+  $("hint").textContent = reason;
+  $("defi-hint").textContent =
+    "recorded run — the buttons are inert. Clone the repo to press them.";
+
+  // Paint the chip's half from the recording's own snapshot. Without this a
+  // reader sees three agents reasoning against blank budget cards, and the
+  // half that is missing is the half that came from the device.
+  let rec = null;
+  try { rec = await (await fetch("/demo-run.json")).json(); } catch { /* none */ }
+
+  if (rec?.fleet) {
+    FLEET = rec.fleet;
+    // The reasoning columns label each agent with the slot the *device* put
+    // it in. Without this they say "unclaimed slot" beside an agent the
+    // recording clearly shows in slot 0.
+    window.__fleet = rec.fleet.agents ?? [];
+    paintFleetFrom(rec.fleet);
+  }
+  // The fleet goes in too: the three figures at the top of the page are
+  // counted from it, and a recording that showed "0 agents" above three
+  // agents would be worse than showing nothing.
+  if (rec?.envelope?.mandate) {
+    // The heading above the envelope is set by refresh(), which demo mode
+    // never reaches — so it read "—" over a fully painted panel.
+    const m = rec.envelope.mandate;
+    $("sel-name").textContent = m.label ?? "the envelope";
+    $("sel-slot").textContent = `slot ${rec.envelope.slot ?? 0}`;
+    $("try-as").textContent = `as ${m.label ?? "—"}`;
+    paintEnvelopeFrom(rec.envelope, rec.fleet);
+  }
+  if (rec?.topic) {
+    const a = document.createElement("a");
+    a.href = `https://hashscan.io/testnet/topic/${rec.topic}`;
+    a.target = "_blank"; a.rel = "noopener";
+    a.textContent = rec.topic;
+    $("topic").textContent = "";
+    $("topic").append(a);
+    $("verify-link").href = `/verify.html?topic=${rec.topic}`;
+  }
+
+  const played = await replayAgents();
+  if (!played) {
+    $("minds-empty").hidden = false;
+    $("minds-empty").textContent = "no recording found at /demo-run.json";
+  }
+}
+
 (async () => {
-  CONFIG = await (await fetch("/api/config")).json();
+  try {
+    CONFIG = await (await fetch("/api/config")).json();
+  } catch {
+    // A static host has no /api. That is the ordinary case for a reader.
+    CONFIG = { tiers: [], defi: { swap: { sig: "swapExactHBARForTokens(uint256,address)" } } };
+    await enterDemo("no gateway on this origin — replaying a recorded run");
+    return;
+  }
+  if (DEMO) { await enterDemo("replaying a recorded run"); return; }
   if (CONFIG.topic) {
     const a = document.createElement("a");
     a.href = `https://hashscan.io/testnet/topic/${CONFIG.topic}`;

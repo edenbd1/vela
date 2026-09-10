@@ -252,6 +252,29 @@ const server = createServer(async (req, res) => {
     return send(res, 204, "text/plain", "");
   }
 
+  // Everything the feed has seen, as a file. `node web/server.mjs > run.json`
+  // is not how you get a recording — this is, and it captures exactly what the
+  // page would have received, which is the only way a replay can be honest
+  // about being one.
+  if (path === "/api/events/recording") {
+    // The fleet and the selected envelope go in with the events. A replay
+    // that showed reasoning against empty budget cards would be showing half
+    // a story, and the half it dropped is the one that comes from the chip.
+    const [fleet, envelope] = await Promise.all([
+      fetch(`http://127.0.0.1:${PORT}/api/fleet`).then((r) => r.json()).catch(() => null),
+      fetch(`${GATEWAY}/envelope?slot=0`, {
+        headers: operatorToken() ? { "x-vela-operator": operatorToken() } : {},
+      }).then((r) => r.json()).catch(() => null),
+    ]);
+    return send(res, 200, "application/json", JSON.stringify({
+      recorded: new Date().toISOString(),
+      topic: liveEnv("HEDERA_TOPIC_ID"),
+      fleet,
+      envelope,
+      events: feed,
+    }, null, 2));
+  }
+
   if (path === "/api/events/stream") {
     res.writeHead(200, {
       "content-type": "text/event-stream",

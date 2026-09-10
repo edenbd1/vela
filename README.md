@@ -494,7 +494,28 @@ The buyer account is controlled by the key derived on the device at
 `m/44'/3030'/0'/0'/0'`. Nothing on this machine can spend from it. The only
 path to a signature runs through a mandate check in the chip.
 
-### Anyone can check it
+### Anyone can check it, in their own browser
+
+[`web/verify.html`](web/verify.html) reads a topic straight from Hedera's
+public mirror node and checks it where you are standing. No Vela server is
+involved — open the network tab and the only origin the page talks to is
+`testnet.mirrornode.hedera.com`.
+
+It checks sequence continuity and the arithmetic between draws, confirms each
+transfer settled exactly as recorded, and verifies the chip's 29-byte
+statement with WebCrypto Ed25519 — against a device key it also fetches from
+Hedera, rather than one this page was told about. Against the live topic: ten
+draws, ten signatures, **1 of 1 envelope(s) verify**.
+
+A second implementation is a second thing that can be wrong, and a browser
+reporting "complete and consistent" for a chain Node calls broken would be
+worse than having no browser verifier at all. So they are not left to agree by
+inspection: `test/chain-parity.test.mjs` runs both over nine chain shapes —
+clean, gapped, starting mid-sequence, releases, contract calls, arithmetic
+that does not add up, a negative balance, one draw, none — and fails on any
+difference in verdict or wording.
+
+### Or from a terminal
 
 `hedera/verify.mjs` reads the Hedera mirror node and **nothing else** — no
 local state, no trust in this repo, no trust in the host that produced the log.
@@ -561,6 +582,24 @@ host/        APDU bridge, device journal, Key Ring enrolment, the software
              control arm
 docs/        Ledger developer-experience feedback, the direction, the canvas
 ```
+
+### Without a device, a broker, or a model
+
+The console is a set of static files, and it will replay a recorded run when
+there is no gateway on the origin — so a reader can open it and watch an agent
+be refused with nothing installed.
+
+```bash
+export VELA_EVENTS=http://127.0.0.1:4050/api/events
+node agent/swarm.mjs
+./scripts/record.sh          # captures what the page actually received
+```
+
+Nothing in the replay is a mock-up: the events are the ones the console
+received, and the budgets come from a snapshot of the chip taken at the same
+moment. The page says so in a banner and disables every control, because a
+console that let you press *buy* against a recording would be a console lying
+about what it is.
 
 ### The fleet, thinking
 

@@ -222,6 +222,63 @@ def main():
                 check(f"'{case}' is refused with {reason}",
                       reason in seen_text, seen_text[:140])
 
+        # ------------------------------------------------------------------
+        # Replay, served as pure static files with no API behind it.
+        #
+        # This is how a reader meets the project: a URL, no Ledger, no broker,
+        # no model runtime. It is also the mode most likely to rot, because
+        # nobody developing here ever opens it.
+        # ------------------------------------------------------------------
+        import http.server, socketserver, threading, shutil, tempfile, os
+        static = tempfile.mkdtemp(prefix="vela-static-")
+        web = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
+        for f in os.listdir(web):
+            if f.endswith((".html", ".js", ".css", ".json")):
+                shutil.copy(os.path.join(web, f), static)
+        brand = os.path.join(os.path.dirname(web), "brand")
+        if os.path.isdir(brand):
+            shutil.copytree(brand, os.path.join(static, "brand"), dirs_exist_ok=True)
+
+        class Quiet(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *a, **k): super().__init__(*a, directory=static, **k)
+            def log_message(self, *a): pass
+
+        srv = socketserver.TCPServer(("127.0.0.1", 0), Quiet)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        port = srv.server_address[1]
+
+        demo = browser.new_page(viewport={"width": 1280, "height": 1700})
+        demo_errs = []
+        demo.on("pageerror", lambda e: demo_errs.append(str(e)))
+        origins = set()
+        demo.on("request", lambda r: origins.add(r.url.split("/")[2]))
+        demo.goto(f"http://127.0.0.1:{port}/index.html", wait_until="load")
+        time.sleep(18)
+
+        check("the page works as static files with no API", not demo_errs,
+              "; ".join(demo_errs[:2]))
+        check("and says so rather than looking live",
+              not demo.eval_on_selector("#demo-banner", "e => e.hidden"))
+        check("every control is inert in a recording",
+              demo.eval_on_selector_all("button.act, button.scenario",
+                                        "e => e.every(b => b.disabled)"))
+        names = demo.eval_on_selector_all(".mind .who", "e => e.map(x => x.textContent)")
+        check("the recorded agents replay", len(names) >= 2, f"{names}")
+        cards = demo.eval_on_selector_all("#agents .agent .name",
+                                          "e => e.map(x => x.textContent)")
+        check("the fleet is painted from the recording's snapshot",
+              len(cards) >= 2, f"{cards}")
+        claims = demo.eval_on_selector_all(".claim b", "e => e.map(x => x.textContent)")
+        check("and the headline figures are not zero",
+              claims and claims[0] not in ("0", "—"), f"{claims}")
+        check("nothing pulses once the recording ends",
+              demo.eval_on_selector_all(".mind.live", "e => e.length") == 0)
+        check("a static page contacts no origin but itself",
+              origins == {f"127.0.0.1:{port}"}, f"{sorted(origins)}")
+        demo.close()
+        srv.shutdown()
+        shutil.rmtree(static, ignore_errors=True)
+
         if "--shot" in sys.argv:
             out = sys.argv[sys.argv.index("--shot") + 1]
             page.screenshot(path=out, full_page=True)
