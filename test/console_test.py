@@ -127,6 +127,21 @@ def main():
         check("the verdict lands when the run ends",
               "flagged, not followed" in text)
 
+        # A second run replaces the first. Without this the feed accumulates
+        # every run ever made against the console, and a demo opens on a
+        # column of yesterday's decisions stacked under today's.
+        post({"agent": "research-1", "kind": "start", "model": "hermes3:8b"})
+        time.sleep(0.4)
+        post({"agent": "research-1", "kind": "decision", "step": 1,
+              "tool": "check_envelope", "call": "check_envelope()",
+              "thought": "a fresh run"})
+        time.sleep(1.0)
+        again = page.inner_text("#minds")
+        check("a new run replaces the agent's previous one",
+              "recipient_not_self" not in again and "a fresh run" in again,
+              again[:200])
+        check("and leaves the other agents alone", "not_granted" in again)
+
         # The one string on this page written by a third party, by way of a
         # language model. If it ever renders as markup, that is the whole
         # trust story gone.

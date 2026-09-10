@@ -419,11 +419,19 @@ function window() {
 function callSig(d) {
   const arg = d.tool === "screen_counterparty" ? d.account
             : d.tool === "buy_analysis" ? d.tier
-            : d.tool === "swap" ? `${d.amount} HBAR → ${d.proceeds_to}`
+            // The model sometimes writes "0.05" and sometimes "0.05 HBAR";
+            // appending the unit unconditionally printed "0.05 HBAR HBAR".
+            : d.tool === "swap"
+              ? `${String(d.amount ?? "").replace(/\s*HBAR\s*$/i, "")} HBAR → ${d.proceeds_to}`
             : d.tool === "flag_instruction" ? (d.source ?? "?")
             : "";
   return `${d.tool}${arg ? `(${arg})` : "()"}`;
 }
+
+// A run replaces the previous one on any console watching. Without this the
+// feed accumulates every run ever made against it, and a demo opens on a
+// column of yesterday's decisions.
+report({ kind: "start", model: MODEL });
 
 console.log(`\nagent ${NAME}  ·  ${MODEL} on ${OLLAMA}`);
 console.log(`  it holds no keys. It decides; the chip decides whether it may.\n`);

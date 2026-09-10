@@ -98,6 +98,14 @@ const feed = [];
 const watchers = new Set();
 
 function publish(event) {
+  // A new run supersedes that agent's old one. Dropping the history here
+  // rather than in the page keeps a browser opened mid-run from replaying
+  // decisions that have already been replaced.
+  if (event.kind === "start") {
+    for (let i = feed.length - 1; i >= 0; i--) {
+      if (feed[i].agent === event.agent) feed.splice(i, 1);
+    }
+  }
   const e = { ...event, seq: (feed.at(-1)?.seq ?? 0) + 1 };
   feed.push(e);
   if (feed.length > FEED_MAX) feed.shift();
@@ -222,6 +230,7 @@ const server = createServer(async (req, res) => {
       publish({
         agent: String(e.agent ?? "?").slice(0, 32),
         kind: String(e.kind ?? "?").slice(0, 16),
+        model: String(e.model ?? "").slice(0, 40),
         step: Number(e.step) || null,
         tool: String(e.tool ?? "").slice(0, 32),
         call: String(e.call ?? "").slice(0, 64),

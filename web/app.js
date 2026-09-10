@@ -384,6 +384,21 @@ function mindFor(agent) {
 }
 
 function onAgentEvent(e) {
+  // A run starting clears what that agent said last time. Anything else would
+  // show two runs stacked and read as one very confused agent.
+  if (e.kind === "start") {
+    const old = minds.get(e.agent);
+    if (old) { old.box.remove(); minds.delete(e.agent); }
+    const m = mindFor(e.agent);
+    if (e.model) {
+      const tag = document.createElement("span");
+      tag.className = "slot";
+      tag.textContent = ` · ${e.model}`;
+      m.box.querySelector("header .slot")?.append(tag);
+    }
+    return;
+  }
+
   const m = mindFor(e.agent);
 
   if (e.kind === "decision") {
@@ -610,6 +625,21 @@ function mindFor(agent) {
 }
 
 function onAgentEvent(e) {
+  // A run starting clears what that agent said last time. Anything else would
+  // show two runs stacked and read as one very confused agent.
+  if (e.kind === "start") {
+    const old = minds.get(e.agent);
+    if (old) { old.box.remove(); minds.delete(e.agent); }
+    const m = mindFor(e.agent);
+    if (e.model) {
+      const tag = document.createElement("span");
+      tag.className = "slot";
+      tag.textContent = ` · ${e.model}`;
+      m.box.querySelector("header .slot")?.append(tag);
+    }
+    return;
+  }
+
   const m = mindFor(e.agent);
 
   if (e.kind === "decision") {
@@ -774,6 +804,21 @@ function mindFor(agent) {
 }
 
 function onAgentEvent(e) {
+  // A run starting clears what that agent said last time. Anything else would
+  // show two runs stacked and read as one very confused agent.
+  if (e.kind === "start") {
+    const old = minds.get(e.agent);
+    if (old) { old.box.remove(); minds.delete(e.agent); }
+    const m = mindFor(e.agent);
+    if (e.model) {
+      const tag = document.createElement("span");
+      tag.className = "slot";
+      tag.textContent = ` · ${e.model}`;
+      m.box.querySelector("header .slot")?.append(tag);
+    }
+    return;
+  }
+
   const m = mindFor(e.agent);
 
   if (e.kind === "decision") {
@@ -945,6 +990,21 @@ function mindFor(agent) {
 }
 
 function onAgentEvent(e) {
+  // A run starting clears what that agent said last time. Anything else would
+  // show two runs stacked and read as one very confused agent.
+  if (e.kind === "start") {
+    const old = minds.get(e.agent);
+    if (old) { old.box.remove(); minds.delete(e.agent); }
+    const m = mindFor(e.agent);
+    if (e.model) {
+      const tag = document.createElement("span");
+      tag.className = "slot";
+      tag.textContent = ` · ${e.model}`;
+      m.box.querySelector("header .slot")?.append(tag);
+    }
+    return;
+  }
+
   const m = mindFor(e.agent);
 
   if (e.kind === "decision") {
