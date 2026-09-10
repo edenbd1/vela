@@ -30,6 +30,10 @@ host/ring/.member.json
 # which are only as private as the members list they were sealed for.
 host/ring/trustchain.enc
 host/ring/bundle-*.json
+# The device-rooted chain holds no private key at all — the owner is the
+# Secure Element — but it is the same roster, and it names every host a tap
+# admitted.
+host/ring/trustchain.device.json
 
 # Node
 hedera/node_modules/

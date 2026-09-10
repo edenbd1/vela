@@ -51,8 +51,8 @@ Verified on hardware, not asserted:
   the public log says it reached.
 - **A fleet console** that draws each agent's reasoning live, with the chip's
   refusals and the broker's shown apart.
-- **194 assertions** across seven suites — 33 host-side, 11 checking the
-  browser verifier agrees with the Node one, 60 on the agent loop, 17 on Key
+- **205 assertions** across seven suites — 33 host-side, 11 checking the
+  browser verifier agrees with the Node one, 60 on the agent loop, 28 on Key
   Ring enrolment, 22 on the console in a real browser, 6 on a public CI
   runner, and 45 against the chip — each shown to fail when the thing it
   checks is broken.
@@ -106,13 +106,23 @@ cannot admit a host without the device having admitted you first.
 the next branch opens, everyone who remains is re-shared. The ejected host
 derives nothing on the new path. Verified on the real ring.
 
-One thing is still not done, and we got further than "not done". The device
-signing each `AddMember` is written — `grant --device`, a transport over the
-same APDU shim, and a bridge that can guard a named app — and it stops at the
-protocol's first instruction, which returns `0xb00d` from Ledger Sync. That
-status word is in no table we could find and the tooling calls it
-`UNKNOWN_ERROR`. Finding 17. Enrolment ships rooted in the Key Ring instead:
-real, and one step short. 17 assertions in `test/ring.test.mjs`.
+And the stronger version is done too, as of 2026-09-10: `grant --device`
+makes the Secure Element itself the trustchain owner, so every `AddMember` is
+a block signed on the chip with a person approving the screen. Verified on the
+Flex — a new trustchain rooted in the device, a member admitted by a tap,
+`members --device` listing it.
+
+It took four status words and none of them names what is wrong.
+`ApduDevice.getPublicKey()` cannot succeed at all; the challenge does *not*
+have to come from Ledger's backend, which is the opposite of what we first
+concluded; and the app signs `OWNER` admissions only, refusing
+`Permissions.KEY_READER` as `SW_BAD_STATE`. Finding 17 has the trail and
+`host/ring/challenge-probe.cjs` reproduces the first two gates on hardware.
+
+So a member admitted by a tap is an owner, and `--seal` is refused on that path
+because the chip does not hand out the key it protects. Both are on the screen
+and in the listing rather than buried. 28 assertions in `test/ring.test.mjs`,
+eleven of them on the shape of the challenge the app accepts.
 
 ### 3. "Machines you do not control" are containers on one laptop — half closed
 
@@ -262,9 +272,9 @@ device rather than the emulator. What is left, in order:
    CI runner; what is missing is an agent *paying* from somewhere we do not
    own, which needs the broker and gateway reachable from it.
 
-Not on this list, and deliberately: signing `AddMember` on the device. It is
-written and it stops at an undocumented status word from Ledger Sync
-(finding 17). Waiting on someone else's documentation is not a plan.
+Off this list as of 2026-09-10: signing `AddMember` on the device, which was
+here as "written, blocked on an undocumented status word". It was not blocked.
+The status word meant something else, twice.
 
 And a broker that cannot decrypt while it runs, which is the last honest gap
 and too large for the time left.

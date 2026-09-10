@@ -94,33 +94,77 @@ You cannot admit a host to the fleet without the device having admitted you
 first.
 
 That is one level of indirection from the device signing each `AddMember`
-block itself, and we tried to close it.
+block itself. `--device` closes it.
 
-`enroll.cjs grant --device` is written: it makes the Secure Element the
-trustchain owner, so every admission is a block signed on the chip with a
-person approving it. `host/ring/bridge-transport.cjs` carries the protocol
-over the same APDU shim everything else here uses, and `host/bridge.py` takes
-`VELA_BRIDGE_APP` so one USB handle serves both Vela and Ledger Sync.
+### Rooted in the Secure Element
 
-It does not work, and we found out exactly why by reading the app's own
-source. `INS 0x05` is not "get a public key" — it is the challenge
-instruction, and it wants a TLV. An empty payload gets `0xB00D`
-(`SW_PARSER_INVALID_FORMAT`). Rebuilding the TLV in the shape Ledger Live's
-mocks use gets past the parser and lands on `0xB00F` —
-**`SW_CHALLENGE_NOT_VERIFIED`**.
+`enroll.cjs grant <pubkey> <name> --device` makes the chip the trustchain
+owner: every admission is a block signed on the device with a person approving
+it. It speaks to the **Ledger Sync** app rather than to Vela — different app,
+same device — so the bridge is told which app to expect:
 
-The challenge has to be signed by a key the device already trusts. The app
-carries Ledger's attestation public keys in `src/crypto_data.h`, and the mocks
-name the signer: `trustchain-backend.api.aws.stg.ldg-tech.com`.
+```bash
+pkill -f host/bridge.py
+VELA_BRIDGE_APP="Ledger Sync" python3 host/bridge.py &
+node host/ring/enroll.cjs grant 03a6e2ab…01d8 ci-runner-test --device
+```
 
-**A trustchain rooted in the Secure Element requires Ledger's hosted backend
-to issue and sign a challenge.** That is a design decision and a defensible
-one. Nothing in the protocol package says it, which is finding 17 in
-[FEEDBACK-LEDGER.md](FEEDBACK-LEDGER.md).
+```console
+>>> approve the SeedID screen on the device <<<
+device key   039fdeb5d17beccb506dbf15e2b23848…
+>>> approve the new trustchain on the device <<<
+new trustchain, rooted in the Secure Element
+>>> approve admitting 'ci-runner-test' on the device <<<
+    the device signs owners only — this member will be an owner
+'ci-runner-test' admitted as an owner
+```
 
-So enrolment ships rooted in the Key Ring rather than in a tap. That is real —
-you cannot admit a host without the device having admitted you first — and it
-is one step short of what we wanted.
+Getting there took four status words and none of them names what is wrong.
+The trail is [finding 17](FEEDBACK-LEDGER.md); the two entry gates are
+reproducible on a real Flex with `node host/ring/challenge-probe.cjs`. The
+three things worth knowing here:
+
+**`ApduDevice.getPublicKey()` cannot succeed.** It sends `e0 05 00 00 00`, and
+`INS 0x05` in Ledger Sync is the *challenge* instruction, so an empty payload
+is a malformed TLV: `0xB00D SW_PARSER_INVALID_FORMAT`. The route the app
+implements is `getSeedId(challenge)`, which answers with the trustchain public
+key derived from the seed after showing a screen.
+
+**The challenge does not have to come from Ledger.** We had this wrong.
+`verify_challenge_signature()` in `src/challenge_sign.c` binds the challenge to
+Ledger's certificate only when `HAVE_LEDGER_PKI` is set *and* a SEED_ID
+certificate is loaded. With none loaded it takes the path the source calls
+legacy and verifies against the public key carried in the challenge itself — so
+a challenge we sign here is accepted. `host/ring/seed-id-challenge.cjs` builds
+one, and eleven assertions in `test/ring.test.mjs` hold its shape, because
+every field is checked *by value* and any one of them wrong comes back as
+`0xB00E SW_PARSER_INVALID_VALUE` without naming the field.
+
+**The device signs owners only.** `signer_inject_add_member` in
+`src/block/signer.c` displays and signs an `AddMember` when the permissions are
+`OWNER`, or `OWNER` without `CAN_ADD_BLOCK`, and returns `SW_WRONG_DATA` for
+anything else — which `handler_sign_block` reports as `0xB007 SW_BAD_STATE`.
+`Permissions.KEY_READER`, the least-privilege value the library offers and the
+obvious one for a CI runner, is refused.
+
+So the two paths differ, and the difference is on the screen and in the
+listing rather than buried:
+
+| | software-rooted | `--device` |
+|---|---|---|
+| owner | key sealed under the Key Ring | the Secure Element |
+| admission | decrypt and sign, no tap | a tap per member |
+| member gets | `KEY_READER` | `OWNER` — the only thing the app signs |
+| `--seal` | yes | refused: `ApduDevice.readKey` throws by design |
+| stored in | `trustchain.enc` | `trustchain.device.json` |
+
+Two files, because they are two chains with two roots. Mixing them would put a
+member admitted by a tap and a member admitted by a decryptable key in one
+list, indistinguishable. `enroll.cjs members --device` lists the second.
+
+The device-rooted chain holds no private key, so there is nothing to seal — and
+sealing it under the Key Ring would reintroduce the very ring dependency that
+`--device` exists to remove.
 
 ### What it replaces
 

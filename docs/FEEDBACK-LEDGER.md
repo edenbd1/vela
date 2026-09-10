@@ -678,63 +678,119 @@ have the restore instruction"* rather than as a stack trace. A hosted tool
 could do the same: ask the dashboard which app is running before blaming the
 app.
 
-## 17. A device-rooted Key Ring needs Ledger's backend, and nothing says so
+## 17. `ApduDevice` fails on the first call anyone makes, and the trail is cold
 
 **What we were trying to do.** Ledger's second ask is to bring the Key Ring to
-hosts with no USB port. We built the ceremony on
-`@ledgerhq/hw-ledger-key-ring-protocol` and it works with a `SoftwareDevice`
-as the trustchain owner. The stronger version — the *device* signing each
-`AddMember`, so nobody joins a fleet without a finger on a screen — needs
-`ApduDevice`, which speaks to the **Ledger Sync** app.
+hosts with no USB port. The ceremony works with a `SoftwareDevice` as the
+trustchain owner. The stronger version — the *device* signing each `AddMember`,
+so nobody joins a fleet without a finger on a screen — needs `ApduDevice`,
+which speaks to the **Ledger Sync** app.
 
-**Where it stops, precisely.** We chased it to the exact gate:
+It works. It took four status words to find out, and not one of them names the
+thing that is wrong.
 
 ```
-  APDU.getPublicKey(transport)            → 0xB00D  SW_PARSER_INVALID_FORMAT
-  a well-formed challenge TLV             → 0xB00F  SW_CHALLENGE_NOT_VERIFIED
+  APDU.getPublicKey(transport)              → 0xB00D  SW_PARSER_INVALID_FORMAT
+  a challenge with the wrong structure type → 0xB00E  SW_PARSER_INVALID_VALUE
+  AddMember with Permissions.KEY_READER     → 0xB007  SW_BAD_STATE
+  Permissions.OWNER                         → signed
 ```
 
-The first is a library/app mismatch: `getPublicKey` sends `e0 05 00 00 00`,
-an empty payload, and `INS 0x05` in the app is the challenge instruction —
-`src/challenge_parser.c` rejects the empty body as a malformed TLV.
+`host/ring/challenge-probe.cjs` walks the first two on a real Flex.
 
-The second is the real answer. Rebuilding the challenge in the shape Ledger
-Live's own mocks use — `STRUCTURE_TYPE`, `CHALLENGE`, `DER_SIGNATURE`,
-`TRUSTED_NAME`, `PUBLIC_KEY`, from `src/challenge_parser.h` — gets past the
-parser and lands on `SW_CHALLENGE_NOT_VERIFIED`. The challenge must be signed
-by a key the device already trusts; `src/crypto_data.h` carries the PROD and
-TEST attestation public keys, and the mocks name the signer:
-`trustchain-backend.api.aws.stg.ldg-tech.com`.
+**Gate 1 — the entry point is broken.** `ApduDevice.getPublicKey()` calls
+`APDU.getPublicKey`, which sends `e0 05 00 00 00`: INS 0x05 with an empty
+payload. But INS 0x05 in Ledger Sync is the *challenge* instruction, and
+`src/challenge_parser.c` rejects an empty body as a malformed TLV. So the first
+call anyone makes on an `ApduDevice` — the natural one, the one that answers
+"is this thing there and who is it" — cannot succeed, and it fails with a
+parser error that points at your data rather than at the call.
 
-**So: a trustchain rooted in the Secure Element requires a challenge issued
-and signed by Ledger's hosted backend.** That is a design decision, not an
-omission, and it is a reasonable one. What is missing is anyone saying it.
+The route the app does implement is `getSeedId(challenge)`. Build the challenge
+with the library's own `Challenge` class and the device answers with the
+trustchain public key derived from the seed, after showing a screen.
 
-**What it costs.** The protocol package documents its objects well —
-`StreamTree`, `AddMember`, `Permissions`, `SoftwareDevice`, `ApduDevice` — and
-says nothing about the device-side preconditions for the one class that uses
-the device. A builder reads `createApduDevice(transport)`, sees a `Device`
-implementation beside `SoftwareDevice`, and reasonably concludes the two are
-interchangeable. They are not: one is local, and the other needs your servers.
+**Gate 2 — every field is checked by value, and one status word covers all of
+them.** `challenge_parser.c` walks the TLV in a fixed order and compares
+`STRUCTURE_TYPE` against `TYPE_SEED_ID_AUTHENTIFICATION_CHALLENGE` (0x07),
+`VERSION` against `SEED_ID_VERSION`, `SIGNER_ALGO` against `ECDSA_SHA256`,
+the curve against `CX_CURVE_256K1`, and the protocol version against four
+constants — all before the signature is looked at. Any one of them wrong is
+`SW_PARSER_INVALID_VALUE`, which tells you neither which field nor that a field
+was the problem at all. We spent a pass believing the signature was rejected.
 
-Two hours went into that gap, and the only way out was reading the app's C
-source and Ledger Live's APDU fixtures.
+**And the challenge does not have to come from Ledger.** This is the part we
+had wrong in an earlier draft of this document, and it is worth stating plainly
+because it changes what the class is for. `verify_challenge_signature()` in
+`src/challenge_sign.c` has two paths. With `HAVE_LEDGER_PKI` *and* a SEED_ID
+certificate loaded, it binds the challenge's trusted name and public key to
+that certificate — only Ledger's backend can issue one. With no certificate
+loaded it takes what the source itself calls the legacy path and verifies the
+signature against the public key carried **in the challenge**. Self-signed, and
+accepted. A trustchain rooted in the Secure Element does not need Ledger's
+servers on a device in that state; nothing in the package says that either way.
 
-**What would fix it.** One paragraph in the protocol package's README:
-*"`ApduDevice` requires a challenge signed by Ledger's trustchain backend.
-Self-hosted or offline use is not supported; use `SoftwareDevice` for a
-locally-rooted trustchain."* That sentence would have saved every hour of it.
+**Gate 3 — the device signs owners only.** `signer_inject_add_member()` in
+`src/block/signer.c`:
 
-**Also worth fixing.** `createApduDevice` is not re-exported from the package
-root, though it is the only entry point to device-rooted use — it has to be
-required from `lib/ApduDevice`. And `APDU.getPublicKey` sends a payload the
-app cannot parse, so the first call anyone tries fails in a way that points
-at the wrong thing.
+```c
+    if (permissions == OWNER || permissions == (OWNER & ~CAN_ADD_BLOCK)) {
+        return ui_display_add_member_command(permissions);
+    }
+    return SW_WRONG_DATA;
+```
 
-**Where we left it.** `grant --device`, the transport, and a bridge that can
-guard a named app are all committed and work up to the gate. Enrolment ships
-rooted in the Key Ring instead: you cannot admit a host without the device
-having admitted you first, which is real and one step short of a tap.
+`Permissions.KEY_READER` — the least-privilege value the library offers, the
+obvious one for a CI runner that only needs to decrypt — is refused. And it is
+not refused as `SW_WRONG_DATA`: `handler_sign_block` maps every non-zero
+injector error to `SW_BAD_STATE`, so the caller sees "unexpected state on the
+device" for what is a permissions decision. The library exposes seven
+permission constants and the device will sign exactly one of them.
+
+That is a real constraint on what device-rooted enrolment can be, not a bug: a
+member admitted by a tap is an owner of the trustchain. We ship it that way and
+say so on the screen and in `members --device`. But it should be documented,
+and the status word should be `SW_WRONG_DATA`.
+
+**Also: the permission constants are not usable as bit flags.**
+
+```js
+KEY_READER 0x1   KEY_CREATOR 0x2   KEY_REVOKER 0x4   ADD_MEMBER 0x8
+REMOVE_MEMBER 0x16   CHANGE_MEMBER_PERMISSIONS 0x32   CHANGE_MEMBER_NAME 0x64
+```
+
+The first four are a bit series. The last three are decimal 16, 32 and 64
+written as hex — so `REMOVE_MEMBER` is `0b10110`, which also sets
+`KEY_CREATOR`, `KEY_REVOKER` and `ADD_MEMBER`. Anyone composing permissions
+from these grants more than they asked for, and nothing complains. They should
+be `0x10`, `0x20`, `0x40`.
+
+**What would fix all of it.** One page in the protocol package's README
+covering `ApduDevice`: that `getPublicKey` does not work and `getSeedId` is the
+entry point; that the challenge is self-signable when no SEED_ID certificate is
+loaded; that the device signs `OWNER` admissions only. Plus `createApduDevice`
+re-exported from the package root — it is the only entry point to device-rooted
+use and it has to be required from `lib/ApduDevice`.
+
+**Where we left it.** Working, on the Flex, and rooted in the Secure Element:
+
+```console
+$ node host/ring/enroll.cjs grant <pubkey> ci-runner-test --device
+>>> approve the SeedID screen on the device <<<
+device key   039fdeb5d17beccb506dbf15e2b23848…
+>>> approve the new trustchain on the device <<<
+new trustchain, rooted in the Secure Element
+>>> approve admitting 'ci-runner-test' on the device <<<
+    the device signs owners only — this member will be an owner
+'ci-runner-test' admitted as an owner
+```
+
+Two chains, kept in two files, because they have different roots and mixing
+them would put a member admitted by a tap and a member admitted by a
+decryptable key in one indistinguishable list. `--seal` is refused on the
+device path: sealing needs the group key in this process, and
+`ApduDevice.readKey` throws by design — the chip does not hand out the key it
+protects.
 
 ## Tutorial we would have wanted
 

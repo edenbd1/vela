@@ -58,6 +58,7 @@ const {
 const { createApduDevice } =
   require("@ledgerhq/hw-ledger-key-ring-protocol/lib/ApduDevice");
 const { BridgeTransport } = require("./bridge-transport.cjs");
+const { selfSignedChallenge } = require("./seed-id-challenge.cjs");
 
 const HERE = __dirname;
 const MEMBER_FILE = join(HERE, ".member.json");     // the remote host's identity
@@ -153,18 +154,38 @@ function ownerOf(state) {
 async function deviceOwner() {
   const t = new BridgeTransport(300_000);
   const device = createApduDevice(t);
+
+  // Not device.getPublicKey(). That calls APDU.getPublicKey, which sends
+  // `e0 05 00 00 00` — an empty payload — and INS 0x05 in Ledger Sync is the
+  // *challenge* instruction, so the app's TLV parser answers 0xB00D
+  // SW_PARSER_INVALID_FORMAT. It is the first call anyone makes on an
+  // ApduDevice and it fails in a way that points at the wrong thing.
+  //
+  // The seed-id route is the one the app implements: hand it a well-formed
+  // challenge and it answers with the trustchain public key derived from the
+  // seed, after showing a screen. See seed-id-challenge.cjs for why a
+  // challenge we signed ourselves is accepted.
+  console.log(">>> approve the SeedID screen on the device <<<");
+  let seed;
   try {
-    const pk = await device.getPublicKey();
-    console.log(`device key   ${hex(pk.publicKey ?? pk).slice(0, 32)}…`);
+    seed = await device.getSeedId(selfSignedChallenge());
   } catch (e) {
-    if (e?.statusCode === 0x6a87 || /6a87|6d00/i.test(String(e.message))) {
+    const sw = e?.statusCode;
+    if (sw === 0x6a87 || /6a87|6d00/i.test(String(e.message))) {
       throw new Error(
         "the device answered, but not to a trustchain instruction.\n" +
         "  Those live in the Ledger Sync app, not in Vela. Open Ledger Sync\n" +
         "  on the Flex and run this again.");
     }
+    if (sw === 0xb00f) {
+      throw new Error(
+        "the device refused the challenge (SW_CHALLENGE_NOT_VERIFIED).\n" +
+        "  It has a SEED_ID certificate loaded, so it will only accept a\n" +
+        "  challenge signed by Ledger's trustchain backend.");
+    }
     throw e;
   }
+  console.log(`device key   ${hex(seed.pubkeyCredential.publicKey).slice(0, 32)}…`);
   return device;
 }
 
@@ -259,14 +280,31 @@ async function grant(pubkeyHex, name, seal, onDevice = false) {
     owner = ownerOf(state);
   }
 
+  // Least privilege, except where the device will not sign it.
+  //
+  // src/block/signer.c, signer_inject_add_member: the app displays and signs
+  // an AddMember only when the permissions are OWNER, or OWNER without
+  // CAN_ADD_BLOCK. Anything else — KEY_READER included — returns SW_WRONG_DATA
+  // from the injector, which handler_sign_block turns into 0xB007
+  // SW_BAD_STATE. That status word says nothing about permissions, and the
+  // library offers Permissions.KEY_READER with no hint the device refuses it.
+  //
+  // So the two paths differ, and the difference is worth stating rather than
+  // hiding: a member admitted by a tap is an owner of the trustchain. A member
+  // admitted by the software owner is a key reader and nothing else.
+  const permissions = onDevice ? Permissions.OWNER : Permissions.KEY_READER;
   if (onDevice) {
     console.log(`>>> approve admitting '${name}' on the device <<<`);
+    console.log("    the device signs owners only — this member will be an owner");
   }
-  tree = await tree.share(state.path, owner, publicKey, name, Permissions.KEY_READER);
+  tree = await tree.share(state.path, owner, publicKey, name, permissions);
 
   state.tree = tree.serialize();
-  state.members[name] = { publicKey: hex(publicKey), at: new Date().toISOString(),
-                          ...(onDevice ? { admitted_on_device: true } : {}) };
+  state.members[name] = {
+    publicKey: hex(publicKey), at: new Date().toISOString(),
+    permissions: onDevice ? "owner" : "key_reader",
+    ...(onDevice ? { admitted_on_device: true } : {}),
+  };
   saveChain(state, file);
 
   const bundle = {
@@ -275,8 +313,15 @@ async function grant(pubkeyHex, name, seal, onDevice = false) {
     member: name,
   };
 
+  if (seal && onDevice) {
+    throw new Error(
+      "--seal cannot be combined with --device.\n" +
+      "  Sealing needs the group key in this process, and ApduDevice.readKey\n" +
+      "  throws 'readKey is not supported on hardware devices' by design — the\n" +
+      "  chip does not hand out the key it protects. The bundle below carries\n" +
+      "  the trustchain; the member derives the key itself from its membership.");
+  }
   if (seal) {
-    if (onDevice) console.log(`>>> approve reading the key on the device <<<`);
     const key = await owner.readKey(tree, DerivationPath.toIndexArray(state.path));
     const nonce = crypto.randomBytes(16);
     bundle.sealed = {
@@ -288,7 +333,7 @@ async function grant(pubkeyHex, name, seal, onDevice = false) {
   const out = join(HERE, `bundle-${name}.json`);
   writeFileSync(out, JSON.stringify(bundle, null, 2));
 
-  console.log(`'${name}' admitted as a key reader`);
+  console.log(`'${name}' admitted as ${onDevice ? "an owner" : "a key reader"}`);
   console.log(`  member      ${hex(publicKey).slice(0, 24)}…`);
   console.log(`  path        ${state.path}`);
   console.log(`  in the ring ${Object.keys(state.members).join(", ")}`);
@@ -367,14 +412,21 @@ async function claim(bundlePath, quiet) {
 
 /* --------------------------------------------------------------- rest ---- */
 
-function members() {
-  const state = loadChain();
-  if (!state) return console.log("no trustchain yet — grant someone first");
-  console.log(`trustchain sealed under the Key Ring as '${RING_KEY}'`);
+function members(onDevice = false) {
+  const state = loadChain(onDevice ? CHAIN_FILE_DEVICE : CHAIN_FILE);
+  if (!state) {
+    return console.log(onDevice
+      ? "no device-rooted trustchain yet — grant someone with --device"
+      : "no trustchain yet — grant someone first");
+  }
+  console.log(onDevice
+    ? "trustchain rooted in the Secure Element — every admission was a tap"
+    : `trustchain sealed under the Key Ring as '${RING_KEY}'`);
   console.log(`path ${state.path}${state.increment ? `   (rotated ${state.increment}×)` : ""}`);
   console.log();
   for (const [name, m] of Object.entries(state.members)) {
-    console.log(`  ${name.padEnd(16)} ${m.publicKey.slice(0, 24)}…  ${m.at.slice(0, 10)}`);
+    console.log(`  ${name.padEnd(16)} ${m.publicKey.slice(0, 24)}…  ${m.at.slice(0, 10)}` +
+                `  ${m.permissions ?? (m.admitted_on_device ? "owner" : "key_reader")}`);
   }
   if (!Object.keys(state.members).length) console.log("  (nobody)");
 }
@@ -489,7 +541,7 @@ async function main() {
                                  rest.includes("--device"));
     case "claim":   return claim(args[0], rest.includes("--quiet"));
     case "revoke":  return revoke(args[0]);
-    case "members": return members();
+    case "members": return members(rest.includes("--device"));
     case "forget":  return forget();
     default:
       console.log("usage:");
@@ -498,7 +550,7 @@ async function main() {
   console.log("       --device signs each admission on the Flex (needs Ledger Sync)");
       console.log("  enroll.cjs claim <bundle.json> [--quiet]   back on the host");
       console.log("  enroll.cjs revoke <name>                   eject, and rotate the key");
-  console.log("  enroll.cjs members                         who is in");
+  console.log("  enroll.cjs members [--device]              who is in");
       console.log("  enroll.cjs forget                          drop this host's identity");
       process.exit(2);
   }

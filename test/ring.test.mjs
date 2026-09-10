@@ -173,5 +173,44 @@ ok("the bundle does not carry the ring owner's private key",
      old !== null && hex(old) === hex(before));
 }
 
+/* --------------------------------------------------------------------------
+ * The challenge the Ledger Sync app accepts.
+ *
+ * No device: this asserts the shape, which is where the two days went. Every
+ * field below is compared *by value* by src/challenge_parser.c, in order,
+ * before the signature is looked at — and any one of them wrong comes back as
+ * SW_PARSER_INVALID_VALUE, which names neither the field nor the fact that a
+ * field was the problem. A structure type of 0x01 instead of 0x07 looked
+ * exactly like a rejected signature.
+ * ----------------------------------------------------------------------- */
+{
+  const { selfSignedChallenge } = require(join(ROOT, "host/ring/seed-id-challenge.cjs"));
+  const { Challenge } = require(join(ROOT,
+    "host/ring/node_modules/@ledgerhq/hw-ledger-key-ring-protocol/lib/SeedId"));
+
+  const bytes = selfSignedChallenge("vela.test");
+  const [ch] = Challenge.fromBytes(new Uint8Array(bytes), 0);
+
+  ok("the challenge round-trips through the library's own parser",
+     ch instanceof Challenge);
+  ok("structure type is TYPE_SEED_ID_AUTHENTIFICATION_CHALLENGE",
+     ch.payloadType === 0x07, `got 0x${ch.payloadType.toString(16)}`);
+  ok("version is SEED_ID_VERSION", ch.version === 0x00);
+  ok("signer algo is ECDSA_SHA256", ch.rpCredential.signAlgorithm === 0x01);
+  ok("curve is CX_CURVE_256K1", ch.rpCredential.curveId === 0x21);
+  ok("the public key is 33 bytes compressed",
+     ch.rpCredential.publicKey.length === 33);
+  ok("the challenge data is CHALLENGE_DATA_LENGTH",
+     ch.challengeData.length === 16, `got ${ch.challengeData.length}`);
+  ok("the protocol version is 1.0.0",
+     ch.protocolVersion.major === 1 && ch.protocolVersion.minor === 0 &&
+     ch.protocolVersion.patch === 0);
+  ok("the DER signature fits the app's 75-byte field",
+     ch.rpSignature.length <= 75, `${ch.rpSignature.length} bytes`);
+  ok("the host fits the app's 64-byte field", ch.host.length < 64);
+  ok("two challenges do not repeat their nonce",
+     Buffer.compare(selfSignedChallenge(), selfSignedChallenge()) !== 0);
+}
+
 console.log(`\n${pass}/${pass + fail} passed\n`);
 process.exit(fail ? 1 : 0);

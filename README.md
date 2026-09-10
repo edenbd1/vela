@@ -814,10 +814,47 @@ token sits in an environment anything on the host can read.
 The trustchain's owner key is sealed with `wallet-cli ring encrypt --key
 vela-trustchain`, so admitting a host requires being able to decrypt under the
 Key Ring — which required a physical Ledger at `ring init`. You cannot admit a
-host to the fleet without the device having admitted you first. Signing each
-`AddMember` on the device itself is one step further, and needs the Ledger
-Sync app rather than Vela; [docs/RING-ENROLL.md](docs/RING-ENROLL.md) says
-exactly what is and is not wired.
+host to the fleet without the device having admitted you first.
+
+`--device` goes one step further: the Secure Element itself is the trustchain
+owner, and every `AddMember` is a screen.
+
+```console
+$ node host/ring/enroll.cjs grant 03a6e2ab…01d8 ci-runner-test --device
+>>> approve the SeedID screen on the device <<<
+device key   039fdeb5d17beccb506dbf15e2b23848…
+>>> approve the new trustchain on the device <<<
+new trustchain, rooted in the Secure Element
+>>> approve admitting 'ci-runner-test' on the device <<<
+    the device signs owners only — this member will be an owner
+'ci-runner-test' admitted as an owner
+```
+
+It talks to the **Ledger Sync** app rather than to Vela — different app, same
+device — so the bridge has to be told which app to expect:
+`VELA_BRIDGE_APP="Ledger Sync" python3 host/bridge.py`.
+
+Two things about it are worth stating rather than hiding. A member admitted by
+a tap is an **owner**, not a key reader: `signer_inject_add_member` in the Sync
+app signs `OWNER` admissions and refuses everything else — with `SW_BAD_STATE`,
+which says nothing about permissions. And `--seal` is refused on this path,
+because sealing needs the group key in this process and `ApduDevice.readKey`
+throws by design; the chip does not hand out the key it protects. So the two
+roots are kept in two files and listed apart:
+
+```console
+$ node host/ring/enroll.cjs members --device
+trustchain rooted in the Secure Element — every admission was a tap
+path m/0'/16'/0'
+
+  ci-runner-test   03a6e2ab68529fcf12fabc66…  2026-09-10  owner
+```
+
+Getting there took four status words, none of which names what is wrong —
+`ApduDevice.getPublicKey` cannot succeed at all, and a self-signed challenge
+*is* accepted when no SEED_ID certificate is loaded, which is the opposite of
+what we first concluded. [Finding 17](docs/FEEDBACK-LEDGER.md) has the trail,
+and `host/ring/challenge-probe.cjs` walks the first two gates on a real Flex.
 
 Eviction is the half that makes enrolment worth having, and it rotates:
 
@@ -876,7 +913,9 @@ let an agent make it fetch, whether a published chain adds up, and whether the
 browser verifier agrees with the Node one line for line. Sixty on the agent
 loop, against a fake gateway, a fake broker and a scripted model, so
 refusal-handling is a tested property rather than something we hope an 8B
-model gets right in front of judges. Seventeen on Key Ring enrolment. Twenty-
+model gets right in front of judges. Twenty-eight on Key Ring enrolment,
+eleven of them on the shape of the challenge the Ledger Sync app accepts.
+Twenty-
 two on the console, loaded in a real browser — including one that posts
 `<img src=x onerror=…>` through the agent feed and checks no node is created.
 
