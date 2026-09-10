@@ -298,3 +298,8 @@ button.revoke.waiting { color: var(--advise); border-color: #4a3f1f; background:
   animation: pulse 1.2s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+
+/* Something a third party wrote into an agent's context, quoted by the agent.
+   Amber rather than red: nothing was refused here, and nothing went wrong —
+   the agent noticed, which is the good outcome of a bad situation. */
+.mind .out.flagged { color: #fbbf24; font-style: italic; }

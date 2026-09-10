@@ -379,6 +379,23 @@ function onAgentEvent(e) {
     return;
   }
 
+  if (e.kind === "flagged") {
+    // The agent saying, out loud, that something wrote into its context.
+    // Worth its own treatment: this is the only line on the page that is a
+    // third party's words rather than a report about them.
+    const li = document.createElement("li");
+    const head = document.createElement("span");
+    head.className = "call";
+    head.textContent = `flagged an instruction in ${e.source || "a tool result"}`;
+    const q = document.createElement("span");
+    q.className = "out flagged";
+    q.textContent = `“${e.quote}”`;
+    li.append(head, q);
+    m.steps.append(li);
+    m.last = li;
+    return;
+  }
+
   if (e.kind === "done") {
     m.box.classList.remove("live");
     const p = document.createElement("p");
@@ -588,6 +605,23 @@ function onAgentEvent(e) {
     return;
   }
 
+  if (e.kind === "flagged") {
+    // The agent saying, out loud, that something wrote into its context.
+    // Worth its own treatment: this is the only line on the page that is a
+    // third party's words rather than a report about them.
+    const li = document.createElement("li");
+    const head = document.createElement("span");
+    head.className = "call";
+    head.textContent = `flagged an instruction in ${e.source || "a tool result"}`;
+    const q = document.createElement("span");
+    q.className = "out flagged";
+    q.textContent = `“${e.quote}”`;
+    li.append(head, q);
+    m.steps.append(li);
+    m.last = li;
+    return;
+  }
+
   if (e.kind === "done") {
     m.box.classList.remove("live");
     const p = document.createElement("p");
@@ -732,6 +766,23 @@ function onAgentEvent(e) {
     m.steps.append(li);
     m.last = li;
     m.box.scrollTop = m.box.scrollHeight;
+    return;
+  }
+
+  if (e.kind === "flagged") {
+    // The agent saying, out loud, that something wrote into its context.
+    // Worth its own treatment: this is the only line on the page that is a
+    // third party's words rather than a report about them.
+    const li = document.createElement("li");
+    const head = document.createElement("span");
+    head.className = "call";
+    head.textContent = `flagged an instruction in ${e.source || "a tool result"}`;
+    const q = document.createElement("span");
+    q.className = "out flagged";
+    q.textContent = `“${e.quote}”`;
+    li.append(head, q);
+    m.steps.append(li);
+    m.last = li;
     return;
   }
 
@@ -886,6 +937,23 @@ function onAgentEvent(e) {
     m.steps.append(li);
     m.last = li;
     m.box.scrollTop = m.box.scrollHeight;
+    return;
+  }
+
+  if (e.kind === "flagged") {
+    // The agent saying, out loud, that something wrote into its context.
+    // Worth its own treatment: this is the only line on the page that is a
+    // third party's words rather than a report about them.
+    const li = document.createElement("li");
+    const head = document.createElement("span");
+    head.className = "call";
+    head.textContent = `flagged an instruction in ${e.source || "a tool result"}`;
+    const q = document.createElement("span");
+    q.className = "out flagged";
+    q.textContent = `“${e.quote}”`;
+    li.append(head, q);
+    m.steps.append(li);
+    m.last = li;
     return;
   }
 

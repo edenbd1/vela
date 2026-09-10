@@ -232,6 +232,11 @@ const server = createServer(async (req, res) => {
         left: e.left ? String(e.left).slice(0, 24) : null,
         summary: String(e.summary ?? "").slice(0, 200),
         verdict: String(e.verdict ?? "").slice(0, 300),
+        // What a tool result told the agent to do. Quoted from a third party
+        // by way of a language model, so it is the least trustworthy string
+        // that reaches this page — and it is displayed with textContent for
+        // exactly that reason.
+        quote: String(e.quote ?? "").slice(0, 300),
         at: Date.now(),
       });
     } catch { /* a malformed report is dropped, not fatal */ }
