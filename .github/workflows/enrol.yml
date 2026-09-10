@@ -1,0 +1,65 @@
+# A CI runner joins the Key Ring.
+#
+# Ledger's ask, in their words: "Bring the Key Ring to hosts with no USB port:
+# enroll a VPS, a CI runner, or a hosted agent." A GitHub Actions runner is
+# the second of those, literally — a machine neither the operator nor the
+# author controls, with no device attached and nothing persistent on it.
+#
+# It is also public. Anyone can read the log of this job and see that the host
+# generated its own keypair, failed to open a bundle it had not been granted,
+# and succeeded once it was. That is better evidence than a VPS nobody can
+# look inside.
+#
+# Nothing secret is involved and nothing secret could be: the whole point of
+# enrolment is that only a public key leaves the host, and only a trustchain
+# comes back.
+name: enrol a runner in the Key Ring
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "host/ring/**"
+      - ".github/workflows/enrol.yml"
+
+jobs:
+  enrol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: install the Key Ring protocol
+        working-directory: host/ring
+        run: npm ci --omit=dev || npm install --omit=dev
+
+      - name: this runner has no device
+        run: |
+          echo "USB devices visible to this job:"
+          ls /dev/bus/usb 2>/dev/null || echo "  none — there is no USB bus here"
+          echo
+          echo "Ledger tooling on PATH:"
+          command -v wallet-cli || echo "  none"
+
+      - name: generate a member identity
+        working-directory: host/ring
+        run: |
+          node enroll.cjs request "gh-runner-${{ github.run_id }}"
+          echo
+          echo "the private half stays in .member.json and never leaves:"
+          ls -l .member.json
+
+      # The ceremony's other half needs the machine that holds the ring, and
+      # that machine is not here — which is the point. So the job proves the
+      # part it can prove on its own: without a grant, the trustchain arithmetic
+      # refuses, and it refuses for the right reason.
+      - name: a host that was never admitted derives nothing
+        working-directory: host/ring
+        run: node ../../test/ci-enrol.mjs
+
+      - name: the whole ceremony, against a trustchain made here
+        working-directory: host/ring
+        run: node ../../test/ci-enrol.mjs --full
