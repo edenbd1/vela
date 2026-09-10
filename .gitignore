@@ -55,3 +55,7 @@ broker/usage.json
 # recover.mjs checks it against the chain rather than trusting it, so a copy
 # in the repository would be a stale one waiting to confuse someone.
 .vela-fleet-backup.json
+
+# What each agent remembers between runs. Local state, and the point of the
+# poisoning demo is that anything which can write here can write to it.
+.vela-memory/
