@@ -67,6 +67,35 @@ putting the limit in silicon rather than in a prompt.
 
 ---
 
+## Who else is in this space
+
+Worth naming, because the distinction is the product.
+
+[`krutftw/hedera-agentpay-guard`](https://github.com/krutftw/hedera-agentpay-guard)
+is the closest work we found — a policy guard for x402 buyers on Hedera, with
+server-signed ALLOW/DENY receipts anchored on HCS and verified from the mirror
+node. It is careful, well-documented, and aimed at Hedera's micropayments
+bounty rather than the Ledger track.
+
+It also states its own boundary plainly: the receipt-signing key *"has no
+Hedera account authority and cannot move funds"*, and HCS attestation is
+buyer-side, *"after an x402 settlement response is observed"*. So the guard
+answers a question and records the answer. The buyer still holds the key, and
+a buyer that ignores a DENY pays anyway — the record proves what the guard
+said, not what the buyer did.
+
+That is the gap Vela is built in. Our refusal is not a receipt: it is the
+absence of a signature. The key that pays lives in the Secure Element, behind
+the check, so an agent that decides to ignore the limit has nothing to sign
+with. Detection and prevention are different products, and the difference is
+where the key sits.
+
+Their listed future work — *"persistent daily/portfolio caps and multi-signer
+policy"* — is budget and velocity, which we enforce in silicon.
+
+We found nothing on the Ledger track building a BOLOS application, and nothing
+combining Chainlink CRE with agent spending.
+
 ## Tracks
 
 ### Ledger — AI Agents
