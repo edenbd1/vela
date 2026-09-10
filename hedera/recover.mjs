@@ -175,18 +175,34 @@ const u32 = (v) => { const b = Buffer.alloc(4); b.writeUInt32BE(Number(v)); retu
 
 for (const m of plan) {
   const label = Buffer.from(m.label, "utf8");
+
+  // The contract terms have to be carried explicitly. The audit log's digest
+  // covers the agent, the payees, the budget, the ceiling and the expiry —
+  // not these — so a restore that dropped them would match the chain
+  // perfectly and hand back an agent that can no longer trade. Silently
+  // narrowing a mandate is a worse failure than refusing to restore it.
+  const calls = m.contracts?.length
+    ? Buffer.concat([
+        Buffer.from([m.contracts.length]), ...m.contracts.map(u64),
+        Buffer.from([m.selectors.length]),
+        ...m.selectors.map((x) => Buffer.from(x.padStart(8, "0"), "hex")),
+        Buffer.from([m.recipientArg]),
+      ])
+    : Buffer.from([0, 0, 0xff]);
+
   const body = Buffer.concat([
     Buffer.from(m.agentId, "hex"),
     Buffer.from([m.payees.length]),
     ...m.payees.map(u64),
     u64(m.budgetTotal), u64(m.perCallMax), u32(m.expiry ?? 0),
     Buffer.from([label.length]), label,
-    Buffer.from([0, 0, 0xff]),      // no contract terms
+    calls,
     u32(m.seq), u64(m.spent),
   ]);
 
   console.log(`  >>> approve the restore of '${m.label}' on the device <<<`);
-  console.log(`      ${hbar(m.spent)} spent, draw ${m.seq}`);
+  console.log(`      ${hbar(m.spent)} spent, draw ${m.seq}` +
+              (m.contracts?.length ? `, may swap on 0.0.${m.contracts[0]}` : ""));
   const r = await t.exchange(
     Buffer.concat([Buffer.from([CLA, RESTORE, 0, 0, body.length]), body]));
   console.log(`      restored into slot ${r[0]}`);

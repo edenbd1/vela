@@ -28,8 +28,19 @@ const CLA = 0xe0;
 const [GET, CREATE] = [0x10, 0x11];
 const BACKUP = join(ROOT, ".vela-fleet-backup.json");
 
+// `swapExactHBARForTokens(uint256,address)` — the first four bytes of
+// keccak256 over that signature. Argument 1 is the address the output goes
+// to, which is what recipientArg names.
+const ROUTER = 5_000_001n;
+const SWAP = 0xf406a91a;
+
 const FLEET = [
-  { label: "research-1",  budget: 50_000_000n, perCall: 10_000_000n, tag: 0xa1 },
+  // The only one that may trade. Its toolset is derived from these terms:
+  // an agent whose mandate carries no contract clause is never shown that
+  // swapping exists, so the boundary shapes what it considers rather than
+  // only what it gets away with.
+  { label: "research-1",  budget: 50_000_000n, perCall: 10_000_000n, tag: 0xa1,
+    contracts: [ROUTER], selectors: [SWAP], recipientArg: 1 },
   { label: "ops-nightly", budget: 20_000_000n, perCall:  5_000_000n, tag: 0xb2 },
   { label: "watcher",     budget: 10_000_000n, perCall:  1_000_000n, tag: 0xc3 },
 ];
@@ -71,16 +82,25 @@ console.log(`\n  audit log ${topic}`);
 
 for (const a of FLEET) {
 
-  const body = Buffer.concat([
+  const parts = [
     Buffer.alloc(20, a.tag),          // agent id
     Buffer.from([1]), u64(payee),     // one payee
     u64(a.budget), u64(a.perCall),
     Buffer.alloc(4),                  // never expires
     Buffer.from([a.label.length]), Buffer.from(a.label, "latin1"),
-  ]);
+  ];
+  if (a.contracts) {
+    const u32 = (v) => { const b = Buffer.alloc(4); b.writeUInt32BE(Number(v)); return b; };
+    parts.push(
+      Buffer.from([a.contracts.length]), ...a.contracts.map(u64),
+      Buffer.from([a.selectors.length]), ...a.selectors.map(u32),
+      Buffer.from([a.recipientArg]));
+  }
+  const body = Buffer.concat(parts);
 
   console.log(`\n  >>> approve '${a.label}' on the device ` +
-              `(${hbar(a.budget)} HBAR, ${hbar(a.perCall)} max) <<<`);
+              `(${hbar(a.budget)} HBAR, ${hbar(a.perCall)} max` +
+              `${a.contracts ? `, may swap on 0.0.${a.contracts[0]}` : ""}) <<<`);
   const r = await t.exchange(
     Buffer.concat([Buffer.from([CLA, CREATE, 0, 0, body.length]), body]));
   console.log(`      granted in slot ${r[0]}`);
@@ -121,6 +141,15 @@ writeFileSync(BACKUP, JSON.stringify({
     budgetTotal: String(a.budget),
     perCallMax: String(a.perCall),
     expiry: 0,
+    // Carried so a restore does not quietly hand back a narrower envelope.
+    // The digest does not commit to these — it covers agent, payees, budget,
+    // ceiling and expiry — so dropping them here would restore a mandate that
+    // matches the chain and can no longer trade.
+    ...(a.contracts ? {
+      contracts: a.contracts.map(String),
+      selectors: a.selectors.map((x) => x.toString(16).padStart(8, "0")),
+      recipientArg: a.recipientArg,
+    } : {}),
   })),
 }, null, 2));
 console.log(`\n  terms backed up to ${BACKUP.replace(ROOT + "/", "")}`);

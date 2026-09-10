@@ -139,14 +139,21 @@ def grant(label, budget, per_call, expiry=0, tag=0xA1, payee=PAYEE,
     return sw, (r[0] if r else None)
 
 
-def restore(label, budget, per_call, seq, spent, tag=0xD4, payee=PAYEE):
+def restore(label, budget, per_call, seq, spent, tag=0xD4, payee=PAYEE,
+            contracts=(), selectors=(), recipient_arg=None):
     """Put an envelope back at the position the audit log says it reached."""
+    if contracts:
+        calls = (bytes([len(contracts)]) + b"".join(struct.pack(">Q", c) for c in contracts)
+                 + bytes([len(selectors)]) + b"".join(selectors)
+                 + bytes([recipient_arg if recipient_arg is not None else 0xFF]))
+    else:
+        calls = bytes([0, 0, 0xFF])
     body = (bytes(20 * [tag])
             + bytes([1]) + struct.pack(">Q", payee)
             + struct.pack(">Q", budget) + struct.pack(">Q", per_call)
             + struct.pack(">I", 0)
             + bytes([len(label)]) + label.encode()
-            + bytes([0, 0, 0xFF])
+            + calls
             + struct.pack(">I", seq) + struct.pack(">Q", spent))
     if ON_DEVICE:
         print(f"      >>> approve the RESTORE of '{label}' on the device <<<", flush=True)
@@ -322,6 +329,19 @@ def main():
         check("and a draw past the restored remainder is refused",
               draw(rslot, PAYEE, 10_000_000), 0xB106)
         revoke(rslot)
+    # A restore that dropped the contract terms would match the audit log's
+    # digest perfectly and hand back an agent that can no longer trade. The
+    # digest does not cover these fields, so nothing else would catch it.
+    sw, cslot = restore("restored-defi", 50_000_000, 10_000_000, seq=3, spent=1_000_000,
+                        tag=0xD5, contracts=(ROUTER,), selectors=(SWAP,), recipient_arg=1)
+    check("a restored mandate keeps the right to trade", sw, OK)
+    if sw == OK:
+        check("and the swap it was granted still passes",
+              call(cslot, ROUTER, SWAP + word(1_000_000) + word(SELF)), OK)
+        check("while the same swap to an attacker is still refused",
+              call(cslot, ROUTER, SWAP + word(1_000_000) + word(ATTACKER)), 0xB10B)
+        revoke(cslot)
+
     check("a restore claiming more spent than the budget is refused",
           restore("liar", 50_000_000, 10_000_000, seq=1, spent=60_000_000)[0],
           0xB108)

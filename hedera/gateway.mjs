@@ -350,6 +350,12 @@ async function envelope(slot = SLOT) {
     label: labelFrom(state),
     payees: payeesFrom(state),
     calls: contractTermsFrom(state),
+    // Which account the agent *is*. It needs this to build a swap whose
+    // proceeds come back to it, and it has no other way to know: the key
+    // lives in the Secure Element and the agent has never seen an address.
+    // Publishing it is safe — it is a public account number, and the chip
+    // checks the recipient against its own copy rather than against this one.
+    self: process.env.HEDERA_BUYER_ID ?? null,
     asset: "HBAR, in tinybars",
   };
 }

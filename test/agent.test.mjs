@@ -46,6 +46,9 @@ function serve(handler) {
       r({ srv, log, port: srv.address().port, close: () => srv.close() })));
 }
 
+const SELF = "0.0.10397072";
+const CALLS = { contracts: ["0.0.5000001"], selectors: ["0xf406a91a"],
+                recipient_arg: 1, proceeds: "must return to this account" };
 const PER_CALL = 10_000_000n;   // 0.1 HBAR
 const PRICE = { triage: 1_000_000n, synthesis: 8_000_000n, exhaustive: 15_000_000n };
 
@@ -56,15 +59,31 @@ const PRICE = { triage: 1_000_000n, synthesis: 8_000_000n, exhaustive: 15_000_00
  * the script runs out is a plain refusal to continue, which keeps a buggy
  * loop from spinning forever inside a test.
  */
-async function run(turns, { available = 50_000_000n, env = {} } = {}) {
+async function run(turns, { available = 50_000_000n, env = {}, calls = null } = {}) {
   let left = available;
   const paid = [];
+  const swaps = [];
 
   const gw = await serve((path, body) => {
     if (path === "/envelope") {
       return { slot: 0, agent: "test", mandate: {
         available: String(left), per_call_max: String(PER_CALL),
-        payees: ["0.0.10365984"] } };
+        payees: ["0.0.10365984"], self: SELF, calls } };
+    }
+    if (path === "/call") {
+      swaps.push(body);
+      // The fake chip's one rule for calls: the recipient word in the
+      // calldata must be this device. Read the same way the real one reads
+      // it — out of the bytes, not out of anything the caller says.
+      const data = Buffer.from(String(body.calldata).replace(/^0x/, ""), "hex");
+      const to = data.readBigUInt64BE(4 + 32 + 24);
+      if (to !== BigInt(SELF.split(".").pop())) {
+        return { signed: false, refused: true, reason: "recipient_not_self",
+                 terminal: true,
+                 advice: "the call would hand value to an address that is not " +
+                         "this device" };
+      }
+      return { signed: true, seq: 9, remaining: String(left) };
     }
     if (path === "/pay") {
       const price = PRICE[body?.service];
@@ -119,7 +138,7 @@ async function run(turns, { available = 50_000_000n, env = {} } = {}) {
   });
 
   gw.close(); br.close(); llm.close();
-  return { ...out, paid, gateway: gw.log, turnsUsed: turn, sent };
+  return { ...out, paid, swaps, gateway: gw.log, turnsUsed: turn, sent };
 }
 
 console.log("\nthe agent loop, against a chip that says no\n");
@@ -328,6 +347,70 @@ console.log("\nthe agent loop, against a chip that says no\n");
                           { env: { AGENT_KEEP: "6" } });
   ok("a short run carries no dropped-steps notice",
      !short.sent.at(-1).some((m) => /no longer in your context/.test(m.content ?? "")));
+}
+
+/* ---------------------------------------------------------------------- *
+ * The action space comes from the chip.
+ *
+ * A mandate with no contract terms should not produce an agent that knows
+ * swapping exists. Filtering the outcome is not the same as never offering
+ * the move: an agent that can express a swap will spend turns discovering it
+ * is refused, and a schema that can express one is a schema an injection can
+ * aim at.
+ * ---------------------------------------------------------------------- */
+{
+  const r = await run([{ tool: "check_envelope" }, { tool: "report", verdict: "x" }]);
+  const schemas = r.sent.map((_, i) => i);
+  // The second request is the one made after the envelope was read.
+  ok("with no contract terms, swap is never in the schema",
+     !JSON.stringify(r.sent).includes("swap"), "");
+}
+
+{
+  const r = await run([{ tool: "check_envelope" }, { tool: "report", verdict: "x" }],
+                      { calls: CALLS });
+  ok("with contract terms, the mandate opens the swap tool",
+     JSON.stringify(r.sent.at(-1)).includes("swap"), "");
+  ok("and the agent is told where proceeds must go",
+     /must return to this account/.test(JSON.stringify(r.sent.at(-1))), "");
+}
+
+/* ---------------------------------------------------------------------- *
+ * The field the whole project is about.
+ * ---------------------------------------------------------------------- */
+{
+  const r = await run([
+    { tool: "check_envelope" },
+    { tool: "swap", amount: "0.05", proceeds_to: SELF },
+    { tool: "report", verdict: "rebalanced" },
+  ], { calls: CALLS });
+  ok("a swap whose proceeds return here is signed",
+     /swapped=0.05 HBAR/.test(r.text), r.text);
+}
+
+{
+  const r = await run([
+    { tool: "check_envelope" },
+    { tool: "swap", amount: "0.05", proceeds_to: "0.0.66666666" },
+    { tool: "swap", amount: "0.05", proceeds_to: SELF },
+    { tool: "report", verdict: "rebalanced after a refusal" },
+  ], { calls: CALLS });
+  ok("the same swap to an attacker is refused",
+     /REFUSED recipient_not_self/.test(r.text), r.text);
+  ok("and the refusal names the field, not the amount",
+     /not\s+this device/.test(r.text), r.text);
+  ok("the agent can then send it where it belongs",
+     r.swaps.length === 2 && /swapped=/.test(r.text), r.text);
+
+  // The calldata is where the recipient lives, and the test reads it the way
+  // the chip does rather than trusting the request's other fields.
+  const stolen = Buffer.from(r.swaps[0].calldata.replace(/^0x/, ""), "hex");
+  ok("the recipient really is in the calldata, not beside it",
+     stolen.readBigUInt64BE(4 + 32 + 24) === 66666666n,
+     stolen.toString("hex"));
+  ok("and the selector is the swap the mandate names",
+     stolen.subarray(0, 4).toString("hex") === "f406a91a",
+     stolen.subarray(0, 4).toString("hex"));
 }
 
 console.log(`\n${pass}/${pass + fail} passed\n`);
