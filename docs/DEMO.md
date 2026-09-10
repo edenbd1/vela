@@ -32,8 +32,15 @@ missing. If it says a slot is *unknown* rather than *free*, the Flex is locked
 or Vela is closed; unlock it and run it again. Do not grant on top of an
 unknown slot.
 
-`fleet.mjs` makes the audit topic as part of granting and binds it to the
-grant epoch, so every chain on that topic starts at draw 1. Run it even if the
+`fleet.mjs` grants `research-1` the swap router, `ops-nightly` a limit of four
+draws an hour, and makes the audit topic as part of granting — binding it to
+the grant epoch, so every chain on that topic starts at draw 1.
+
+Export the tokens the beats need:
+
+```bash
+export RESEARCH=…  OPS=…       # printed once by broker/enroll.mjs
+``` Run it even if the
 fleet looks fine: a chain granted under an older build can start mid-sequence,
 and the verifier will correctly call that a gap in the last shot.
 
@@ -241,6 +248,46 @@ Then the bottom three lines:
 
 Your own run will print different numbers. Read yours off the screen.
 
+## 3:10 — how fast, not how much
+
+Thirty seconds, and it is the one nobody else has. `ops-nightly` is granted
+four draws an hour.
+
+```bash
+for i in 1 2 3 4 5; do
+  curl -s -X POST http://127.0.0.1:4030/pay \
+    -H "authorization: Bearer $OPS" \
+    -H 'content-type: application/json' -d '{"service":"triage"}'
+done
+```
+
+```
+  draw 1: paid 0.01 HBAR, 0.19 left
+  draw 2: paid 0.01 HBAR, 0.18 left
+  draw 3: paid 0.01 HBAR, 0.17 left
+  draw 4: paid 0.01 HBAR, 0.16 left
+  draw 5: REFUSED too_fast
+```
+
+Then read the envelope, and point at the first number:
+
+```
+  available   0.16 HBAR      — the budget is untouched
+  window      4/4 draws used
+```
+
+> "The refusal has nothing to do with money left. A budget says how much; this
+> says how fast — and speed is where an agent differs from a person. The
+> envelope that survives forty honest payments in a night is the one a
+> compromised agent empties in ninety seconds."
+
+One line worth adding if there is room:
+
+> "There is no clock in a Secure Element, so the time comes from the host. A
+> host that winds it forward only resets a counter it could have waited out.
+> One that winds it backward is refused — that is the single lie a chip
+> without a clock can catch."
+
 ## 3:20 — the controlled experiment
 
 ```bash
@@ -325,7 +372,9 @@ End on:
 
 In order: the enclave at 4:00, then the controlled experiment at 3:20 — the
 exfiltration beat has already made that argument on a live agent — then the
-benchmark table at 2:50, keeping only its last three lines.
+benchmark table at 2:50, keeping only its last three lines. Cut the velocity
+beat at 3:10 last of the four: it is thirty seconds and it is the only rate
+limit enforced in hardware that we know of.
 
 **Never cut the revoke, the swarm at 1:30, or the exfiltration at 2:10.**
 
