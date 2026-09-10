@@ -36,11 +36,12 @@ static char g_expiry[32];
 static char g_contracts[96];
 static char g_recipient[64];
 
-static nbgl_contentTagValue_t pairs[8];
+static nbgl_contentTagValue_t pairs[9];
 static nbgl_contentTagValueList_t pairList;
 
 static char g_revoke_title[48];
 static char g_position[48];
+static char g_velocity[48];
 
 static void create_choice(bool confirm) {
     validate_create_mandate(confirm);
@@ -65,6 +66,7 @@ int ui_display_create_mandate(bool restore) {
     explicit_bzero(g_contracts, sizeof(g_contracts));
     explicit_bzero(g_recipient, sizeof(g_recipient));
     explicit_bzero(g_position, sizeof(g_position));
+    explicit_bzero(g_velocity, sizeof(g_velocity));
 
     if (format_hex(m->agent_id, AGENT_ID_LEN, g_agent, sizeof(g_agent)) == -1) {
         return io_send_sw(SW_VELA_ARGS);
@@ -146,11 +148,33 @@ int ui_display_create_mandate(bool restore) {
     pairs[6].item = "Expires";
     pairs[6].value = g_expiry;
 
+    // A budget says how much; this says how fast. Spelled in the units a
+    // person thinks in, because "3600s / 40" is a configuration and "40 draws
+    // an hour" is a decision someone can make.
+    if (m->window_secs != 0 && m->max_per_window != 0) {
+        const unsigned secs = (unsigned) m->window_secs;
+        if (secs % 3600 == 0) {
+            snprintf(g_velocity, sizeof(g_velocity), "%u draws per %u hour(s)",
+                     (unsigned) m->max_per_window, secs / 3600);
+        } else if (secs % 60 == 0) {
+            snprintf(g_velocity, sizeof(g_velocity), "%u draws per %u minute(s)",
+                     (unsigned) m->max_per_window, secs / 60);
+        } else {
+            snprintf(g_velocity, sizeof(g_velocity), "%u draws per %u seconds",
+                     (unsigned) m->max_per_window, secs);
+        }
+    } else {
+        snprintf(g_velocity, sizeof(g_velocity), "No rate limit");
+    }
+
     // On a restore, the position is the fact being approved, so it is a row
     // rather than a footnote — and it is spelled in the same units the public
     // log publishes, so the person holding the device can compare the two
     // without converting anything.
-    uint8_t n = 7;
+    pairs[7].item = "Rate limit";
+    pairs[7].value = g_velocity;
+
+    uint8_t n = 8;
     if (restore) {
         char left[32] = {0};
         char used[32] = {0};
@@ -167,9 +191,9 @@ int ui_display_create_mandate(bool restore) {
                  used,
                  left,
                  (unsigned) m->seq);
-        pairs[7].item = "Restoring at";
-        pairs[7].value = g_position;
-        n = 8;
+        pairs[8].item = "Restoring at";
+        pairs[8].value = g_position;
+        n = 9;
     }
 
     pairList.nbMaxLinesForValue = 0;

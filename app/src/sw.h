@@ -19,6 +19,7 @@
 #define SW_VELA_CONTRACT      0xB109  /// callee is not on the allowlist
 #define SW_VELA_SELECTOR      0xB10A  /// that function is not allowed on it
 #define SW_VELA_RECIPIENT     0xB10B  /// the call would hand value to someone else
+#define SW_VELA_VELOCITY      0xB10C  /// too many draws in this window
 
 /**
  * Status word for dynamic token TLV parsing/validation failed.

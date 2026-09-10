@@ -199,6 +199,10 @@ const REFUSALS = {
   0xb10a: { reason: "selector_not_allowed", terminal: true,
             advice: "that function is not permitted on this contract — the same router " +
                     "that swaps also approves, and only one of them was granted" },
+  0xb10c: { reason: "too_fast", terminal: false,
+            advice: "this envelope has used its draws for the current window. " +
+                    "Waiting will help; nothing else will — the limit is on " +
+                    "the rate, not the amount, and the budget is untouched" },
   0xb10b: { reason: "recipient_not_self", terminal: true,
             advice: "the call would hand value to an address that is not this device. " +
                     "The chip will encode the contract, the function and the amount you " +

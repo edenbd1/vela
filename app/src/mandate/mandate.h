@@ -85,7 +85,7 @@
  *   0x...03  contract calls: callee allowlist, selectors, recipient binding
  *   0x...04  a human-readable label per mandate
  */
-#define MANDATE_STORAGE_MAGIC 0x56454C05  // "VEL" + layout version
+#define MANDATE_STORAGE_MAGIC 0x56454C06  // "VEL" + layout version
 
 /** No mandate occupies this slot. */
 #define MANDATE_SLOT_FREE 0
@@ -126,6 +126,28 @@ typedef struct {
     /// callee alone is signing a blank cheque with the payee filled in by
     /// whoever wrote the calldata — which, for an agent under prompt
     /// injection, is the attacker.
+    /// --- velocity ---------------------------------------------------------
+    ///
+    /// A budget bounds what an agent can spend in total. It says nothing
+    /// about how fast, and "fast" is where an agent differs from a person:
+    /// the envelope that survives forty honest payments a night is also the
+    /// envelope a compromised agent drains in ninety seconds.
+    ///
+    /// So a mandate may cap draws per window. Both are zero for a mandate
+    /// with no velocity terms, which is what every mandate written before
+    /// this field existed meant, and the check is skipped entirely then.
+    ///
+    /// The window is counted from `window_start`, which the chip moves on
+    /// when it sees a `now` past the end. There is no clock in the Secure
+    /// Element — `now` is supplied by the host, and a host that lies about
+    /// it can only ever move the window forward, which resets a counter it
+    /// could also have simply waited out. Lying backwards is refused: time
+    /// that goes backwards is the one thing this can check without a clock.
+    uint32_t window_secs;                            /// 0 = no velocity limit
+    uint32_t window_start;                           /// unix seconds
+    uint16_t window_draws;                           /// used in this window
+    uint16_t max_per_window;                         /// 0 = no velocity limit
+
     uint8_t n_contracts;                             /// entries used in `contracts`
     uint8_t n_selectors;                             /// entries used in `selectors`
     /// Index of the 32-byte ABI argument holding the address that receives
@@ -158,6 +180,7 @@ typedef enum {
     MANDATE_ERR_CONTRACT,       /// callee is not on the allowlist
     MANDATE_ERR_SELECTOR,       /// that function is not allowed on it
     MANDATE_ERR_RECIPIENT,      /// the call would hand value to someone else
+    MANDATE_ERR_VELOCITY,       /// too many draws in this window
 } mandate_status_t;
 
 /**

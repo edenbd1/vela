@@ -223,6 +223,13 @@ for (const m of plan) {
       ])
     : Buffer.from([0, 0, 0xff]);
 
+  // Mandatory on a restore, zeroed when the mandate has no rate limit: the
+  // position follows immediately, so an absent block and six bytes of
+  // sequence number would be the same bytes.
+  const velocity = Buffer.alloc(6);
+  velocity.writeUInt32BE(Number(m.windowSecs ?? 0), 0);
+  velocity.writeUInt16BE(Number(m.maxPerWindow ?? 0), 4);
+
   const body = Buffer.concat([
     Buffer.from(m.agentId, "hex"),
     Buffer.from([m.payees.length]),
@@ -230,6 +237,7 @@ for (const m of plan) {
     u64(m.budgetTotal), u64(m.perCallMax), u32(m.expiry ?? 0),
     Buffer.from([label.length]), label,
     calls,
+    velocity,
     u32(m.seq), u64(m.spent),
   ]);
 

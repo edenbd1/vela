@@ -38,7 +38,7 @@ SW = {
     0xB103: "expired", 0xB104: "payee_not_allowed", 0xB105: "over_per_call",
     0xB106: "over_budget", 0xB107: "settle_amount", 0xB108: "bad_request",
     0xB109: "contract_not_allowed", 0xB10A: "selector_not_allowed",
-    0xB10B: "recipient_not_self",
+    0xB10B: "recipient_not_self", 0xB10C: "too_fast",
 }
 
 def _env(key, default):
@@ -113,7 +113,8 @@ def send(ins, body=b"", p1=0, timeout=30):
 
 
 def grant(label, budget, per_call, expiry=0, tag=0xA1, payee=PAYEE,
-          contracts=(), selectors=(), recipient_arg=None, expect_screen=True):
+          contracts=(), selectors=(), recipient_arg=None, expect_screen=True,
+          window_secs=0, max_per_window=0):
     """
     `expect_screen=False` for grants the chip rejects before it draws
     anything. Asking someone to approve a screen that never appears is worse
@@ -124,10 +125,12 @@ def grant(label, budget, per_call, expiry=0, tag=0xA1, payee=PAYEE,
             + struct.pack(">Q", budget) + struct.pack(">Q", per_call)
             + struct.pack(">I", expiry)
             + bytes([len(label)]) + label.encode())
-    if contracts:
+    if contracts or window_secs:
         body += bytes([len(contracts)]) + b"".join(struct.pack(">Q", c) for c in contracts)
         body += bytes([len(selectors)]) + b"".join(selectors)
         body += bytes([recipient_arg if recipient_arg is not None else 0xFF])
+    if window_secs:
+        body += struct.pack(">IH", window_secs, max_per_window)
     if ON_DEVICE and expect_screen:
         print(f"      >>> approve '{label}' on the device <<<", flush=True)
         sw, r = send(CREATE, body, timeout=300)
@@ -140,7 +143,8 @@ def grant(label, budget, per_call, expiry=0, tag=0xA1, payee=PAYEE,
 
 
 def restore(label, budget, per_call, seq, spent, tag=0xD4, payee=PAYEE,
-            contracts=(), selectors=(), recipient_arg=None):
+            contracts=(), selectors=(), recipient_arg=None,
+            window_secs=0, max_per_window=0):
     """Put an envelope back at the position the audit log says it reached."""
     if contracts:
         calls = (bytes([len(contracts)]) + b"".join(struct.pack(">Q", c) for c in contracts)
@@ -148,12 +152,16 @@ def restore(label, budget, per_call, seq, spent, tag=0xD4, payee=PAYEE,
                  + bytes([recipient_arg if recipient_arg is not None else 0xFF]))
     else:
         calls = bytes([0, 0, 0xFF])
+    # The velocity block is mandatory here even when empty: the position
+    # follows it, and absent would be indistinguishable from six bytes of
+    # sequence number.
     body = (bytes(20 * [tag])
             + bytes([1]) + struct.pack(">Q", payee)
             + struct.pack(">Q", budget) + struct.pack(">Q", per_call)
             + struct.pack(">I", 0)
             + bytes([len(label)]) + label.encode()
             + calls
+            + struct.pack(">IH", window_secs, max_per_window)
             + struct.pack(">I", seq) + struct.pack(">Q", spent))
     if ON_DEVICE:
         print(f"      >>> approve the RESTORE of '{label}' on the device <<<", flush=True)
@@ -301,6 +309,36 @@ def main():
         print("\n      >>> approve the revoke of the expired mandate <<<")
         revoke(SLOT_B)
 
+    print("\nvelocity — how fast, not how much")
+    # A budget bounds the total. It says nothing about the rate, and rate is
+    # where an agent differs from a person: the envelope that survives forty
+    # honest payments a night is the one a compromised agent drains in ninety
+    # seconds.
+    sw, vslot = grant("burst", 50_000_000, 10_000_000, tag=0xE1,
+                      window_secs=3600, max_per_window=2)
+    check("a mandate can carry a rate limit", sw, OK)
+    if sw == OK:
+        t0 = 1_800_000_000
+        check("the first draw in the window passes",
+              draw(vslot, PAYEE, 1_000_000, now=t0), OK)
+        check("and the second", draw(vslot, PAYEE, 1_000_000, now=t0 + 10), OK)
+        check("the third is refused, with budget still left",
+              draw(vslot, PAYEE, 1_000_000, now=t0 + 20), 0xB10C)
+        check("a refused draw does not consume the window",
+              draw(vslot, PAYEE, 1_000_000, now=t0 + 30), 0xB10C)
+        check("the next window allows draws again",
+              draw(vslot, PAYEE, 1_000_000, now=t0 + 3600), OK)
+        # No clock in the chip: `now` is the host's word. Forwards only ever
+        # resets a counter the host could have waited out; backwards is the
+        # one lie this can catch without a clock of its own.
+        check("a host that winds the clock back is refused",
+              draw(vslot, PAYEE, 1_000_000, now=t0 + 100), 0xB10C)
+        revoke(vslot)
+    check("half a rate limit is refused at grant time",
+          grant("halflimit", 50_000_000, 10_000_000, tag=0xE2,
+                window_secs=3600, max_per_window=0, expect_screen=False)[0],
+          0xB108)
+
     print("\nrecovery — the device is replaced, the envelope is not")
     # A restored envelope that started at zero would let its agent spend the
     # whole budget a second time, which is the only way this feature can be
@@ -341,6 +379,20 @@ def main():
         check("while the same swap to an attacker is still refused",
               call(cslot, ROUTER, SWAP + word(1_000_000) + word(ATTACKER)), 0xB10B)
         revoke(cslot)
+
+    # The velocity block is mandatory on a restore because the position
+    # follows it. A body that omits it hands the parser six bytes of sequence
+    # number where it expects a window, and the refusal must be a refusal
+    # rather than a mandate restored to a position nobody asked for.
+    short = (bytes(20 * [0xD6])
+             + bytes([1]) + struct.pack(">Q", PAYEE)
+             + struct.pack(">QQ", 50_000_000, 10_000_000)
+             + struct.pack(">I", 0)
+             + bytes([5]) + b"short"
+             + bytes([0, 0, 0xFF])
+             + struct.pack(">I", 3) + struct.pack(">Q", 1_000_000))
+    check("a restore without the velocity block is refused, not misread",
+          send(RESTORE, short, timeout=20)[0], 0xB108)
 
     check("a restore claiming more spent than the budget is refused",
           restore("liar", 50_000_000, 10_000_000, seq=1, spent=60_000_000)[0],

@@ -74,6 +74,8 @@ static uint16_t sw_for(mandate_status_t st) {
             return SW_VELA_SELECTOR;
         case MANDATE_ERR_RECIPIENT:
             return SW_VELA_RECIPIENT;
+        case MANDATE_ERR_VELOCITY:
+            return SW_VELA_VELOCITY;
         default:
             return SW_VELA_ARGS;
     }
@@ -298,6 +300,27 @@ static int handler_create_or_restore(buffer_t *cdata, bool restore) {
             if (m->n_selectors == 0 || m->recipient_arg == MANDATE_ARG_NONE) {
                 return io_send_sw(SW_VELA_ARGS);
             }
+        }
+    }
+
+    // --- velocity, optional -----------------------------------------------
+    //
+    // Read after the contract terms and before the restore position, so every
+    // earlier layout still parses byte for byte. Absent means no rate limit,
+    // which is what every mandate written before this field meant.
+    // On a restore it is not optional, and that is a parsing rule rather than
+    // a policy one: the position follows immediately, so "absent" and "six
+    // bytes of sequence number" would be the same bytes. A restore always
+    // carries the block, zeroed when there is no limit.
+    if (restore || buffer_can_read(cdata, 1)) {
+        if (!buffer_read_u32(cdata, &m->window_secs, BE) ||
+            !buffer_read_u16(cdata, &m->max_per_window, BE)) {
+            return io_send_sw(SW_VELA_ARGS);
+        }
+        // Half a limit is not a limit, and a window of zero seconds would
+        // reset on every draw. Either both are set or neither is.
+        if ((m->window_secs == 0) != (m->max_per_window == 0)) {
+            return io_send_sw(SW_VELA_ARGS);
         }
     }
 

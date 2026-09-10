@@ -198,6 +198,43 @@ mandate_status_t mandate_restore(const mandate_t *m, uint8_t *out_id) {
     return mandate_write(m, out_id, true);
 }
 
+
+/**
+ * Has this envelope drawn too many times too quickly?
+ *
+ * Returns the window state the caller should commit, so the check and the
+ * bookkeeping stay in one place. A mandate with no velocity terms — every
+ * mandate written before this field existed — skips it entirely.
+ *
+ * There is no clock in the Secure Element, so `now` comes from the host. A
+ * host that lies forwards can only reset a counter it could have waited out;
+ * a host that lies backwards is refused, because time going backwards is the
+ * one thing this can catch without a clock of its own.
+ */
+static mandate_status_t velocity_check(const mandate_t *m,
+                                       uint32_t now,
+                                       uint32_t *out_start,
+                                       uint16_t *out_draws) {
+    *out_start = m->window_start;
+    *out_draws = m->window_draws;
+
+    if (m->window_secs == 0 || m->max_per_window == 0) {
+        return MANDATE_OK;
+    }
+    if (now < m->window_start) {
+        return MANDATE_ERR_VELOCITY;
+    }
+    if (m->window_start == 0 || now - m->window_start >= m->window_secs) {
+        *out_start = now;
+        *out_draws = 0;
+    }
+    if (*out_draws >= m->max_per_window) {
+        return MANDATE_ERR_VELOCITY;
+    }
+    *out_draws = (uint16_t) (*out_draws + 1);
+    return MANDATE_OK;
+}
+
 mandate_status_t mandate_authorize(uint8_t id,
                                    uint64_t payee,
                                    uint64_t amount,
@@ -227,6 +264,15 @@ mandate_status_t mandate_authorize(uint8_t id,
         return MANDATE_ERR_BUDGET;
     }
 
+    // Last of the refusals, and before anything is written. A draw refused on
+    // velocity must not consume the sequence number it was refused for.
+    uint32_t window_start = 0;
+    uint16_t window_draws = 0;
+    mandate_status_t v = velocity_check(m, now, &window_start, &window_draws);
+    if (v != MANDATE_OK) {
+        return v;
+    }
+
     // Commit the reservation before returning. The caller signs only after
     // this write has landed, so a crash in between loses the draw rather
     // than letting the same headroom be spent twice.
@@ -234,6 +280,10 @@ mandate_status_t mandate_authorize(uint8_t id,
     uint32_t seq = m->seq + 1;
     nvm_write((void *) &N_storage.mandates[id].reserved, (void *) &reserved, sizeof(reserved));
     nvm_write((void *) &N_storage.mandates[id].seq, (void *) &seq, sizeof(seq));
+    nvm_write((void *) &N_storage.mandates[id].window_start, (void *) &window_start,
+              sizeof(window_start));
+    nvm_write((void *) &N_storage.mandates[id].window_draws, (void *) &window_draws,
+              sizeof(window_draws));
 
     *out_seq = seq;
     return MANDATE_OK;
@@ -294,10 +344,24 @@ mandate_status_t mandate_authorize_call(uint8_t id,
         return MANDATE_ERR_BUDGET;
     }
 
+    // A call counts against velocity exactly as a transfer does. It moved the
+    // agent's authority, and forty of them in a minute is the thing the limit
+    // exists to notice — whether or not each one drew budget.
+    uint32_t window_start = 0;
+    uint16_t window_draws = 0;
+    mandate_status_t v = velocity_check(m, now, &window_start, &window_draws);
+    if (v != MANDATE_OK) {
+        return v;
+    }
+
     uint64_t reserved = m->reserved + amount;
     uint32_t seq = m->seq + 1;
     nvm_write((void *) &N_storage.mandates[id].reserved, (void *) &reserved, sizeof(reserved));
     nvm_write((void *) &N_storage.mandates[id].seq, (void *) &seq, sizeof(seq));
+    nvm_write((void *) &N_storage.mandates[id].window_start, (void *) &window_start,
+              sizeof(window_start));
+    nvm_write((void *) &N_storage.mandates[id].window_draws, (void *) &window_draws,
+              sizeof(window_draws));
 
     *out_seq = seq;
     return MANDATE_OK;

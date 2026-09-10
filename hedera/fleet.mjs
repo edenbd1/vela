@@ -41,7 +41,11 @@ const FLEET = [
   // only what it gets away with.
   { label: "research-1",  budget: 50_000_000n, perCall: 10_000_000n, tag: 0xa1,
     contracts: [ROUTER], selectors: [SWAP], recipientArg: 1 },
-  { label: "ops-nightly", budget: 20_000_000n, perCall:  5_000_000n, tag: 0xb2 },
+  // The one with a rate limit. A nightly job that suddenly wants six payments
+  // a minute is the shape of a compromised agent, and the budget alone would
+  // let it have them.
+  { label: "ops-nightly", budget: 20_000_000n, perCall:  5_000_000n, tag: 0xb2,
+    windowSecs: 3600, maxPerWindow: 4 },
   { label: "watcher",     budget: 10_000_000n, perCall:  1_000_000n, tag: 0xc3 },
 ];
 
@@ -89,18 +93,25 @@ for (const a of FLEET) {
     Buffer.alloc(4),                  // never expires
     Buffer.from([a.label.length]), Buffer.from(a.label, "latin1"),
   ];
-  if (a.contracts) {
-    const u32 = (v) => { const b = Buffer.alloc(4); b.writeUInt32BE(Number(v)); return b; };
+  const u32 = (v) => { const b = Buffer.alloc(4); b.writeUInt32BE(Number(v)); return b; };
+  if (a.contracts || a.windowSecs) {
     parts.push(
-      Buffer.from([a.contracts.length]), ...a.contracts.map(u64),
-      Buffer.from([a.selectors.length]), ...a.selectors.map(u32),
-      Buffer.from([a.recipientArg]));
+      Buffer.from([a.contracts?.length ?? 0]), ...(a.contracts ?? []).map(u64),
+      Buffer.from([a.selectors?.length ?? 0]), ...(a.selectors ?? []).map(u32),
+      Buffer.from([a.recipientArg ?? 0xff]));
+  }
+  if (a.windowSecs) {
+    const w = Buffer.alloc(6);
+    w.writeUInt32BE(a.windowSecs, 0);
+    w.writeUInt16BE(a.maxPerWindow, 4);
+    parts.push(w);
   }
   const body = Buffer.concat(parts);
 
   console.log(`\n  >>> approve '${a.label}' on the device ` +
               `(${hbar(a.budget)} HBAR, ${hbar(a.perCall)} max` +
-              `${a.contracts ? `, may swap on 0.0.${a.contracts[0]}` : ""}) <<<`);
+              `${a.contracts ? `, may swap on 0.0.${a.contracts[0]}` : ""}` +
+              `${a.windowSecs ? `, ${a.maxPerWindow}/hour` : ""}) <<<`);
   const r = await t.exchange(
     Buffer.concat([Buffer.from([CLA, CREATE, 0, 0, body.length]), body]));
   console.log(`      granted in slot ${r[0]}`);
@@ -150,6 +161,7 @@ writeFileSync(BACKUP, JSON.stringify({
       selectors: a.selectors.map((x) => x.toString(16).padStart(8, "0")),
       recipientArg: a.recipientArg,
     } : {}),
+    ...(a.windowSecs ? { windowSecs: a.windowSecs, maxPerWindow: a.maxPerWindow } : {}),
   })),
 }, null, 2));
 console.log(`\n  terms backed up to ${BACKUP.replace(ROOT + "/", "")}`);
