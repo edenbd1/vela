@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="#an-agent-actually-decides">An agent, deciding</a> ·
   <a href="#the-fleet">The fleet</a> ·
   <a href="#capabilities-not-credentials">Capabilities, not credentials</a> ·
   <a href="#the-experiment">The experiment</a> ·
@@ -59,6 +60,30 @@ on a VPS, a CI runner, a container — anywhere, with nothing on it worth
 stealing. And the device stays the one component every agent depends on and
 none can modify, which is what makes it a console rather than a dashboard. A
 dashboard shows you what a server says. This shows you what the chip knows.
+
+<h3 id="an-agent-actually-decides">An agent, deciding</h3>
+
+A local model with four tools and a budget it does not control. On the Flex,
+not a simulator:
+
+```
+   1  check_envelope()
+      available=0.44 HBAR  max_per_payment=0.1 HBAR
+   3  buy_analysis(exhaustive)
+      REFUSED over_per_call — this single payment exceeds per_call_max;
+                              a cheaper tier may fit
+   4  check_envelope()            ← it goes back and re-reads its limits
+   6  buy_analysis(synthesis)
+      bought=synthesis  cost=0.08 HBAR
+```
+
+It wanted the expensive one. The chip refused and said why. It read that and
+took the deepest analysis that fits. **Nobody wrote that branch** — the
+hardware boundary is part of the environment the agent reasons about.
+
+The payment is real, and the public verifier confirms it from the mirror node
+and nothing else. [More below](#an-agent-that-actually-decides), including
+what happened when the model invented a budget it did not have.
 
 ## How it fits together
 
