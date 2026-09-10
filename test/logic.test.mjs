@@ -328,3 +328,75 @@ test("releases do not look like spending", () => {
   assert.equal(r.refused, undefined, JSON.stringify(r.failures));
   assert.equal(r.spent, 15_000_000n, "10 paid + 5 paid; the release cost nothing");
 });
+
+/* ------------------------------------------------------------------------ *
+ * A swap is a draw too.
+ *
+ * AUTHORIZE_CALL burns a sequence number and reserves budget exactly as a
+ * transfer does. Leaving contract calls unpublished puts a hole in the chain
+ * — the same hole releaseRecord exists to prevent, arriving from the other
+ * direction — and the verifier and recovery both correctly refuse the whole
+ * envelope when it appears.
+ * ------------------------------------------------------------------------ */
+const { callRecord } = await import("../hedera/anchor.mjs");
+
+test("a contract call anchors like a draw, and says it is one", () => {
+  const r = callRecord({
+    mandateHash: "d", instance: 7n, seq: 4, contract: 5_000_001n,
+    amount: 5_000_000n, remaining: 30_000_000n,
+  });
+  assert.equal(r.seq, 4);
+  assert.equal(r.payee, "5000001", "the contract stands where the payee stands");
+  assert.equal(r.c, true);
+  assert.equal(r.tx, null, "the gateway signs the body and does not submit it");
+  assert.equal(r.r, undefined, "a call is not a release");
+});
+
+test("a chain mixing payments and swaps has no gap in it", () => {
+  const chain = [
+    drawRecord({ mandateHash: "d", instance: 7n, seq: 1, payee: 10n,
+                 amount: 10_000_000n, remaining: 40_000_000n, tx: "0.0.1@1.0" }),
+    callRecord({ mandateHash: "d", instance: 7n, seq: 2, contract: 5_000_001n,
+                 amount: 5_000_000n, remaining: 35_000_000n }),
+    drawRecord({ mandateHash: "d", instance: 7n, seq: 3, payee: 10n,
+                 amount: 1_000_000n, remaining: 34_000_000n, tx: "0.0.1@2.0" }),
+  ];
+  const failures = checkChain(chain).filter(([ok]) => !ok);
+  assert.deepEqual(failures, [], JSON.stringify(failures));
+});
+
+test("a swap left unpublished is exactly what a gap looks like", () => {
+  // The bug this fixed: an agent swaps once and pays twice, the swap goes
+  // unrecorded, and the log reads 1, 3 — which the verifier refuses, and
+  // which recovery refuses to restore from.
+  const chain = [
+    drawRecord({ mandateHash: "d", instance: 7n, seq: 1, payee: 10n,
+                 amount: 10_000_000n, remaining: 40_000_000n, tx: "0.0.1@1.0" }),
+    drawRecord({ mandateHash: "d", instance: 7n, seq: 3, payee: 10n,
+                 amount: 1_000_000n, remaining: 34_000_000n, tx: "0.0.1@2.0" }),
+  ];
+  const failures = checkChain(chain).filter(([ok]) => !ok).map(([, w]) => w);
+  assert.ok(failures.some((f) => /seq 3 follows 1/.test(f)), failures.join("; "));
+});
+
+test("recovery reads a position from a chain containing swaps", async () => {
+  const { positions, plan } = await import("../hedera/recovery.mjs");
+  const chain = [
+    drawRecord({ mandateHash: "d", instance: "7", seq: 1, payee: 10n,
+                 amount: 10_000_000n, remaining: 40_000_000n, tx: "0.0.1@1.0" }),
+    callRecord({ mandateHash: "d", instance: "7", seq: 2, contract: 5_000_001n,
+                 amount: 5_000_000n, remaining: 35_000_000n }),
+  ].map((r) => ({ ...r, m: "d", i: "7" }));
+
+  const [row] = plan({
+    mandates: [{ label: "research-1", budgetTotal: "50000000",
+                 perCallMax: "10000000", agentId: "aa".repeat(20),
+                 payees: ["10"], expiry: 0 }],
+    instance: "7", seen: positions(chain), digestOf: () => "d",
+  });
+  assert.equal(row.refused, undefined, JSON.stringify(row.failures));
+  assert.equal(row.seq, 2);
+  // A call reserves and is never settled, so its amount counts against the
+  // envelope for good. Restoring anything less would hand the budget back.
+  assert.equal(row.spent, 15_000_000n);
+});

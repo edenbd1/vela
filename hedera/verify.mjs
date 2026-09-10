@@ -95,6 +95,16 @@ async function checkTransfer(record) {
   if (record.r) {
     return [true, `draw ${record.seq}: released, nothing paid`];
   }
+  // A contract call is signed here and submitted elsewhere. The gateway hands
+  // back a body rather than broadcasting it, so it has no transaction id to
+  // record and does not invent one. What is checkable is the same thing that
+  // makes a release checkable: the chip signed the remaining balance, and the
+  // next draw's arithmetic only adds up if this one really reserved what it
+  // says. The signature over the anchor is checked either way, below.
+  if (record.c) {
+    return [true, `draw ${record.seq}: contract call on 0.0.${record.payee}, ` +
+                  `signed here and submitted elsewhere`];
+  }
   if (!record.tx) return [false, `draw ${record.seq} names no transaction`];
   const d = await json(`${MIRROR}/transactions/${mirrorId(record.tx)}`);
   const t = d.transactions?.[0];
@@ -158,7 +168,9 @@ for (const [key, draws] of byMandate) {
     const [pass, why] = await checkTransfer(r);
     console.log(`  ${pass ? "ok  " : "FAIL"}  ${why}`);
     ok &&= pass;
-    if (pass && !r.r && !deviceKey && r.payer) deviceKey = await deviceKeyOf(r.payer);
+    if (pass && !r.r && !r.c && !deviceKey && r.payer) {
+      deviceKey = await deviceKeyOf(r.payer);
+    }
   }
 
   if (deviceKey) {

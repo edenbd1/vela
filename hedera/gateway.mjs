@@ -28,7 +28,7 @@ import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { ExactHederaScheme } from "@x402/hedera/exact/client";
 
 import { createLedgerHederaSigner } from "./ledger-signer.mjs";
-import { drawRecord, makeAnchor, mandateDigest, releaseRecord } from "./anchor.mjs";
+import { drawRecord, makeAnchor, mandateDigest, releaseRecord, callRecord } from "./anchor.mjs";
 import { liveTopic } from "./live-env.mjs";
 import { currentInstance } from "./instance.mjs";
 import { createHash } from "node:crypto";
@@ -405,6 +405,35 @@ async function submit(record) {
 const publishable = (e) =>
   (currentInstance().topic ?? liveTopic()) && lastDraw && e?.payees;
 
+/**
+ * A contract call, on the public log.
+ *
+ * Not optional. AUTHORIZE_CALL burns a sequence number and reserves budget
+ * exactly as a transfer does, so a swap that goes unpublished puts a hole in
+ * the chain — an agent that swaps once and pays twice produces 1, 3, 4, and
+ * the verifier correctly refuses the whole envelope. Recovery refuses it too,
+ * which is how this was found.
+ */
+async function publishCall(before, contract, amount, r) {
+  if (!(currentInstance().topic ?? liveTopic()) || !before?.payees) return null;
+  return submit(callRecord({
+    mandateHash: mandateDigest({
+      agentId: Buffer.from(before.agent, "hex"),
+      payees: before.payees.map((p) => BigInt(p.split(".")[2])),
+      budgetTotal: before.budget_total,
+      perCallMax: before.per_call_max,
+      expiry: before.expiry,
+    }),
+    instance: currentInstance().id,
+    seq: r.seq,
+    contract: BigInt(String(contract).split(".").pop()),
+    amount,
+    remaining: BigInt(r.remaining),
+    anchor: r.anchor,
+    anchorSig: r.anchorSig,
+  }));
+}
+
 async function publishDraw(before, accepts, price, tx) {
   if (!publishable(before)) return null;
   return submit(drawRecord({ ...recordFields(before, accepts, price), tx }));
@@ -654,13 +683,28 @@ const routes = {
           Buffer.concat([Buffer.from([0xe0, 0x18, 0, 0, payload.length]), payload])),
         encoded: await signer.transport.exchange(Buffer.from([0xe0, 0x19, 0, 0, 0])),
       }));
+      // seq (4) || available (8) || body_len (2) || signature (64)
+      //         || anchor (29) || anchor signature (64)
       const bodyLen = r.readUInt16BE(12);
+      const decided = {
+        seq: r.readUInt32BE(0),
+        remaining: r.readBigUInt64BE(4),
+        anchor: r.subarray(78, 78 + 29),
+        anchorSig: r.subarray(78 + 29, 78 + 29 + 64),
+      };
+
+      // Published before the response goes out, so a caller that swaps and
+      // then walks away still leaves the chain whole.
+      const anchored = await publishCall(before, body.contract, amount, decided)
+        .catch(() => null);
+
       return json(res, 200, {
         signed: true,
-        seq: r.readUInt32BE(0),
-        remaining: String(r.readBigUInt64BE(4)),
+        seq: decided.seq,
+        remaining: String(decided.remaining),
         body_len: bodyLen,
         body: encoded.toString("hex"),
+        anchored_as_message: anchored,
         note: "the chip built this body from fields it checked, and signed " +
               "bytes it constructed rather than bytes it was handed",
       });

@@ -62,6 +62,35 @@ export function mandateDigest({ agentId, payees, budgetTotal, perCallMax, expiry
  * the hole gets filled: same chip-signed statement, no transaction, and an
  * explicit claim that nothing moved.
  */
+/**
+ * A contract call the chip authorised.
+ *
+ * Every AUTHORIZE_CALL burns a sequence number and reserves budget exactly as
+ * a transfer does, so leaving calls unpublished puts a hole in the chain —
+ * the same hole releaseRecord exists to prevent, arriving from a different
+ * direction. An agent that swaps once and pays twice produces a log reading
+ * 1, 3, 4, and a verifier correctly refuses it.
+ *
+ * `contract` stands where `payee` stands, because that is what the chip
+ * agreed to hand value to. The recipient is deliberately absent: the chip
+ * refused to sign any recipient but its own, so recording it would be
+ * recording a constant — and a constant in a log invites someone to check the
+ * wrong thing.
+ *
+ * `tx` is null and stays null. The gateway hands back a signed body rather
+ * than submitting it, so it does not know whether the call executed. Claiming
+ * a transaction id it has not seen would be the one kind of lie this log
+ * cannot survive.
+ */
+export function callRecord({ mandateHash, instance, seq, contract, amount,
+                             remaining, anchor, anchorSig }) {
+  return {
+    ...drawRecord({ mandateHash, instance, seq, payee: contract, amount,
+                    remaining, tx: null, anchor, anchorSig }),
+    c: true,
+  };
+}
+
 export function releaseRecord(fields) {
   return { ...drawRecord({ ...fields, tx: null }), r: true };
 }
@@ -151,6 +180,10 @@ export function checkChain(records) {
   for (const r of records) {
     const amount = BigInt(r.amount);
     const remaining = BigInt(r.remaining);
+    // A call reserves exactly as a transfer does and is never settled, so the
+    // arithmetic below is the same. It is marked only so a reader can tell a
+    // swap from a payment, and so the transfer check knows not to look for a
+    // transaction id that was never created.
 
     out.push([r.seq === prevSeq + 1, `seq ${r.seq} follows ${prevSeq} with no gap`]);
     prevSeq = r.seq;
