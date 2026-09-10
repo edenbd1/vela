@@ -864,9 +864,19 @@ const routes = {
     }
 
     const body = await readBody(req);
+    // The device's own count, not a constant. This was the third place a
+    // hardcoded three survived the move to eight slots, and the one that
+    // mattered most: an operator could not revoke an envelope the chip was
+    // holding, which is the one action this whole project exists to keep
+    // available.
+    if (await deviceReady()) {
+      SLOT_COUNT = await discoverSlots().catch(() => SLOT_COUNT);
+    }
     const slot = Number(body?.slot);
-    if (!Number.isInteger(slot) || slot < 0 || slot > 2) {
-      return json(res, 400, { error: 'give me {"slot": 0}' });
+    if (!Number.isInteger(slot) || slot < 0 || slot >= SLOT_COUNT) {
+      return json(res, 400, {
+        error: `give me {"slot": 0} — this device has ${SLOT_COUNT} slots`,
+      });
     }
 
     const before = await envelope(slot).catch(() => null);
