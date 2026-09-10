@@ -1,0 +1,82 @@
+# An agent spends, on a machine neither of us owns.
+#
+# The container in agent/ already holds nothing — no --device, no volume, no
+# key — but it runs on the same laptop as the chip, and a reader is entitled
+# to ask whether that is doing any work. It is not: the only thing between an
+# agent and a mandate is HTTP.
+#
+# So this runs on GitHub's hardware, against a gateway reachable over a
+# tunnel, and asks the Secure Element for money. It has no USB bus, no Ledger
+# tooling, no seed and no envelope. What it has is a token scoped to one slot,
+# and everything that token can do is written in NVRAM on a device it cannot
+# address.
+#
+# Both outcomes are asserted, because only one of them is interesting on its
+# own. A payment that goes through proves the path. A payment refused *by the
+# chip* for being over a ceiling this runner cannot read or raise is the
+# product.
+name: spend from a machine we do not control
+
+on:
+  workflow_dispatch:
+    inputs:
+      gateway:
+        description: "public URL of the Vela gateway"
+        required: true
+
+jobs:
+  spend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: what this runner is
+        run: |
+          echo "host      $(uname -srm)"
+          echo "usb       $(ls /dev/bus/usb 2>/dev/null || echo 'no usb bus')"
+          echo "ledger    $(command -v ledgerctl || echo 'no ledger tooling')"
+          echo "seed      none"
+          echo "envelope  none — it is in NVRAM on a device this job cannot address"
+
+      - name: the envelope, read from the chip
+        env:
+          GW: ${{ inputs.gateway }}
+          TOKEN: ${{ secrets.VELA_REMOTE_TOKEN }}
+        run: |
+          curl -sS -m 60 -H "authorization: Bearer $TOKEN" \
+               -H "ngrok-skip-browser-warning: 1" "$GW/envelope" > envelope.json
+          cat envelope.json | jq '{slot, agent, budget: .mandate.budget_total,
+                                   ceiling: .mandate.per_call_max,
+                                   available: .mandate.available,
+                                   payees: .mandate.payees}'
+          test "$(jq -r .agent envelope.json)" = "remote-1"
+
+      - name: buy one triage — inside the ceiling
+        env:
+          GW: ${{ inputs.gateway }}
+          TOKEN: ${{ secrets.VELA_REMOTE_TOKEN }}
+        run: |
+          curl -sS -m 120 -X POST -H "authorization: Bearer $TOKEN" \
+               -H "ngrok-skip-browser-warning: 1" \
+               -H 'content-type: application/json' \
+               -d '{"service":"triage"}' "$GW/pay" > paid.json
+          jq '{paid, refused, reason, tx, anchored_as_message}' paid.json
+          test "$(jq -r .paid paid.json)" = "true"
+          echo
+          echo "That transaction was signed inside a Secure Element."
+          echo "Nothing in this job could have produced that signature."
+
+      - name: ask for eight times the ceiling — and be refused by the chip
+        env:
+          GW: ${{ inputs.gateway }}
+          TOKEN: ${{ secrets.VELA_REMOTE_TOKEN }}
+        run: |
+          curl -sS -m 120 -X POST -H "authorization: Bearer $TOKEN" \
+               -H "ngrok-skip-browser-warning: 1" \
+               -H 'content-type: application/json' \
+               -d '{"service":"synthesis"}' "$GW/pay" > refused.json
+          jq '{paid, refused, reason, advice}' refused.json
+          test "$(jq -r .refused refused.json)" = "true"
+          test "$(jq -r .reason refused.json)" = "over_per_call"
+          echo
+          echo "Refused for being over a per-draw ceiling this runner cannot"
+          echo "read, cannot raise, and cannot route around. The refusal did"
+          echo "not happen here. It happened in a chip with no address."
