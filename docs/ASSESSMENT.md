@@ -165,6 +165,21 @@ The envelope was disposable on purpose — 0.05 HBAR, one payee, granted with
 revoked afterwards. `fleet.mjs` would have revoked slots 0-2 and rotated the
 topic to add a fourth agent, ending three working chains to run an experiment.
 
+The token is still valid and still registered, deliberately, because what it
+answers now is the point:
+
+```console
+$ curl -H "authorization: Bearer $TOKEN" .../pay -d '{"service":"triage"}'
+{ "paid": false, "refused": true, "reason": "no_mandate", "terminal": true,
+  "advice": "a human must grant an envelope on the device first" }
+```
+
+The credential outlived the authority. Nothing was rotated, no secret was
+re-issued, and no host was asked to forget anything — a person held a button
+on a device, and a working token became a token that can ask and be told no.
+That is the inverse of how revocation usually works, where the credential *is*
+the authority and taking it back means chasing every copy.
+
 What this cost while it ran: two loopback services were reachable from the
 internet. Three things bounded that — every write path needs a token, the URL
 died with the process, and a fully compromised token still buys only its
