@@ -579,5 +579,37 @@ console.log("\nthe agent loop, against a chip that says no\n");
      r.text);
 }
 
+/* ---------------------------------------------------------------------- *
+ * A run that dies still writes down that it died.
+ *
+ * The first version exited before saving, so a night the model went away left
+ * no entry at all — and the next run could not tell "nothing happened" from
+ * "something went wrong and nobody wrote it down".
+ * ---------------------------------------------------------------------- */
+{
+  const dir = mkdtempSync(join(tmpdir(), "vela-mem-"));
+  const dead = await serve(() => ({ status: 500, body: { error: "model not found" } }));
+  const code = await new Promise((resolve) => {
+    const p = spawn(process.execPath, [AGENT], {
+      env: { ...process.env, OLLAMA: `http://127.0.0.1:${dead.port}`,
+             AGENT_TOKEN: "test", AGENT_STEPS: "2", VELA_MEMORY: dir },
+      stdio: ["ignore", "pipe", "pipe"] });
+    p.on("close", resolve);
+  });
+  dead.close();
+
+  const files = readdirSync(dir);
+  ok("a run killed by the model still leaves a journal entry", files.length === 1,
+     JSON.stringify(files));
+  const e = files.length
+    ? JSON.parse(readFileSync(join(dir, files[0]), "utf8")).entries.at(-1)
+    : null;
+  ok("and the entry says the run did not finish", e?.incomplete === true,
+     JSON.stringify(e));
+  ok("rather than looking like a quiet night",
+     /unreachable/.test(e?.verdict ?? ""), e?.verdict);
+  ok("the process still exits non-zero", code === 1, `exit ${code}`);
+}
+
 console.log(`\n${pass}/${pass + fail} passed\n`);
 process.exit(fail ? 1 : 0);

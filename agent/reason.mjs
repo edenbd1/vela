@@ -238,6 +238,32 @@ const spent = [];
 const flagged = [];
 /** What this run wants its next self to know. */
 const notes = [];
+
+/**
+ * Write the journal. Called on every way out, including the bad ones.
+ *
+ * A journal that only records successes is one that tells its next self a
+ * comfortable story — and an agent that finds no entry for last night cannot
+ * tell "nothing happened" from "something went wrong and nobody wrote it
+ * down".
+ */
+let kept = false;
+function keep(failure = null) {
+  if (kept || process.env.AGENT_MEMORY === "off") return;
+  kept = true;
+  const total = spent.reduce((a, b) => a + b, 0);
+  save(NAME, {
+    verdict: failure ?? (finished ?? "did not report").slice(0, 240),
+    spent: (total / 1e8).toFixed(2),
+    notes,
+    ...(failure ? { incomplete: true } : {}),
+  });
+  if (notes.length) {
+    console.log();
+    console.log(`kept     ${notes.length} note(s) for the next run:`);
+    for (const n of notes) console.log(`         ${n.slice(0, 110)}`);
+  }
+}
 /** The contract terms the chip published, once read. */
 let terms = null;
 
@@ -508,6 +534,7 @@ function callSig(d) {
             : d.tool === "swap"
               ? `${String(d.amount ?? "").replace(/\s*HBAR\s*$/i, "")} HBAR → ${d.proceeds_to}`
             : d.tool === "flag_instruction" ? (d.source ?? "?")
+            : d.tool === "remember" ? `"${String(d.note ?? "").slice(0, 40)}"`
             : "";
   return `${d.tool}${arg ? `(${arg})` : "()"}`;
 }
@@ -525,6 +552,19 @@ let attempted = false;  // it tried to, whatever came back
 let pushbacks = 0;
 let lastCall = null;    // the same decision, over and over
 let repeats = 0;
+
+/**
+ * Stop, having first written down what happened.
+ *
+ * A run that dies because the model went away used to exit before its journal
+ * was saved, which quietly made "written whether or not the run went well" a
+ * false claim about this file. The next night would then start from the run
+ * before last with no sign anything had been lost.
+ */
+function giveUp() {
+  keep("the model became unreachable mid-run");
+  process.exit(1);
+}
 
 /**
  * One constrained decode. Returns the parsed object, or null after saying why.
@@ -545,12 +585,12 @@ async function decode(schema) {
   } catch (e) {
     console.log(`  the model is unreachable at ${OLLAMA}: ${e.message}`);
     console.log(`  start it with: ollama serve`);
-    process.exit(1);
+    return giveUp();
   }
   if (res.error) {
     console.log(`  the model refused the request: ${res.error}`);
     console.log(`  pull a model first: ollama pull ${MODEL}`);
-    process.exit(1);
+    return giveUp();
   }
   try {
     return { value: JSON.parse(res.message?.content ?? ""), message: res.message };
@@ -718,17 +758,7 @@ if (flagged.length) {
 
 const total = spent.reduce((a, b) => a + b, 0);
 
-// Written whether or not the run went well. A journal that only records
-// successes is one that tells its next self a comfortable story.
-if (process.env.AGENT_MEMORY !== "off") {
-  save(NAME, { verdict: (finished ?? "did not report").slice(0, 240),
-               spent: (total / 1e8).toFixed(2), notes });
-  if (notes.length) {
-    console.log();
-    console.log(`kept     ${notes.length} note(s) for the next run:`);
-    for (const n of notes) console.log(`         ${n.slice(0, 110)}`);
-  }
-}
+keep();
 
 console.log(`spent    ${hbar(total)} across ${spent.length} payment(s)`);
 if (!checked) {
