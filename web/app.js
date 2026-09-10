@@ -592,6 +592,9 @@ async function loadReceipts() {
     $("topic").append(a);
   }
   $("load-receipts").onclick = loadReceipts;
+  // Carry the topic across, so "check it yourself" is a link rather than an
+  // instruction to type something.
+  if (CONFIG?.topic) $("verify-link").href = `/verify.html?topic=${CONFIG.topic}`;
   $("revoke").onclick = revoke;
   for (const b of document.querySelectorAll("button.scenario")) {
     b.onclick = () => runScenario(b.dataset.case);

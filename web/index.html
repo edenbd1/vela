@@ -22,6 +22,7 @@
     <a href="#envelope">Envelope</a>
     <a href="#boundary">The boundary</a>
     <a href="#log">Log</a>
+    <a href="/verify.html">Verify</a>
   </nav>
   <div class="device" id="device">
     <span class="dot" id="dot"></span>
@@ -190,6 +191,11 @@
     <button class="act" id="load-receipts">
       Read the log from the mirror node <span class="price">no local state</span>
     </button>
+    <p class="hint">
+      Or check it without this page at all:
+      <a href="/verify.html" id="verify-link">the verifier</a> reads Hedera
+      directly from your browser and talks to no Vela server.
+    </p>
     <ol class="log" id="receipts" style="margin-top:10px"></ol>
   </section>
 

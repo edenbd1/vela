@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify a Vela log — nothing here is trusted</title>
+<meta name="description" content="Check a Vela audit topic against Hedera's public mirror node, in your own browser.">
+<link rel="icon" href="/brand/vela-mark-64.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="top">
+  <img src="/brand/vela-mark-white.svg" alt="" class="mark">
+  <div><h1>Vela</h1></div>
+  <span class="tag">verify</span>
+  <nav><a href="/">← the console</a></nav>
+</header>
+
+<main>
+  <section class="hero">
+    <h2>Don't trust this page. <em>Check the log.</em></h2>
+    <p>
+      Every draw a Vela device authorises is anchored on Hedera with a
+      29-byte statement the chip signed: slot, sequence, payee, amount, and
+      the balance left. This page reads those statements straight from
+      Hedera's public mirror node and checks them in your browser.
+    </p>
+    <p style="margin-top:12px">
+      No Vela server is involved. Open the network tab — the only origin this
+      page talks to is <code>testnet.mirrornode.hedera.com</code>.
+    </p>
+
+    <div class="panel" style="margin-top:24px">
+      <h3 class="sub" style="margin-top:0">Topic id</h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <input id="topic-in" value="0.0.10460492" spellcheck="false"
+               style="flex:1;min-width:220px;background:var(--panel-2);color:var(--ink);
+                      border:1px solid var(--line);border-radius:9px;padding:12px 14px;
+                      font-family:var(--mono);font-size:14px">
+        <button class="act" id="go" style="width:auto;padding:12px 22px">Verify</button>
+      </div>
+      <p class="hint" id="status">reads Hedera. Writes nothing, anywhere.</p>
+    </div>
+  </section>
+
+  <section id="results"></section>
+
+  <section>
+    <h2 class="section">What this proves, and what it does not</h2>
+    <div class="split">
+      <div class="panel">
+        <h3 class="sub" style="margin-top:0">Proves</h3>
+        <ul class="bound">
+          <li>every anchored draw settled on Hedera exactly as recorded<em></em></li>
+          <li>in order, with no sequence hidden<em></em></li>
+          <li>against one fixed envelope<em></em></li>
+          <li>and never past its ceiling<em></em></li>
+          <li>each statement signed by the key that owns the paying account<em></em></li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3 class="sub" style="margin-top:0">Does not prove</h3>
+        <ul class="bound">
+          <li class="none">that the service delivered anything</li>
+          <li class="none">that the envelope was a sensible size</li>
+          <li class="none">that the agent did anything useful</li>
+          <li class="none">that a host published every draw it made — a host
+            that anchors nothing proves nothing, which was always true</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span>The agent holds no key. The host holds no key.</span>
+  <a href="https://github.com/edenbd1/vela">github.com/edenbd1/vela</a>
+</footer>
+
+<script type="module" src="/verify.js"></script>
+</body>
+</html>
