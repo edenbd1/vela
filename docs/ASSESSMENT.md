@@ -180,11 +180,19 @@ on a device, and a working token became a token that can ask and be told no.
 That is the inverse of how revocation usually works, where the credential *is*
 the authority and taking it back means chasing every copy.
 
-What this cost while it ran: two loopback services were reachable from the
+What this cost while it ran: one loopback service was reachable from the
 internet. Three things bounded that — every write path needs a token, the URL
 died with the process, and a fully compromised token still buys only its
 envelope. `scripts/remote-agent.sh` says all of that in its own header, and it
 is not something to leave running.
+
+Two things the first attempt got wrong, kept in the script because the next
+person will hit both. cloudflared's quick tunnels registered, resolved, and
+answered 404 from Cloudflare's edge to every request; ngrok worked and gives a
+stable free hostname. And ngrok's inspector binds port 4040, which
+`hedera/risk.mjs` was already using — it wins silently, and every
+`screen_counterparty` call then gets ngrok's 404 instead of the risk feed. The
+script moves the inspector and warns if anything else lands there.
 
 ### ~~4. Three slots is three agents~~ — closed 2026-09-10
 
