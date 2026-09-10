@@ -174,6 +174,38 @@ def restore(label, budget, per_call, seq, spent, tag=0xD4, payee=PAYEE,
     return sw, (r[0] if r else None)
 
 
+def sections(state):
+    """Where each variable-length part of a GET response starts.
+
+    One walker rather than one per caller. This response has grown three times
+    — contracts, then the label, then velocity — and every reader that stepped
+    over the sections by hand had to be found and fixed each time. Two of them
+    were, once, by a failing test; the third was the gateway, silently.
+    """
+    off = 70 + state[69] * 8
+    contracts = off
+    off += 1 + state[off] * 8
+    selectors = off
+    off += 1 + state[off] * 4
+    recipient_arg = off
+    off += 1
+    velocity = off
+    off += 12                      # window(4) cap(2) used(2) start(4)
+    return {"contracts": contracts, "selectors": selectors,
+            "recipient_arg": recipient_arg, "velocity": velocity, "label": off}
+
+
+def label_of(state):
+    off = sections(state)["label"]
+    return state[off + 1:off + 1 + state[off]].decode()
+
+
+def velocity_of(state):
+    off = sections(state)["velocity"]
+    window, cap, used, start = struct.unpack(">IHHI", state[off:off + 12])
+    return window, cap, used, start
+
+
 def position(slot):
     """(spent, available, seq) as the chip reports them."""
     sw, st = send(GET, p1=slot)
@@ -264,11 +296,7 @@ def main():
     sw, state = send(GET, p1=SLOT_A)
     check("and read back", sw, OK)
     if sw == OK:
-        label_off = 70 + state[69] * 8
-        label_off += 1 + state[label_off] * 8
-        label_off += 1 + state[label_off] * 4
-        label_off += 1
-        label = state[label_off + 1:label_off + 1 + state[label_off]].decode()
+        label = label_of(state)
         check("with the label the human chose",
               OK if label == "research-1" else 0xB108, OK)
 
@@ -317,6 +345,14 @@ def main():
     sw, vslot = grant("burst", 50_000_000, 10_000_000, tag=0xE1,
                       window_secs=3600, max_per_window=2)
     check("a mandate can carry a rate limit", sw, OK)
+    # Published, so an agent can plan against it. A ceiling discovered by
+    # hitting it is a trap; the chip refuses either way, and telling the agent
+    # in advance costs nothing.
+    sw_v, st_v = send(GET, p1=vslot)
+    if sw_v == OK:
+        window, cap, used, _ = velocity_of(st_v)
+        check("and the chip publishes it",
+              OK if (window, cap, used) == (3600, 2, 0) else 0xB108, OK)
     if sw == OK:
         t0 = 1_800_000_000
         check("the first draw in the window passes",

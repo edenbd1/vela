@@ -313,6 +313,15 @@ async function runTool(d) {
         may_pay: r.mandate.payees,
         me: r.mandate.self ?? "unknown",
       };
+      // A rate limit the agent can read is a boundary; one it discovers by
+      // hitting it is a trap, and each avoidable refusal costs a turn and a
+      // sequence number.
+      if (r.mandate.velocity) {
+        const v = r.mandate.velocity;
+        out.rate_limit =
+          `${v.max_per_window} draws per ${v.window_seconds}s, ` +
+          `${v.used_in_window} used so far`;
+      }
       if (terms) {
         out.may_call = terms.contracts;
         out.proceeds = terms.proceeds;

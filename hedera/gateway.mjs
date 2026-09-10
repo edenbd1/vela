@@ -287,24 +287,70 @@ function payeesFrom(state) {
  * could show one name on a console while the device shows another. The screen
  * a human taps to revoke is the one that has to be right.
  */
-function labelFrom(state) {
+/**
+ * Where each variable-length section starts.
+ *
+ * One walker rather than one per field. Three readers stepping over the same
+ * payees, contracts and selectors independently is three places to forget a
+ * section when the chip grows one — and this response has grown three times.
+ */
+function sections(state) {
   if (state.length < 70) return null;
-  let off = 70 + state.readUInt8(69) * 8;
+  const payees = 69;
+  let off = 70 + state.readUInt8(payees) * 8;
   if (state.length < off + 1) return null;
-  off += 1 + state.readUInt8(off) * 8;          // contracts
+  const contracts = off;
+  off += 1 + state.readUInt8(off) * 8;
   if (state.length < off + 1) return null;
-  off += 1 + state.readUInt8(off) * 4;          // selectors
-  off += 1;                                      // recipient_arg
+  const selectors = off;
+  off += 1 + state.readUInt8(off) * 4;
+  const recipientArg = off;
+  off += 1;
+  const velocity = off;                 // window(4) cap(2) used(2) start(4)
+  if (state.length < off + 12 + 1) return { payees, contracts, selectors,
+                                            recipientArg, velocity: null,
+                                            label: off };
+  off += 12;
+  return { payees, contracts, selectors, recipientArg, velocity, label: off };
+}
+
+function labelFrom(state) {
+  const at = sections(state);
+  if (!at) return null;
+  const off = at.label;
   if (state.length < off + 1) return null;
   const n = state.readUInt8(off);
   if (state.length < off + 1 + n) return null;
   return state.subarray(off + 1, off + 1 + n).toString("latin1");
 }
 
+/**
+ * The rate limit, as the chip reports it.
+ *
+ * Published so an agent can plan against it. A ceiling you discover by hitting
+ * it is a trap; one you can read is a boundary — and each avoidable refusal
+ * costs a turn and a sequence number.
+ */
+function velocityFrom(state) {
+  const at = sections(state);
+  if (!at || at.velocity === null) return null;
+  const o = at.velocity;
+  const windowSecs = state.readUInt32BE(o);
+  const cap = state.readUInt16BE(o + 4);
+  if (windowSecs === 0 || cap === 0) return null;
+  return {
+    window_seconds: windowSecs,
+    max_per_window: cap,
+    used_in_window: state.readUInt16BE(o + 6),
+    window_started: state.readUInt32BE(o + 8),
+    note: "draws, not HBAR. The budget bounds how much; this bounds how fast.",
+  };
+}
+
 function contractTermsFrom(state) {
-  if (state.length < 70) return null;
-  let off = 70 + state.readUInt8(69) * 8;
-  if (state.length < off + 1) return null;
+  const at = sections(state);
+  if (!at) return null;
+  let off = at.contracts;
 
   const nContracts = state.readUInt8(off++);
   if (state.length < off + nContracts * 8 + 1) return null;
@@ -354,6 +400,7 @@ async function envelope(slot = SLOT) {
     label: labelFrom(state),
     payees: payeesFrom(state),
     calls: contractTermsFrom(state),
+    velocity: velocityFrom(state),
     // Which account the agent *is*. It needs this to build a swap whose
     // proceeds come back to it, and it has no other way to know: the key
     // lives in the Secure Element and the agent has never seen an address.

@@ -342,6 +342,29 @@ function paintEnvelopeFrom(d, fleet = null) {
   }
 
   const bound = calls?.proceeds ?? "unknown — this chip predates contract calls";
+  // The rate limit sits with the other hardware bounds, because that is what
+  // it is — and amber would put it with the advisory ones, which it is not.
+  const rate = $("rate");
+  if (rate) {
+    rate.innerHTML = "";
+    const li = document.createElement("li");
+    if (m.velocity) {
+      const v = m.velocity;
+      const per = v.window_seconds % 3600 === 0
+        ? `${v.window_seconds / 3600} hour(s)`
+        : v.window_seconds % 60 === 0 ? `${v.window_seconds / 60} minute(s)`
+        : `${v.window_seconds} seconds`;
+      li.textContent = `${v.max_per_window} draws per ${per}`;
+      const used = document.createElement("em");
+      used.textContent = `${v.used_in_window} used in this window`;
+      li.append(used);
+    } else {
+      li.className = "none";
+      li.textContent = "no rate limit";
+    }
+    rate.append(li);
+  }
+
   const pr = $("proceeds");
   pr.innerHTML = "";
   const prLi = document.createElement("li");

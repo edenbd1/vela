@@ -107,6 +107,7 @@ int handler_get_mandate(uint8_t id) {
     // looks like a protocol mismatch rather than a dangling pointer.
     static uint8_t out[1 + AGENT_ID_LEN + 8 * 5 + 4 + 4 + 1 + 8 * MANDATE_MAX_PAYEES +
                       1 + 8 * MANDATE_MAX_CONTRACTS + 1 + 4 * MANDATE_MAX_SELECTORS + 1 +
+                      4 + 2 + 2 + 4 +          // velocity: window, cap, used, start
                       1 + MANDATE_LABEL_LEN];
     memset(out, 0, sizeof(out));
     size_t off = 0;
@@ -154,6 +155,24 @@ int handler_get_mandate(uint8_t id) {
         off += 4;
     }
     out[off++] = m->recipient_arg;
+
+    // Velocity, after the contract terms and before the label — appended for
+    // the same reason everything else was, so an older reader still finds its
+    // fields at the offsets it knows.
+    //
+    // Published because an agent that cannot see its rate limit cannot plan
+    // against it: it discovers the ceiling by hitting it, and a refusal it
+    // could have avoided is a wasted turn and a burnt sequence number. The
+    // chip already refuses what it must; telling the agent in advance costs
+    // nothing and is the difference between a boundary and a trap.
+    write_u32_be(out, off, m->window_secs);
+    off += 4;
+    out[off++] = (uint8_t) ((m->max_per_window >> 8) & 0xFF);
+    out[off++] = (uint8_t) (m->max_per_window & 0xFF);
+    out[off++] = (uint8_t) ((m->window_draws >> 8) & 0xFF);
+    out[off++] = (uint8_t) (m->window_draws & 0xFF);
+    write_u32_be(out, off, m->window_start);
+    off += 4;
 
     // The label last, length-prefixed, so a reader built against any earlier
     // layout finds every field it knew where it expects it.
