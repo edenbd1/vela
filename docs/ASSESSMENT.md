@@ -3,8 +3,11 @@
 Written four days before the deadline, deliberately unflattering. A status
 report that only lists what works is a report nobody can act on.
 
-*Updated 2026-09-10: gaps 1, 2, 4 and 5 are closed. Gaps 3 and 6 stand,
-and the verdict at the bottom has been rewritten rather than left to rot.*
+*Updated 2026-09-10, second pass: gaps 1, 2, 4 and 5 are closed, and 4 and 5
+are now confirmed on the physical device rather than the emulator. Gap 3 is
+half closed — a CI runner enrols, no agent pays from a host we do not control.
+Gap 6 stands. The verdict at the bottom has been rewritten rather than left to
+rot.*
 
 ---
 
@@ -101,9 +104,13 @@ cannot admit a host without the device having admitted you first.
 the next branch opens, everyone who remains is re-shared. The ejected host
 derives nothing on the new path. Verified on the real ring.
 
-One thing is still not done and is written down rather than implied: signing
-each `AddMember` on the device itself needs the Ledger Sync app rather than
-Vela. 17 assertions in `test/ring.test.mjs`.
+One thing is still not done, and we got further than "not done". The device
+signing each `AddMember` is written — `grant --device`, a transport over the
+same APDU shim, and a bridge that can guard a named app — and it stops at the
+protocol's first instruction, which returns `0xb00d` from Ledger Sync. That
+status word is in no table we could find and the tooling calls it
+`UNKNOWN_ERROR`. Finding 17. Enrolment ships rooted in the Key Ring instead:
+real, and one step short. 17 assertions in `test/ring.test.mjs`.
 
 ### 3. "Machines you do not control" are containers on one laptop — half closed
 
@@ -132,8 +139,8 @@ not matter and with eight it does. Verified on the emulator, screen included;
 two of the 31 chip assertions are on the slot count itself, so a future bump
 cannot ship slots nothing touches.
 
-**Not yet on hardware.** It needs a reload, and the storage magic changed, so
-it wipes what is there. See below.
+**Confirmed on hardware 2026-09-10.** Eight slots read out of the real Flex's
+NVRAM after a reload.
 
 Eight is not thirty, and the honest reason to stop there is not the one this
 document gave. "512 bytes of NVRAM is the ceiling" was wrong: the loader sizes
@@ -160,7 +167,11 @@ every missing draw is spending it would hand back; run against our own topic
 it refused `research-1` on the artefact of that morning's topic-rotation bug.
 An envelope with no records is refused rather than restored at zero.
 
-9 of the host-side assertions and 9 of the chip's cover recovery alone.
+**Confirmed on hardware 2026-09-10.** `recover.mjs` read `ops-nightly` off
+the mirror node at draw 4, 0.04 HBAR spent, and restored it into a free slot
+with the position intact — the agent resumed with what it had left rather
+than with a fresh envelope. 9 host-side assertions and 9 on the chip cover
+recovery alone.
 
 ### A capability nobody asked for: velocity
 
@@ -169,10 +180,15 @@ mandate can cap draws per window, checked on chip. `ops-nightly` is granted
 four an hour: a nightly job that suddenly wants six a minute is the shape of a
 compromised agent, and the budget alone would let it have them.
 
-Nine chip assertions, including the two that matter — a refused draw does not
-consume the window it was refused for, and a host that winds the clock back is
-refused. Proven on the emulator; like slots and recovery, it needs a reload to
-be true on hardware.
+**Confirmed on hardware 2026-09-10.** Four payments settled, the fifth refused
+`too_fast` with 0.16 of 0.20 HBAR still available — the refusal has nothing to
+do with money left, which is the whole reason for having it.
+
+Twelve chip assertions, including the three that matter: a refused draw does
+not consume the window it was refused for, a host that winds the clock back is
+refused, and a restore brings the spend position back while starting a fresh
+window. That last one is a decision with a stated cost — velocity bounds the
+rate between restores, not across them.
 
 ### 6. The broker is a trust point while it runs
 
@@ -219,17 +235,18 @@ exist. Every gap closed this week is worth nothing if nobody sees it.
 
 ## What to do with the time left
 
-Four of the six gaps are closed. What is left, in order:
+Four of the six gaps are closed, three of them confirmed on the physical
+device rather than the emulator. What is left, in order:
 
 1. **Record the video.** `docs/DEMO.md` has the shooting plan. Nothing below
    matters if this does not happen, and it is the only item here that cannot
    be recovered from on Sunday morning.
 
-2. **Reload the app onto the Flex.** Eight slots and mandate recovery are
-   proved on the emulator and have never run on hardware. The storage magic
-   changed, so a reload wipes what is there and needs a regrant after it.
-   Reloading has triggered a factory reset on this device three times, which
-   is why it is second rather than first: the demo works without it.
+2. **Re-record the replay** with a chip refusal in it. `web/demo-run.json` is
+   what a reader with no device sees, and the committed one was captured on a
+   nearly-empty envelope — its refusals are the broker's and `over_per_call`
+   rather than the contract-call one. `./scripts/record.sh` warns when a
+   recording has no refusal in it.
 
 3. **Purge `docs/PLAN.md` from git history** before the repo goes public. It
    is out of the working tree and still in two commits, and a public
@@ -239,8 +256,13 @@ Four of the six gaps are closed. What is left, in order:
    made beforehand still has the file.
 
 4. **A real VPS**, so "machines you do not control" stops meaning "containers
-   on one laptop". Enrolment makes this cheap now: `request` there, `grant`
-   here, `claim` there.
+   on one laptop" for the half that spends. Enrolment already runs on a public
+   CI runner; what is missing is an agent *paying* from somewhere we do not
+   own, which needs the broker and gateway reachable from it.
 
-Then, if there is time: signing `AddMember` on the device itself, which needs
-the Ledger Sync app; and a broker that cannot decrypt while it runs.
+Not on this list, and deliberately: signing `AddMember` on the device. It is
+written and it stops at an undocumented status word from Ledger Sync
+(finding 17). Waiting on someone else's documentation is not a plan.
+
+And a broker that cannot decrypt while it runs, which is the last honest gap
+and too large for the time left.
