@@ -34,6 +34,23 @@
     <div class="agents" id="agents"></div>
   </section>
 
+  <!-- ================= the fleet, thinking ================= -->
+  <section class="card thinking">
+    <h2>The fleet, thinking
+      <span class="src" id="think-src">reported by the agents · spending from the chip</span></h2>
+    <p class="lede">
+      Each agent is a model run on a host with no device. They do not know
+      about each other. What they decide is theirs; what they may spend is
+      not, and the red lines below are the Secure Element saying so.
+    </p>
+    <div class="minds" id="minds">
+      <p class="none">
+        No agent is running. Start one:
+        <code>VELA_EVENTS=http://127.0.0.1:4050/api/events node agent/swarm.mjs</code>
+      </p>
+    </div>
+  </section>
+
   <!-- ================= the selected agent ================= -->
   <section class="card envelope">
     <h2>
@@ -117,23 +134,6 @@
       </button>
     </div>
     <p class="hint" id="defi-hint"></p>
-  </section>
-
-  <!-- ================= the fleet, thinking ================= -->
-  <section class="card thinking">
-    <h2>The fleet, thinking
-      <span class="src" id="think-src">reported by the agents · spending from the chip</span></h2>
-    <p class="lede">
-      Each agent is a model run on a host with no device. They do not know
-      about each other. What they decide is theirs; what they may spend is
-      not, and the red lines below are the Secure Element saying so.
-    </p>
-    <div class="minds" id="minds">
-      <p class="none">
-        No agent is running. Start one:
-        <code>VELA_EVENTS=http://127.0.0.1:4050/api/events node agent/swarm.mjs</code>
-      </p>
-    </div>
   </section>
 
   <!-- ================= the feed ================= -->

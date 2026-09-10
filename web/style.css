@@ -143,6 +143,14 @@ ol { list-style: none; margin: 0; padding: 0; }
 #events li.advised .who { color: var(--advise); }
 #events li .detail { color: var(--dim); font-size: 12.5px; margin-top: 3px; }
 #events li a, #receipts li a { color: var(--accent); text-decoration: none; }
+
+/* The topic id is a link, and it was rendering in the browser's default
+   #0000EE on a near-black background — invisible, and it is the one link on
+   this page a judge is meant to click to check the log for themselves.
+   Styled by ancestor rather than by id so the next link dropped into a .src
+   inherits it instead of repeating the bug. */
+.src a { color: var(--accent); text-decoration: none; border-bottom: 1px solid #2b3440; }
+.src a:hover { border-bottom-color: var(--accent); }
 #events li a:hover { text-decoration: underline; }
 
 #receipts li { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
@@ -256,6 +264,16 @@ button.revoke.waiting { color: var(--advise); border-color: #4a3f1f; background:
  * running at once on machines you do not control. A single merged log would
  * read as one process doing things in order, which is the opposite.
  */
+/* Full width, like .fleet and .defi. Three agents reasoning need the room,
+   and a one-column card left the right half of the page empty — which is how
+   the layout had been rendering since this card was added, unseen, because
+   the page was throwing before any of it ran. */
+.thinking { grid-column: 1 / -1; }
+
+/* The envelope had the same gap beside it for the same reason: every other
+   card on that row spans the grid, so nothing ever landed in column two. */
+.envelope { grid-column: 1 / -1; }
+
 .minds {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

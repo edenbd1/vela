@@ -568,6 +568,11 @@ per agent, live.
   <img src="docs/console-thinking.png" alt="Three agents reasoning, with two kinds of refusal" width="560">
 </p>
 
+<p align="center">
+  <em>The whole console:</em>
+  <a href="docs/console-full.png">docs/console-full.png</a>
+</p>
+
 Three agents, three kinds of line, one screen: `research-1` flagging the
 injected advisory in amber and quoting it, being refused by the **chip** in
 red on `recipient_not_self`, then swapping to its own account in green.

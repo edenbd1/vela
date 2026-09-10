@@ -138,6 +138,20 @@ def main():
         check("a quoted instruction is never rendered as markup", injected == 0,
               f"{injected} node(s) created from a tool result")
 
+        # Unstyled links render in the browser's default blue, which on this
+        # background is unreadable. The topic id did exactly that — the one
+        # link a judge is meant to click in order to check the log.
+        default_blue = page.evaluate("""() =>
+            [...document.querySelectorAll('a')]
+              .filter(a => {
+                const c = getComputedStyle(a).color;
+                return c === 'rgb(0, 0, 238)' || c === 'rgb(85, 26, 139)';
+              })
+              .map(a => a.textContent.trim().slice(0, 40))
+        """)
+        check("no link falls back to the browser's default colour",
+              default_blue == [], f"unstyled: {default_blue}")
+
         if "--shot" in sys.argv:
             out = sys.argv[sys.argv.index("--shot") + 1]
             page.screenshot(path=out, full_page=True)
