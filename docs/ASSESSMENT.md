@@ -231,8 +231,12 @@ Four of the six gaps are closed. What is left, in order:
    Reloading has triggered a factory reset on this device three times, which
    is why it is second rather than first: the demo works without it.
 
-3. **Purge `docs/PLAN.md` from git history** with `git filter-repo` before the
-   repo goes public. It is out of the working tree and still in the history.
+3. **Purge `docs/PLAN.md` from git history** before the repo goes public. It
+   is out of the working tree and still in two commits, and a public
+   repository publishes its history too. `./scripts/purge-plan.sh --check`
+   shows which; `--run` rewrites, after taking a mirror backup. Deliberately
+   not automatic: every hash changes, the push is a force push, and a clone
+   made beforehand still has the file.
 
 4. **A real VPS**, so "machines you do not control" stops meaning "containers
    on one laptop". Enrolment makes this cheap now: `request` there, `grant`
