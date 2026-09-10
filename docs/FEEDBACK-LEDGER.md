@@ -617,6 +617,41 @@ The actual answer is that the device is not saying, and the honest position is
 that we still do not know which event tripped it. That is precisely why the
 first suggested fix is the one that matters.
 
+## 15. `loadApp` over an installed app of the same name fails as `680f`
+
+**What happens.** Loading a new build of an app that is already on the device
+uploads the whole thing, then fails at the final step:
+
+```
+ledgerblue.commException.CommException: Exception : Invalid status 680f (Unknown reason)
+  File "ledgerblue/loadApp.py", line 459, in main
+    loader.commit(signature)
+```
+
+Everything before that succeeded. The traceback points at `commit`, the status
+word is not in any table we could find, and the tool's own words for it are
+"Unknown reason".
+
+**What it actually means.** The app is still installed and `loadApp` will not
+replace it. `python3 -m ledgerblue.deleteApp --targetId ... --appName "Vela"`
+first, then load, and it works with no other change.
+
+**Why it costs an hour.** Every visible signal points somewhere else. The
+upload completing suggests the image is fine. The failure landing on `commit`
+suggests a signature or certificate problem — and the run has just printed
+`Broken certificate chain - loading from user key`, which looks like the
+culprit and is not. Nothing mentions the installed app.
+
+**What would fix it.** Either `loadApp` deletes and reinstalls by default, or
+it refuses at the *start* with "an app named Vela is already installed;
+delete it first". Failing after a full upload, with a status word the tool
+itself cannot name, is the worst of both.
+
+Worth saying: we hit this on the ninth load of this project, not the first.
+Earlier loads went over a *different* app name, or over nothing. The first
+time you rename an app or reinstall a same-named build is the first time you
+see it, which is exactly when you are least equipped to read `680f`.
+
 ## Tutorial we would have wanted
 
 Nothing linked from the "getting started" path covers the actual arc of writing
