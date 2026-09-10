@@ -444,5 +444,35 @@ console.log("\nthe agent loop, against a chip that says no\n");
   ok("and nothing is recorded", !/flagged/.test(r.text), r.text);
 }
 
+/* ---------------------------------------------------------------------- *
+ * Two ways an agent ends a run having said nothing.
+ * ---------------------------------------------------------------------- */
+{
+  // check_envelope first: an agent reporting before it has read its envelope
+  // is pushed back for that reason, and would never reach this one.
+  const r = await run([
+    { tool: "check_envelope" },
+    { tool: "report", verdict: "" },
+    { tool: "report", verdict: "elevated risk on one venue" },
+  ]);
+  ok("an empty verdict does not end the run",
+     /set "verdict" to what you concluded/.test(r.text), r.text);
+  ok("and the real one lands when it arrives",
+     /elevated risk on one venue/.test(r.text), r.text);
+  ok("no placeholder is printed in its place",
+     !/no verdict given/.test(r.text), r.text);
+}
+
+{
+  const r = await run([
+    { tool: "check_envelope" },
+    { tool: "screen_counterparty", account: "" },
+    { tool: "report", verdict: "done" },
+  ]);
+  ok("screening with no account names the accounts it could have used",
+     /set "account" to one of the accounts/.test(r.text) &&
+     /the_accounts/.test(r.text), r.text);
+}
+
 console.log(`\n${pass}/${pass + fail} passed\n`);
 process.exit(fail ? 1 : 0);

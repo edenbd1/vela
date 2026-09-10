@@ -257,7 +257,13 @@ async function runTool(d) {
 
     case "screen_counterparty": {
       const account = String(d.account ?? "").trim();
-      if (!account) return { error: 'set "account" to a Hedera account id' };
+      if (!account) {
+        // Name them. "set account to a Hedera account id" told a model that
+        // had left the field empty nothing it could act on, and it answered
+        // by sending the same empty call again.
+        return { error: 'set "account" to one of the accounts in your task',
+                 the_accounts: COUNTERPARTIES };
+      }
       const r = await api(`${BROKER}/do/risk.screen`, { params: { account } });
       if (!r.ok) {
         // A broker refusal names a reason. Anything else — a bad token, a
@@ -348,9 +354,18 @@ async function runTool(d) {
       };
     }
 
-    case "report":
-      finished = String(d.verdict ?? "").trim() || "(no verdict given)";
+    case "report": {
+      const verdict = String(d.verdict ?? "").trim();
+      // An empty verdict is not a report. Ending the run on one throws away
+      // whatever the agent actually found, and "(no verdict given)" is a
+      // placeholder pretending to be an answer.
+      if (!verdict) {
+        return { error: 'set "verdict" to what you concluded, in a sentence',
+                 note: "the run does not end until you do" };
+      }
+      finished = verdict;
       return { ok: true };
+    }
 
     default:
       return { error: `there is no tool named ${d.tool}` };
@@ -553,14 +568,24 @@ for (let step = 1; step <= MAX_STEPS && finished === null; step++) {
     }
   }
 
+  // An error carries the fields that say what to do instead, and the first
+  // version printed only the message — so a model told "set account to one of
+  // the accounts in your task" never saw which accounts those were.
+  const extra = (skip) =>
+    Object.entries(out).filter(([k]) => !skip.includes(k)).slice(0, 2)
+      .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`)
+      .join("  ");
+
   const summary = out.refused
     ? `REFUSED ${out.refused} — ${out.why}`
     : out.error
-      ? `error: ${out.error}`
-      : Object.entries(out).filter(([k]) => k !== "advisory_note").slice(0, 3)
-          .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`)
-          .join("  ");
-  if (d.tool !== "report") console.log(`      ${summary}`);
+      ? `error: ${out.error}${extra(["error"]) ? `  ${extra(["error"])}` : ""}`
+      : extra(["advisory_note"]);
+
+  // A successful report says nothing here — its verdict is printed below. A
+  // refused one has to say why, or the run shows a report that silently did
+  // not happen.
+  if (d.tool !== "report" || out.error) console.log(`      ${summary}`);
   report({
     kind: out.refused ? "refused" : out.error ? "error" : "result",
     step, tool: d.tool,
