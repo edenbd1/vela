@@ -190,6 +190,28 @@ def main():
                 check("nothing is published for a refusal",
                       "nothing to publish" in events, events[:160])
 
+            # The contract-call surface, from the page, against the chip.
+            # All three cost nothing: the chip refuses before it signs, so
+            # this can run as often as it likes. The one that *does* sign is
+            # deliberately left out — a test should not spend HBAR.
+            for case, reason in (
+                ("steal", "recipient_not_self"),
+                ("approve", "selector_not_allowed"),
+                ("other", "contract_not_allowed"),
+            ):
+                btn = page.query_selector(f'button.scenario[data-case="{case}"]')
+                if not btn:
+                    check(f"the '{case}' scenario exists", False)
+                    continue
+                btn.click()
+                for _ in range(90):
+                    if reason in page.inner_text("#events"):
+                        break
+                    time.sleep(1)
+                seen_text = page.inner_text("#events")
+                check(f"'{case}' is refused with {reason}",
+                      reason in seen_text, seen_text[:140])
+
         if "--shot" in sys.argv:
             out = sys.argv[sys.argv.index("--shot") + 1]
             page.screenshot(path=out, full_page=True)
