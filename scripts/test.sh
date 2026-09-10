@@ -16,47 +16,67 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # approvals, and it is the only way to know the emulator has not been lying —
 # the whole reason the divergence between them is written up in
 # docs/PROTECTION-MODE.md.
+
+# Everything that needs no chip.
+#
+# One function, called from both paths, because it was two copies and I added
+# a suite to each of them by hand three times. The next divergence would have
+# been a suite that runs on the emulator and not on hardware, or the reverse,
+# and nobody would notice until it mattered.
+#
+# `on_device` is passed through to the console suite: with a device attached
+# it also presses the buttons that ask the chip, which the emulator cannot
+# answer for.
+host_suites() {
+  local on_device="${1:-}"
+
+  # Fast, needs nothing, and covers the two places on this side where being
+  # wrong is expensive: what a broker will let an agent make it fetch, and
+  # whether a published chain adds up.
+  echo "host logic"
+  if ! node --test test/logic.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^# /  /'; then
+    echo "  host-side tests failed" >&2
+    exit 1
+  fi
+  node --test test/logic.test.mjs >/dev/null 2>&1 || exit 1
+
+  # Refusal-handling is a property of the loop, not of the model's mood on the
+  # day, so it runs against a fake gateway, a fake broker and a scripted model
+  # on ephemeral ports — with the real agent/reason.mjs as a child process.
+  echo "the agent loop"
+  if ! node test/agent.test.mjs | tail -2 | sed 's/^/  /'; then
+    echo "  agent tests failed" >&2
+    exit 1
+  fi
+
+  # The trustchain arithmetic is the same whether the owner key came out of
+  # the Key Ring or out of the test, so what matters — a member derives rather
+  # than receives, a stranger cannot — is checkable with no device.
+  echo "ring enrolment"
+  if ! node test/ring.test.mjs | tail -2 | sed 's/^/  /'; then
+    echo "  enrolment tests failed" >&2
+    exit 1
+  fi
+
+  # The only surface here a person looks at rather than reads, and nothing was
+  # checking it worked: app.js spent several commits referencing elements
+  # index.html did not have, dying on load, while the fleet list still painted.
+  echo "the console"
+  if curl -s -m 3 http://127.0.0.1:4050/api/config >/dev/null 2>&1; then
+    python3 test/console_test.py $on_device | tail -1 | sed 's/^/  /'
+  else
+    echo "  not running on :4050 — skipped"
+  fi
+  echo ""
+}
+
 if [ "${1:-}" = "--device" ]; then
   if ! curl -s -m 8 -X POST http://127.0.0.1:8099/apdu \
        -H 'content-type: application/json' -d '{"apdu":"b001000000"}' >/dev/null 2>&1; then
     echo "no bridge on :8099 — start host/bridge.py, with Vela open" >&2
     exit 1
   fi
-  echo "host logic"
-  node --test test/logic.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^# /  /'
-  node --test test/logic.test.mjs >/dev/null 2>&1 || exit 1
-
-# The agent loop. Refusal-handling is a property of the loop, not of the
-# model's mood on the day, so it is tested against a fake gateway, a fake
-# broker and a scripted model on ephemeral ports — with the real
-# agent/reason.mjs run as a child process exactly as it ships.
-echo "the agent loop"
-if ! node test/agent.test.mjs | tail -2 | sed 's/^/  /'; then
-  echo "  agent tests failed" >&2
-  exit 1
-fi
-
-# Enrolment. The trustchain arithmetic is the same whether the owner key came
-# out of the Key Ring or out of the test, so the properties that matter — a
-# member derives rather than receives, a stranger cannot — are checkable with
-# no device attached.
-echo "ring enrolment"
-if ! node test/ring.test.mjs | tail -2 | sed 's/^/  /'; then
-  echo "  enrolment tests failed" >&2
-  exit 1
-fi
-
-# The console, if one is running. It is the only surface here a person looks
-# at rather than reads, and nothing was checking it worked — app.js spent
-# several commits referencing three elements index.html did not have, dying on
-# page load, while the fleet list still painted.
-if curl -s -m 3 http://127.0.0.1:4050/api/config >/dev/null 2>&1; then
-  echo "the console"
-  python3 test/console_test.py | tail -1 | sed 's/^/  /'
-else
-  echo "the console"
-  echo "  not running on :4050 — skipped"
-fi
+  host_suites --device
   exec python3 test/chip_test.py
 fi
 
@@ -70,44 +90,7 @@ trap cleanup EXIT
 # and covers the two places on this side where being wrong is expensive —
 # what a broker will let an agent make it fetch, and whether a published
 # chain adds up. No reason to boot an emulator to find out one of those broke.
-echo "host logic"
-if ! node --test test/logic.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^# /  /'; then
-  echo "  host-side tests failed" >&2
-  exit 1
-fi
-node --test test/logic.test.mjs >/dev/null 2>&1 || exit 1
-
-# The agent loop. Refusal-handling is a property of the loop, not of the
-# model's mood on the day, so it is tested against a fake gateway, a fake
-# broker and a scripted model on ephemeral ports — with the real
-# agent/reason.mjs run as a child process exactly as it ships.
-echo "the agent loop"
-if ! node test/agent.test.mjs | tail -2 | sed 's/^/  /'; then
-  echo "  agent tests failed" >&2
-  exit 1
-fi
-
-# Enrolment. The trustchain arithmetic is the same whether the owner key came
-# out of the Key Ring or out of the test, so the properties that matter — a
-# member derives rather than receives, a stranger cannot — are checkable with
-# no device attached.
-echo "ring enrolment"
-if ! node test/ring.test.mjs | tail -2 | sed 's/^/  /'; then
-  echo "  enrolment tests failed" >&2
-  exit 1
-fi
-
-# The console, if one is running. It is the only surface here a person looks
-# at rather than reads, and nothing was checking it worked — app.js spent
-# several commits referencing three elements index.html did not have, dying on
-# page load, while the fleet list still painted.
-if curl -s -m 3 http://127.0.0.1:4050/api/config >/dev/null 2>&1; then
-  echo "the console"
-  python3 test/console_test.py | tail -1 | sed 's/^/  /'
-else
-  echo "the console"
-  echo "  not running on :4050 — skipped"
-fi
+host_suites
 
 if [ ! -f app/bin/app.elf ]; then
   echo "no build — run ./scripts/build.sh first" >&2
