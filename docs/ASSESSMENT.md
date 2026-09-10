@@ -3,7 +3,8 @@
 Written four days before the deadline, deliberately unflattering. A status
 report that only lists what works is a report nobody can act on.
 
-*Updated 2026-09-09: gaps 1 and 2 are closed. The rest stands.*
+*Updated 2026-09-10: gaps 1, 2, 4 and 5 are closed. Gaps 3 and 6 stand,
+and the verdict at the bottom has been rewritten rather than left to rot.*
 
 ---
 
@@ -142,33 +143,60 @@ upstream key.
 
 ## Is the differentiator well served?
 
+*Rewritten 2026-09-10. The version below replaces one that said this project
+demonstrates infrastructure rather than showing an agent. That was true when
+it was written and is no longer, and leaving it would be a status report
+arguing against its own repository.*
+
 The thesis is right and differentiating: **one tap per envelope instead of one
-per transaction**, proved by a single command. The technical depth is real.
+per transaction**, proved by a single command.
 
-But the project **demonstrates infrastructure rather than showing an agent**,
-and on this track that is the wrong edge of the knife.
+What changed is that there is now an agent, and it produced the sharpest
+argument in the project rather than merely illustrating one. A local model,
+told by a compromised risk feed to route a swap's proceeds elsewhere, did it —
+**every model, every run, 6/6 and 6/6** — and most of the time after flagging
+the advisory as an instruction. Noticing is not resisting.
 
-**Legibility.** The controlled experiment and the revoke gesture land
-immediately. Everything else needs reading — fine for a technical judge, thin
-for a product one.
+That case is also the only one where the chip is genuinely alone. A transfer
+names its payee in the transaction body, so an honest host-side policy reaches
+the same answer as the Secure Element on every other scenario here. A contract
+call names only the contract; the recipient is an ABI word the body does not
+interpret, chosen inside the process the injection already reached.
 
-**Product readiness.** No. No recovery, three agents maximum, a broker that
-remains a trust point while running, and no fleet console beyond a
-three-inch screen. The canvas already says this; it is repeated here so the
-two documents cannot drift.
+**Legibility.** Better than it was. The controlled experiment and the revoke
+gesture landed immediately before; the agent being refused and correcting
+itself lands the same way, and the console now shows three agents reasoning
+side by side with two kinds of refusal in two colours. Everything else still
+needs reading.
+
+**Product readiness.** Closer, and still no. Recovery exists and is tested;
+eight slots is not thirty; the broker remains a trust point while it runs;
+"machines you do not control" are still containers on one laptop. What is
+genuinely missing is written above rather than softened here.
+
+**The one thing that can still lose this outright** is that the video does not
+exist. Every gap closed this week is worth nothing if nobody sees it.
 
 ## What to do with the time left
 
-The first two are done — see the strikethroughs above. What is left, in order:
+Four of the six gaps are closed. What is left, in order:
 
-1. **Record the video.** `docs/DEMO.md` has the shooting plan and the
-   benchmark takes ten minutes, so run it before the camera is on. Nothing
-   below matters if this does not happen.
-2. **Purge `docs/PLAN.md` from git history** with `git filter-repo` before the
+1. **Record the video.** `docs/DEMO.md` has the shooting plan. Nothing below
+   matters if this does not happen, and it is the only item here that cannot
+   be recovered from on Sunday morning.
+
+2. **Reload the app onto the Flex.** Eight slots and mandate recovery are
+   proved on the emulator and have never run on hardware. The storage magic
+   changed, so a reload wipes what is there and needs a regrant after it.
+   Reloading has triggered a factory reset on this device three times, which
+   is why it is second rather than first: the demo works without it.
+
+3. **Purge `docs/PLAN.md` from git history** with `git filter-repo` before the
    repo goes public. It is out of the working tree and still in the history.
-3. **A real VPS**, so "machines you do not control" stops meaning "containers
-   on one laptop". Enrolment now makes this cheap: `request` there, `grant`
+
+4. **A real VPS**, so "machines you do not control" stops meaning "containers
+   on one laptop". Enrolment makes this cheap now: `request` there, `grant`
    here, `claim` there.
 
-Then, if there is time: rotate-on-eviction, recovery for mandates, more than
-three slots.
+Then, if there is time: signing `AddMember` on the device itself, which needs
+the Ledger Sync app; and a broker that cannot decrypt while it runs.
