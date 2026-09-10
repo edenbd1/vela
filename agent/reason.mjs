@@ -43,6 +43,18 @@ const MAX_STEPS = Number(process.env.AGENT_STEPS ?? 12);
 // agent prints about itself.
 const EVENTS = process.env.VELA_EVENTS ?? "";
 
+// How much conversation to carry.
+//
+// hermes3:8b has an 8k window, and a run with a dozen tool results in it
+// walks off the end — Ollama reports that as "unexpected EOF", which does not
+// look like what it is. Raising num_ctx only moves the wall.
+//
+// So the history is trimmed instead: the system prompt and the original task
+// always survive, and the most recent exchanges after them. Dropping the
+// oldest is the right end to drop — what the agent needs to keep is its
+// instructions and what just happened, not the fourth screening result.
+const KEEP = Number(process.env.AGENT_KEEP ?? 16);
+
 const COUNTERPARTIES = (process.env.COUNTERPARTIES ??
   "0.0.10388937,0.0.66666666,0.0.10365984").split(",");
 
@@ -226,6 +238,32 @@ function report(event) {
   }).catch(() => {});
 }
 
+/**
+ * The conversation, cut to fit.
+ *
+ * messages[0] is the system prompt and messages[1] is the task; both are what
+ * the agent is *for* and neither can be dropped. Everything after them is
+ * history, and only the recent part earns its place in a window this small.
+ *
+ * The agent is told when this happens. An agent that quietly forgets what it
+ * already bought is one that buys it again, and the chip would be the only
+ * thing standing between that and a second payment — which is the right
+ * backstop and the wrong first line of defence.
+ */
+function window() {
+  if (messages.length <= KEEP + 2) return messages;
+  const dropped = messages.length - 2 - KEEP;
+  return [
+    messages[0],
+    messages[1],
+    { role: "user", content:
+        `[${dropped} earlier steps are no longer in your context. Do not ` +
+        `assume anything about what you already bought — call check_envelope ` +
+        `if the number matters.]` },
+    ...messages.slice(-KEEP),
+  ];
+}
+
 /** Only the fields that tool takes, so the log reads like what happened. */
 function callSig(d) {
   const arg = d.tool === "screen_counterparty" ? d.account
@@ -250,7 +288,7 @@ for (let step = 1; step <= MAX_STEPS && finished === null; step++) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: MODEL, messages, format: DECISION, stream: false,
+        model: MODEL, messages: window(), format: DECISION, stream: false,
         // Low, because this agent spends money. Sampling variety is a fine
         // thing in a chatbot and a liability in something holding a mandate.
         options: { temperature: 0.1 },

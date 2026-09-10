@@ -56,7 +56,7 @@ const PRICE = { triage: 1_000_000n, synthesis: 8_000_000n, exhaustive: 15_000_00
  * the script runs out is a plain refusal to continue, which keeps a buggy
  * loop from spinning forever inside a test.
  */
-async function run(turns, { available = 50_000_000n } = {}) {
+async function run(turns, { available = 50_000_000n, env = {} } = {}) {
   let left = available;
   const paid = [];
 
@@ -94,8 +94,10 @@ async function run(turns, { available = 50_000_000n } = {}) {
   // in order. Once the script runs out it reports, so a loop with a bug in it
   // cannot spin forever inside a test.
   let turn = 0;
+  const sent = [];
   const llm = await serve((path, body) => {
     if (!body?.format) throw new Error("the agent asked for unconstrained output");
+    sent.push(body.messages);
     const t = turns[turn++] ?? { tool: "report", verdict: "script exhausted" };
     return { message: { role: "assistant",
                         content: JSON.stringify({ thought: "…", ...t }) } };
@@ -107,7 +109,7 @@ async function run(turns, { available = 50_000_000n } = {}) {
              OLLAMA: `http://127.0.0.1:${llm.port}`,
              GATEWAY: `http://127.0.0.1:${gw.port}`,
              BROKER: `http://127.0.0.1:${br.port}`,
-             AGENT_TOKEN: "test", AGENT_STEPS: "8" },
+             AGENT_TOKEN: "test", AGENT_STEPS: "12", ...env },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let s = "";
@@ -117,7 +119,7 @@ async function run(turns, { available = 50_000_000n } = {}) {
   });
 
   gw.close(); br.close(); llm.close();
-  return { ...out, paid, gateway: gw.log, turnsUsed: turn };
+  return { ...out, paid, gateway: gw.log, turnsUsed: turn, sent };
 }
 
 console.log("\nthe agent loop, against a chip that says no\n");
@@ -291,6 +293,41 @@ console.log("\nthe agent loop, against a chip that says no\n");
   dead.close();
   ok("a broken model stops the run", r.code === 1, `exit ${r.code}`);
   ok("and says why", /model refused the request/.test(r.s), r.s);
+}
+
+/* ---------------------------------------------------------------------- *
+ * The window.
+ *
+ * hermes3:8b holds 8k tokens and a long run walks off the end, which Ollama
+ * reports as "unexpected EOF" — a failure that does not look like what it is.
+ * Raising num_ctx only moves the wall, so the history is trimmed instead.
+ * ---------------------------------------------------------------------- */
+{
+  // Long enough to force trimming: each step adds two messages.
+  const turns = [];
+  for (let i = 0; i < 10; i++) turns.push({ tool: "screen_counterparty", account: "0.0.1" });
+  turns.push({ tool: "report", verdict: "done" });
+
+  // Forced rather than hoped for: a small window makes this a test of the
+  // trimming rule, not of whether the default happens to be exceeded.
+  const r = await run(turns, { env: { AGENT_KEEP: "6" } });
+  const last = r.sent.at(-1);
+
+  ok("the system prompt always survives trimming",
+     last[0].role === "system" && /research agent/.test(last[0].content), last[0]?.role);
+  ok("and so does the original task",
+     /Screen each one/.test(last[1].content) || /counterparty risk/.test(last[1].content),
+     last[1]?.content?.slice(0, 60));
+  ok("the window is bounded", last.length <= 9, `${last.length} messages`);
+  ok("and the agent is told it forgot something",
+     last.some((m) => /no longer in your context/.test(m.content ?? "")),
+     JSON.stringify(last.map((m) => m.role)));
+  // A short run must not be trimmed at all — a notice about dropped steps
+  // when nothing was dropped would be a lie the model then reasons from.
+  const short = await run([{ tool: "check_envelope" }, { tool: "report", verdict: "x" }],
+                          { env: { AGENT_KEEP: "6" } });
+  ok("a short run carries no dropped-steps notice",
+     !short.sent.at(-1).some((m) => /no longer in your context/.test(m.content ?? "")));
 }
 
 console.log(`\n${pass}/${pass + fail} passed\n`);
