@@ -105,10 +105,19 @@ One thing is still not done and is written down rather than implied: signing
 each `AddMember` on the device itself needs the Ledger Sync app rather than
 Vela. 17 assertions in `test/ring.test.mjs`.
 
-### 3. "Machines you do not control" are containers on one laptop
+### 3. "Machines you do not control" are containers on one laptop — half closed
 
-Defensible for a demo, and a real VPS costs three euros and would make the
-sentence true.
+A GitHub Actions runner now enrols in a Key Ring on every push:
+`.github/workflows/enrol.yml`, and the log is public. It prints that it has no
+USB bus and no Ledger tooling, generates its own identity, and shows that a
+host never admitted derives nothing while one that was derives the key rather
+than receiving it. That is a machine neither of us controls, which is Ledger's
+ask in Ledger's own words — "a VPS, a CI runner, or a hosted agent".
+
+What is still true: no agent *pays* from a machine we do not control. The
+runner cannot reach the broker or the gateway, both of which are on the
+laptop, and closing that needs a tunnel or a real host. The enrolment half is
+real; the spending half is still containers on one laptop.
 
 ### ~~4. Three slots is three agents~~ — closed 2026-09-10
 

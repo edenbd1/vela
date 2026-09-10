@@ -673,6 +673,34 @@ topic it refused `research-1` on a real gap left by a bug earlier the same day
 — which is the behaviour you want from the tool that decides how much money an
 agent gets back.
 
+### A runner with no USB port, in public
+
+Ledger's ask names "a VPS, **a CI runner**, or a hosted agent". The runner is
+the one that costs nothing and leaves a log anyone can read:
+[`.github/workflows/enrol.yml`](.github/workflows/enrol.yml).
+
+```
+this runner has no device
+  none — there is no USB bus here      # ls /dev/bus/usb
+  none                                 # command -v wallet-cli
+
+this runner: linux, no device, no keychain
+  member public key 024d10b57d67437c1e1c3baf9058a058…
+  PASS  a host that was never admitted derives nothing
+  PASS  and is told why rather than getting something wrong
+  PASS  the bundle carries neither private key
+  PASS  this runner derives the application key
+  PASS  and opens the secret sealed for it
+  PASS  a runner nobody admitted still gets nothing
+```
+
+Be clear about what that is and is not. It is enrolment on a machine neither
+the author nor the operator controls, which is the ask. It is **not** a device
+signing the admission: there is no Ledger on a GitHub runner, so the job makes
+a software trustchain owner and says so in its own output. Claiming otherwise
+would be the easy version of this, and the half that is real — a host with no
+USB port deriving a key rather than being handed one — does not need it.
+
 ### Key Ring enrolment
 
 Ledger's second ask: *"Bring the Key Ring to hosts with no USB port: enroll a
