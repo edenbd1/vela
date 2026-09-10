@@ -356,7 +356,7 @@ twice: what the chip allowed, and what the agent *asked for*. The gap between
 those two numbers is the product, in HBAR.
 
 ```console
-$ node agent/bench.mjs --trials 8
+$ node agent/bench.mjs --trials 6
 ```
 
 Two scenarios. **The operator asks for more than the mandate allows** — three
@@ -484,9 +484,9 @@ Ledger Flex.
 
 | what | evidence |
 |---|---|
-| Payment signed in the Secure Element | account [`0.0.10392125`](https://hashscan.io/testnet/account/0.0.10392125) — its private key exists on no disk here |
+| Payment signed in the Secure Element | account [`0.0.10397072`](https://hashscan.io/testnet/account/0.0.10397072) — its private key exists on no disk here |
 | x402 settlement | Blocky402 facilitator, `CRYPTOTRANSFER`, `result: SUCCESS` |
-| Public audit log | topic [`0.0.10393818`](https://hashscan.io/testnet/topic/0.0.10393818) |
+| Public audit log | topic [`0.0.10460492`](https://hashscan.io/testnet/topic/0.0.10460492) — a new one per grant, so this is the latest rather than the only |
 | On-chip refusals | `payee_not_allowed`, `over_per_call`, `over_budget` |
 | NVRAM persistence | *IDENTICAL — the envelope survived a full application restart* |
 
@@ -500,30 +500,34 @@ path to a signature runs through a mandate check in the chip.
 local state, no trust in this repo, no trust in the host that produced the log.
 
 ```console
-$ node hedera/verify.mjs 0.0.10393818
+$ node hedera/verify.mjs            # or pass a topic id
 
-topic   0.0.10393818
+topic   0.0.10460492
 source  https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
 
-mandate 0f39b1086dbf4421…  granted 1788707364  8 draw(s)
-  ok    seq 1 follows 0 with no gap
-  ok    remaining 49000000 is not negative
-  ok    seq 2 follows 1 with no gap
-  ok    remaining 48000000 = 49000000 - 1000000
-  ok    remaining 48000000 is not negative
-  ok    seq 3 follows 2 with no gap
-  ok    remaining 40000000 = 48000000 - 8000000
-  ok    remaining 40000000 is not negative
-  ok    seq 4 follows 3 with no gap
-  ok    draw 4 released within the envelope (30000000 <= 40000000)
-  ok    remaining 30000000 is not negative
-  ok    seq 5 follows 4 with no gap
-  ok    draw 5 released within the envelope (20000000 <= 40000000)
-  ok    remaining 20000000 is not negative
-  ok    seq 6 follows 5 with no gap
-  ok    draw 6 released within the envelope (10000000 <= 40000000)
+mandate 0f39b1086dbf4421…  granted 1789046294  10 draw(s)
+  ok    seq 9 follows 8 with no gap
+  ok    remaining 16000000 = 17000000 - 1000000
+  ok    remaining 16000000 is not negative
+  ok    seq 10 follows 9 with no gap
+  ok    draw 10 released within the envelope (6000000 <= 16000000)
+  ok    remaining 6000000 is not negative
+  ok    draw 1: 8000000 tinybars reached 0.0.10388937
+  ok    draw 2: 8000000 tinybars reached 0.0.10388937
+  ok    draw 3: contract call on 0.0.5000001, signed here and submitted elsewhere
+  ok    draw 4: 8000000 tinybars reached 0.0.10388937
+  ok    draw 5: contract call on 0.0.5000001, signed here and submitted elsewhere
+  ok    draw 6: contract call on 0.0.5000001, signed here and submitted elsewhere
+  ok    draw 7: contract call on 0.0.5000001, signed here and submitted elsewhere
+  ok    draw 8: 1000000 tinybars reached 0.0.10388937
+  ok    draw 9: 1000000 tinybars reached 0.0.10388937
+  ok    draw 10: released, nothing paid
+  key   the debited account is under b662cae30b34a322…
+  ok    draw 1: signed by the device, and the numbers match
   …
   → complete and consistent
+
+1 of 1 envelope(s) verify.
 ```
 
 Each anchored record carries a 29-byte statement the chip signed —
