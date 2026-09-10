@@ -135,8 +135,20 @@ ask in Ledger's own words — "a VPS, a CI runner, or a hosted agent".
 
 What is still true: no agent *pays* from a machine we do not control. The
 runner cannot reach the broker or the gateway, both of which are on the
-laptop, and closing that needs a tunnel or a real host. The enrolment half is
-real; the spending half is still containers on one laptop.
+laptop. The container reaches the gateway over HTTP and does not care where it
+is, so this is a routing problem rather than a design one, and
+`scripts/remote-agent.sh` closes it — two cloudflared tunnels, and an agent
+anywhere spends inside a mandate held in a chip it has no address for.
+
+It is written and **not run**, deliberately. It makes two loopback services
+public for as long as it runs, and that is a decision rather than a detail.
+Three things bound it — every write path needs a token, the URL is random and
+dies with the process, and a fully compromised token still buys only what its
+envelope allows — but the third is the claim this repository is making, and
+running it turns that claim into an experiment with real testnet HBAR at
+stake. The script says so in its own header. Until someone runs it, the
+spending half is still containers on one laptop, and this document is not
+going to say otherwise.
 
 ### ~~4. Three slots is three agents~~ — closed 2026-09-10
 
