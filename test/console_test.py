@@ -152,6 +152,29 @@ def main():
         check("no link falls back to the browser's default colour",
               default_blue == [], f"unstyled: {default_blue}")
 
+        # The one interactive path worth asserting, and only with a device
+        # attached: pressing a tier the mandate forbids. It costs nothing —
+        # the chip refuses before anything is signed — and it is the moment
+        # the console exists to show. Off by default because it needs
+        # hardware and takes a minute.
+        if "--device" in sys.argv:
+            tiers = page.query_selector_all("#tiers button")
+            over = [b for b in tiers if "over the ceiling" in b.inner_text()]
+            check("a tier above the ceiling is marked before it is pressed",
+                  len(over) == 1, f"{len(tiers)} tier button(s)")
+            if over:
+                over[0].click()
+                for _ in range(90):
+                    if "asking the chip" not in page.inner_text("#hint"):
+                        break
+                    time.sleep(1)
+                events = page.inner_text("#events")
+                check("and pressing it is refused by the chip, with a reason",
+                      "over_per_call" in events and "cheaper tier" in events,
+                      events[:160])
+                check("nothing is published for a refusal",
+                      "nothing to publish" in events, events[:160])
+
         if "--shot" in sys.argv:
             out = sys.argv[sys.argv.index("--shot") + 1]
             page.screenshot(path=out, full_page=True)
