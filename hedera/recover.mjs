@@ -170,6 +170,39 @@ if (!process.argv.includes("--restore")) {
 const t = new BridgeTransport();
 await t.open();
 
+/**
+ * Does this device know how to be restored?
+ *
+ * An app built before recovery existed answers 0x6D00 — "no such
+ * instruction" — and the raw failure is a stack trace after the operator has
+ * already been asked to approve a screen that will never appear. That is the
+ * same mistake as a test waiting on a prompt the chip refuses before drawing:
+ * the person stands there, then starts pressing things.
+ *
+ * So it is asked first, with a body the handler rejects on its own terms. A
+ * device that has the instruction answers 0xB108 (bad request); one that does
+ * not answers 0x6D00, and this stops before anyone touches the screen.
+ */
+const supported = await t
+  .exchange(Buffer.from([CLA, RESTORE, 0, 0, 1, 0]))
+  .then(() => true)
+  .catch((e) => e?.sw !== 0x6d00);
+
+if (!supported) {
+  console.log("this device does not have the restore instruction.");
+  console.log();
+  console.log("  Recovery was added after the app now on the Flex was built.");
+  console.log("  Load the current one and grant a fleet again:");
+  console.log();
+  console.log("      ./scripts/build.sh && ./scripts/load.sh");
+  console.log("      node hedera/fleet.mjs");
+  console.log();
+  console.log("  Nothing was written, and the positions above are still");
+  console.log("  correct — they came from the log, not from the device.");
+  t.close();
+  process.exit(1);
+}
+
 const u64 = (v) => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(v)); return b; };
 const u32 = (v) => { const b = Buffer.alloc(4); b.writeUInt32BE(Number(v)); return b; };
 
@@ -203,8 +236,20 @@ for (const m of plan) {
   console.log(`  >>> approve the restore of '${m.label}' on the device <<<`);
   console.log(`      ${hbar(m.spent)} spent, draw ${m.seq}` +
               (m.contracts?.length ? `, may swap on 0.0.${m.contracts[0]}` : ""));
-  const r = await t.exchange(
-    Buffer.concat([Buffer.from([CLA, RESTORE, 0, 0, body.length]), body]));
+  let r;
+  try {
+    r = await t.exchange(
+      Buffer.concat([Buffer.from([CLA, RESTORE, 0, 0, body.length]), body]));
+  } catch (e) {
+    // A refusal here is a person saying no, or a slot problem. Either way it
+    // is an answer, and the remaining envelopes can still be restored.
+    const why = { 0x6985: "declined on the device",
+                  0xb101: "no free slot — revoke one first",
+                  0xb108: "the chip rejected these terms" }[e?.sw];
+    console.log(`      ${why ?? `device refused: 0x${(e?.sw ?? 0).toString(16)}`}`);
+    console.log();
+    continue;
+  }
   console.log(`      restored into slot ${r[0]}`);
   console.log();
 }
