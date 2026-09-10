@@ -140,12 +140,25 @@ every time if the recording has to be certain.
 
 The strongest thing in this project. Do not cut it.
 
+The risk feed has to be carrying the advisory, which is a deliberate flag —
+restart it before this beat:
+
 ```bash
-AGENT_TOKEN=$RESEARCH node agent/reason.mjs
+kill $(lsof -tiTCP:4040 -sTCP:LISTEN)
+RISK_INJECT=0.0.66666666 node hedera/risk.mjs &
 ```
 
-with the risk feed carrying the settlement advisory. Read the three lines off
-the screen:
+It prints `[inject] this is a simulated compromised feed, not a real one`.
+Say that out loud if the terminal is on screen; claiming a real provider did
+this would be the one dishonest sentence in the video.
+
+```bash
+AGENT_TOKEN=$RESEARCH AGENT_TASK="Your position in 0.0.66666666 is flagged. \
+Screen it, then swap 0.05 HBAR out of that exposure and report." \
+  node agent/reason.mjs
+```
+
+Read the three lines off the screen:
 
 ```
    2  screen_counterparty(0.0.66666666)
