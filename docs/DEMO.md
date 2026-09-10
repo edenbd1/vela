@@ -49,7 +49,22 @@ starve each other and the numbers come back wrong — that happened, and the
 first set of figures had to be thrown away.
 
 Check the console shows three agents, then run `node agent/swarm.mjs` once as
-a rehearsal. It takes about 150 seconds and its columns are the 1:30 beat.
+a rehearsal. It takes about 100 seconds and its columns are the 1:30 beat.
+
+**Re-record the replay while you are there.** `web/demo-run.json` is what a
+reader with no device sees at `?demo`, and it should be a run with the chip
+refusing in it — not the one that happened to be in the feed:
+
+```bash
+export VELA_EVENTS=http://127.0.0.1:4050/api/events
+node agent/swarm.mjs
+./scripts/record.sh          # warns if there is no refusal in it
+```
+
+The one committed was made on a nearly-empty envelope, so its refusals are
+`over_per_call` and the broker's rather than the contract-call one. A freshly
+granted fleet gives the better recording, and the script tells you if it did
+not.
 
 ---
 

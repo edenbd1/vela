@@ -489,5 +489,27 @@ console.log("\nthe agent loop, against a chip that says no\n");
      /the_accounts/.test(r.text), r.text);
 }
 
+/* ---------------------------------------------------------------------- *
+ * Two accounts in a field that takes one.
+ *
+ * Told to screen two counterparties, llama3.2 put both in `account` and the
+ * broker refused the lot by pattern match — an answer that quotes a regular
+ * expression at a language model and teaches it nothing.
+ * ---------------------------------------------------------------------- */
+{
+  const r = await run([
+    { tool: "check_envelope" },
+    { tool: "screen_counterparty", account: "0.0.10388937, 0.0.66666666" },
+    { tool: "screen_counterparty", account: "0.0.10388937" },
+    { tool: "report", verdict: "screened one at a time" },
+  ]);
+  ok("a batched account is refused with what to do instead",
+     /screen one account at a time/.test(r.text) && /do_this/.test(r.text), r.text);
+  ok("and the broker is never asked", r.text.match(/score=/g)?.length === 1,
+     `${r.text.match(/score=/g)?.length ?? 0} screening result(s)`);
+  ok("the run continues once it splits them",
+     /screened one at a time/.test(r.text), r.text);
+}
+
 console.log(`\n${pass}/${pass + fail} passed\n`);
 process.exit(fail ? 1 : 0);

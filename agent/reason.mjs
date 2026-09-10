@@ -119,7 +119,15 @@ function toolSchema(canTrade) {
 function argsSchema(tool) {
   const S = {
     screen_counterparty: {
-      account: { type: "string", description: "a Hedera account id, e.g. 0.0.10388937" },
+      // "exactly one" earns its place. Told to screen two accounts, llama3.2
+      // put both in this field — `0.0.10388937, 0.0.66666666` — and the
+      // broker refused the lot on a pattern match. One at a time is the
+      // tool's shape, and the schema is where the model reads shapes.
+      account: {
+        type: "string",
+        description: "exactly one Hedera account id, e.g. 0.0.10388937. " +
+                     "Screen several by calling this once per account.",
+      },
     },
     buy_analysis: {
       tier: { type: "string", enum: ["triage", "synthesis", "exhaustive"] },
@@ -294,6 +302,14 @@ async function runTool(d) {
         // by sending the same empty call again.
         return { error: 'set "account" to one of the accounts in your task',
                  the_accounts: COUNTERPARTIES };
+      }
+      if (/[,\s]/.test(account)) {
+        // Before the request, not after: a doomed call still costs a round
+        // trip and a quota, and the answer should say what to do rather than
+        // quote a regular expression at a language model.
+        return { error: "screen one account at a time",
+                 you_sent: account,
+                 do_this: "call screen_counterparty once for each of them" };
       }
       const r = await api(`${BROKER}/do/risk.screen`, { params: { account } });
       if (!r.ok) {
