@@ -49,15 +49,52 @@ echo "  Two boundaries. The enclave narrows; only the chip authorises."
 echo "════════════════════════════════════════════════════════════════════"
 
 echo
+
+# The gateway is multi-tenant: every /pay names who is asking. This script
+# predates that and had been posting with no credential at all, getting back
+# {"error":"unknown token"} — and printing "paid", because the reader below
+# treated "no reason field" as success. A demo that reports a payment which
+# never happened is worse than one that fails.
+#
+# It asks as the operator, which is what this script is: the human who granted
+# the envelopes, looking at slot 0.
+OPERATOR="$(cat .vela-operator-token 2>/dev/null || true)"
+if [ -z "$OPERATOR" ]; then
+  echo "no .vela-operator-token — start hedera/gateway.mjs first" >&2
+  exit 1
+fi
+
+# Says what the gateway actually said. `paid` is only printed when the
+# response claims it, never as a fallback for a shape nobody expected.
+buy_triage() {
+  curl -s -m 150 -X POST "$GATEWAY/pay?slot=0" \
+    -H 'content-type: application/json' \
+    -H "x-vela-operator: $OPERATOR" \
+    -d '{"service":"triage"}' \
+  | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("    the gateway returned nothing readable")
+    raise SystemExit
+if d.get("paid"):
+    spent = int(d["spent"]) / 1e8
+    print("    paid %s HBAR, tx %s" % (spent, d.get("tx")))
+elif d.get("reason"):
+    print("    refused - %s" % d["reason"])
+else:
+    print("    %s" % (d.get("error") or json.dumps(d)[:120]))
+'
+}
+
 echo "A. The enclave turns against a payee the chip still allows."
 rule
 restart_risk "$PAYEE"
 ./scripts/advisor.sh 2>&1 | sed 's/^/  /'
 echo
 echo "  the agent asks for the cheap tier, exactly as before:"
-curl -s -m 150 -X POST "$GATEWAY/pay" -H 'content-type: application/json' \
-  -d '{"service":"triage"}' \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); print('   ', d.get('reason') or ('paid, tx '+str(d.get('tx'))))"
+buy_triage
 echo "  nothing changed on the device. Only what the enclave knows."
 
 echo
@@ -65,9 +102,7 @@ echo "B. The same request, once the enclave clears the payee."
 rule
 restart_risk
 ./scripts/advisor.sh 2>&1 | tail -3 | sed 's/^/  /'
-curl -s -m 150 -X POST "$GATEWAY/pay" -H 'content-type: application/json' \
-  -d '{"service":"triage"}' \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); print('   ', d.get('reason') or ('paid, tx '+str(d.get('tx'))))"
+buy_triage
 
 echo
 echo "C. The enclave blesses an account the chip has never heard of."
