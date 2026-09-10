@@ -8,7 +8,14 @@
 FROM node:22-alpine
 
 WORKDIR /agent
-COPY agent.mjs reason.mjs ./
+COPY agent.mjs reason.mjs memory.mjs ./
+
+# The journal goes somewhere this user can write. Under WORKDIR the default
+# resolves to / , which `node` does not own, and the run died on its first
+# note rather than on anything it had reasoned about. A container with no
+# volume forgets between runs, which is the honest behaviour for a host that
+# is supposed to hold nothing.
+ENV VELA_MEMORY=/tmp/vela-memory
 
 # No package.json and no dependencies. Anything installed here would be one
 # more thing a reader has to audit before believing the inventory the agent

@@ -45,8 +45,15 @@ export function save(agent, entry) {
   const d = load(agent);
   d.entries.push({ at: new Date().toISOString(), ...entry });
   d.entries = d.entries.slice(-KEEP);
-  mkdirSync(DIR, { recursive: true });
-  writeFileSync(fileFor(agent), JSON.stringify(d, null, 1));
+  try {
+    mkdirSync(DIR, { recursive: true });
+    writeFileSync(fileFor(agent), JSON.stringify(d, null, 1));
+  } catch (e) {
+    // A journal that cannot be written is a run that forgets, not a run that
+    // fails. Nothing downstream reads this for authority — the mandate is in
+    // the chip — so losing it must not cost the work already done.
+    console.error(`  (memory not written: ${e.code ?? e.message})`);
+  }
   return d;
 }
 

@@ -131,9 +131,14 @@ def grant(label, budget, per_call, expiry=0, tag=0xA1, payee=PAYEE,
         body += bytes([recipient_arg if recipient_arg is not None else 0xFF])
     if window_secs:
         body += struct.pack(">IH", window_secs, max_per_window)
-    if ON_DEVICE and expect_screen:
-        print(f"      >>> approve '{label}' on the device <<<", flush=True)
-        sw, r = send(CREATE, body, timeout=300)
+    if ON_DEVICE:
+        # A grant the chip rejects while parsing never reaches a screen, so
+        # there is nothing to ask for and nothing to drive. Spawning the
+        # emulator's approver here anyway printed a connection-refused
+        # traceback into the middle of an otherwise passing hardware run.
+        if expect_screen:
+            print(f"      >>> approve '{label}' on the device <<<", flush=True)
+        sw, r = send(CREATE, body, timeout=300 if expect_screen else 30)
     else:
         t = threading.Thread(target=lambda: (time.sleep(1.0), approve.approve()))
         t.start()
