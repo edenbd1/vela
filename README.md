@@ -99,14 +99,11 @@ widening it.
 
 ## The fleet
 
-Three agents, three envelopes, one object:
+Eight envelopes, one object. Granted mandates first, spare slots behind them:
 
-```
-research-1    -  0.5/0.5 HBAR   ›
-ops-nightly   -  0.2/0.2 HBAR   ›
-watcher       -  0.1/0.1 HBAR   ›
-Revoke all mandates             ›
-```
+<p align="center">
+  <img src="docs/fleet-screen.png" alt="The Vela fleet screen on a Ledger Flex" width="300">
+</p>
 
 Tap one and the device asks:
 

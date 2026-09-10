@@ -21,10 +21,21 @@
 /**
  * Number of mandates the device can hold at once.
  *
- * Bounded by the 512 bytes of NVRAM the app is loaded with (dataSize).
- * Three is enough to run several competing agents side by side.
+ * Eight, not three. Three was never a hardware limit — it was one page of
+ * NVRAM, and nothing asked for a second. `dataSize` is computed by the loader
+ * from the linker symbols around this structure, so it grows with it: eight
+ * slots is 1220 bytes where three was 460.
+ *
+ * The cost is paid in SRAM, by the fleet screen's bar buffers, and it is
+ * small: nine bars at 40 bytes is 360 against roughly 30 KB of stack. NBGL
+ * pages the list on its own once it stops fitting.
+ *
+ * A fleet is not three agents. This does not make it thirty either, and the
+ * honest reason to stop at eight is that each slot costs NVRAM whether it is
+ * used or not, and nobody here has run more than eight at once to find out
+ * where the real ceiling is.
  */
-#define MANDATE_COUNT 3
+#define MANDATE_COUNT 8
 
 /** Payees a single mandate may pay. */
 #define MANDATE_MAX_PAYEES 4
@@ -74,7 +85,7 @@
  *   0x...03  contract calls: callee allowlist, selectors, recipient binding
  *   0x...04  a human-readable label per mandate
  */
-#define MANDATE_STORAGE_MAGIC 0x56454C04  // "VEL" + layout version
+#define MANDATE_STORAGE_MAGIC 0x56454C05  // "VEL" + layout version
 
 /** No mandate occupies this slot. */
 #define MANDATE_SLOT_FREE 0

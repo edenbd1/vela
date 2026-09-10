@@ -90,7 +90,23 @@ Vela. 17 assertions in `test/ring.test.mjs`.
 Defensible for a demo, and a real VPS costs three euros and would make the
 sentence true.
 
-### 4. Three slots is three agents
+### ~~4. Three slots is three agents~~ — closed 2026-09-10
+
+Eight. Three was never a hardware limit — it was one page of NVRAM and nothing
+had asked for a second. `dataSize` is computed by the loader from the linker
+symbols around the storage struct, so it grew with it: 512 bytes to 1536. The
+cost in SRAM is 228 bytes of bar buffers against roughly 30 KB of stack, and
+NBGL pages the fleet screen once it stops fitting.
+
+Granted mandates are listed before free ones, because with three the order did
+not matter and with eight it does. Verified on the emulator, screen included;
+19 chip assertions, two of them on the slot count itself so a future bump
+cannot ship slots nothing touches.
+
+**Not yet on hardware.** It needs a reload, and the storage magic changed, so
+it wipes what is there. See below.
+
+### ~~4b. The old note~~
 
 A fleet is thirty. The canvas says so; the demo cannot show it. 512 bytes of
 NVRAM is the ceiling, and a real answer needs a different storage story.

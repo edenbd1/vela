@@ -131,20 +131,44 @@ static void format_slot_summary(uint8_t id, char *out, size_t out_len) {
  * device is the counter as it stands, not a snapshot the host handed us.
  */
 static void refresh_bars(void) {
+    // Granted mandates first, free slots after them.
+    //
+    // With three slots the order did not matter. With eight it does: a fleet
+    // of two should read as two agents and six spare slots, not as a list you
+    // have to scan for the live ones. The token still carries the slot index
+    // rather than the row index, so reordering the screen changes nothing
+    // about what a tap means.
+    uint8_t bar = 0;
     for (uint8_t i = 0; i < MANDATE_COUNT; i++) {
-        format_slot_summary(i, bar_texts[i], BAR_TEXT_LEN);
-        bar_text_ptrs[i] = bar_texts[i];
-        bar_tokens[i] = MANDATE_BAR_TOKEN + i;
+        const mandate_t *m = mandate_get(i);
+        if (m == NULL || m->in_use == MANDATE_SLOT_FREE) {
+            continue;
+        }
+        format_slot_summary(i, bar_texts[bar], BAR_TEXT_LEN);
+        bar_text_ptrs[bar] = bar_texts[bar];
+        bar_tokens[bar] = MANDATE_BAR_TOKEN + i;
+        bar++;
+    }
+    for (uint8_t i = 0; i < MANDATE_COUNT; i++) {
+        const mandate_t *m = mandate_get(i);
+        if (m != NULL && m->in_use != MANDATE_SLOT_FREE) {
+            continue;
+        }
+        format_slot_summary(i, bar_texts[bar], BAR_TEXT_LEN);
+        bar_text_ptrs[bar] = bar_texts[bar];
+        bar_tokens[bar] = MANDATE_BAR_TOKEN + i;
+        bar++;
     }
 
-    snprintf(bar_texts[MANDATE_COUNT], BAR_TEXT_LEN, "Revoke all mandates");
-    bar_text_ptrs[MANDATE_COUNT] = bar_texts[MANDATE_COUNT];
-    bar_tokens[MANDATE_COUNT] = REVOKE_ALL_TOKEN;
+    snprintf(bar_texts[bar], BAR_TEXT_LEN, "Revoke all mandates");
+    bar_text_ptrs[bar] = bar_texts[bar];
+    bar_tokens[bar] = REVOKE_ALL_TOKEN;
+    bar++;
 
     home_contents[0].type = BARS_LIST;
     home_contents[0].content.barsList.barTexts = bar_text_ptrs;
     home_contents[0].content.barsList.tokens = bar_tokens;
-    home_contents[0].content.barsList.nbBars = BAR_COUNT;
+    home_contents[0].content.barsList.nbBars = bar;
     home_contents[0].content.barsList.tuneId = NBGL_NO_TUNE;
     home_contents[0].contentActionCallback = home_controls;
 

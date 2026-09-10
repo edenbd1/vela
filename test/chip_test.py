@@ -76,6 +76,22 @@ SLOT_A = 0
 SLOT_B = 1
 
 
+def slot_count():
+    """Ask the chip how many slots it has.
+
+    Walks until the device stops recognising the index. `not_found` means an
+    empty slot that exists; anything else means it does not. Capped so a
+    firmware that answers `not_found` to everything cannot spin here.
+    """
+    n = 0
+    while n < 64:
+        sw = send(GET, p1=n)[0]
+        if sw not in (0xB102, OK):
+            break
+        n += 1
+    return n
+
+
 def check(name, got, want):
     ok = got == want
     results.append((ok, name, SW.get(got, hex(got)), SW.get(want, hex(want))))
@@ -171,8 +187,13 @@ def main():
         return 2
 
     if ON_DEVICE:
-        free = [i for i in range(3) if send(GET, p1=i)[0] == 0xB102]
-        print(f"\nrunning against hardware — {len(free)} free slot(s), "
+        # How many slots there are is the chip's answer, not a constant kept
+        # in step by hand. MANDATE_COUNT went from three to eight and this
+        # loop would have gone on testing the first three — passing, and
+        # covering less than it said it did.
+        slots = slot_count()
+        free = [i for i in range(slots) if send(GET, p1=i)[0] == 0xB102]
+        print(f"\nrunning against hardware — {len(free)} of {slots} slot(s) free, "
               f"3 approvals needed")
         if len(free) < 2:
             print("\n  This suite grants two mandates and needs two free slots.")
@@ -181,7 +202,12 @@ def main():
             return 2
         globals()["SLOT_A"], globals()["SLOT_B"] = free[0], free[1]
 
-    print("\nempty storage")
+    print("\nstorage")
+    # The count itself, so growing MANDATE_COUNT cannot silently ship a build
+    # whose extra slots nothing ever touches.
+    n = slot_count()
+    check("the chip reports eight slots", n, 8)
+    check("and refuses an index past the last one", send(GET, p1=n)[0], 0xB108)
     check("an unused slot reports not_found", send(GET, p1=SLOT_A)[0], 0xB102)
 
     print("\ngranting")
