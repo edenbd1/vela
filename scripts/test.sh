@@ -30,6 +30,17 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 host_suites() {
   local on_device="${1:-}"
 
+  # The documentation, checked the way everything else here is. Four bugs in
+  # one day were things written down that had quietly stopped being true —
+  # including this script being described as running a suite it never ran.
+  # It costs under a second and it is the only assertion in this file about
+  # the artefact a judge actually reads.
+  echo "the documentation"
+  if ! ./scripts/docs-check.sh 2>&1 | grep -E "^  (\x1b\[3[12]m)?[✓✗]" | sed 's/^ */  /'; then
+    echo "  the docs describe a previous repository" >&2
+    exit 1
+  fi
+
   # Fast, needs nothing, and covers the two places on this side where being
   # wrong is expensive: what a broker will let an agent make it fetch, and
   # whether a published chain adds up.

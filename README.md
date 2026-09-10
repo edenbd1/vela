@@ -509,7 +509,7 @@ Ledger Flex.
 |---|---|
 | Payment signed in the Secure Element | account [`0.0.10397072`](https://hashscan.io/testnet/account/0.0.10397072) — its private key exists on no disk here |
 | x402 settlement | Blocky402 facilitator, `CRYPTOTRANSFER`, `result: SUCCESS` |
-| Public audit log | topic [`0.0.10460492`](https://hashscan.io/testnet/topic/0.0.10460492) — a new one per grant, so this is the latest rather than the only |
+| Public audit log | topic [`0.0.10463705`](https://hashscan.io/testnet/topic/0.0.10463705) — a new one per grant, so this is the latest rather than the only |
 | On-chip refusals | `payee_not_allowed`, `over_per_call`, `over_budget` |
 | NVRAM persistence | *IDENTICAL — the envelope survived a full application restart* |
 
@@ -546,33 +546,39 @@ local state, no trust in this repo, no trust in the host that produced the log.
 ```console
 $ node hedera/verify.mjs            # or pass a topic id
 
-topic   0.0.10460492
+topic   0.0.10463705
 source  https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
 
-mandate 0f39b1086dbf4421…  granted 1789046294  10 draw(s)
-  ok    seq 9 follows 8 with no gap
-  ok    remaining 16000000 = 17000000 - 1000000
-  ok    remaining 16000000 is not negative
-  ok    seq 10 follows 9 with no gap
-  ok    draw 10 released within the envelope (6000000 <= 16000000)
-  ok    remaining 6000000 is not negative
+mandate 0f39b1086dbf4421…  granted 1789063530  8 draw(s)
+  …
+  ok    seq 6 follows 5 with no gap
+  ok    remaining 18000000 = 19000000 - 1000000
+  ok    seq 7 follows 6 with no gap
+  ok    draw 7 released within the envelope (8000000 <= 18000000)
+  ok    seq 8 follows 7 with no gap
+  ok    remaining 10000000 = 18000000 - 8000000
   ok    draw 1: 8000000 tinybars reached 0.0.10388937
-  ok    draw 2: 8000000 tinybars reached 0.0.10388937
+  ok    draw 2: contract call on 0.0.5000001, signed here and submitted elsewhere
   ok    draw 3: contract call on 0.0.5000001, signed here and submitted elsewhere
   ok    draw 4: 8000000 tinybars reached 0.0.10388937
   ok    draw 5: contract call on 0.0.5000001, signed here and submitted elsewhere
-  ok    draw 6: contract call on 0.0.5000001, signed here and submitted elsewhere
-  ok    draw 7: contract call on 0.0.5000001, signed here and submitted elsewhere
-  ok    draw 8: 1000000 tinybars reached 0.0.10388937
-  ok    draw 9: 1000000 tinybars reached 0.0.10388937
-  ok    draw 10: released, nothing paid
+  ok    draw 6: 1000000 tinybars reached 0.0.10388937
+  ok    draw 7: released, nothing paid
+  ok    draw 8: 8000000 tinybars reached 0.0.10388937
   key   the debited account is under b662cae30b34a322…
   ok    draw 1: signed by the device, and the numbers match
   …
   → complete and consistent
 
-1 of 1 envelope(s) verify.
+3 of 3 envelope(s) verify.
 ```
+
+Read the middle of that. Draw 7 reserved 8000000 and was released; draw 8
+starts from 18000000 — where draw 6 left off, as if the release had never
+happened. That is the invariant, and it is checked against a balance the chip
+signed rather than a number the host asserted. It is also the invariant
+`hedera/recovery.mjs` was reading wrong: a chain ending on a release restored
+the envelope short by exactly that draw.
 
 Each anchored record carries a 29-byte statement the chip signed —
 `mandate_id ‖ seq ‖ payee ‖ amount ‖ remaining` — plus its Ed25519 signature.
@@ -705,12 +711,13 @@ gets a fresh 0.5.
 
 ```console
 $ node hedera/recover.mjs
-topic    0.0.10449044
+topic    0.0.10463705
 source   https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
+backup   3 envelope(s), granted 1789063530
 
-  research-1     draw 12   0.38 spent, 0.12 left of 0.50
+  research-1     draw 8    0.4000 spent, 0.1000 left of 0.5000
                  digest 0f39b1086dbf4421…  matches the chain
-                 12 draw(s), no gaps
+                 8 draw(s), no gaps
 ```
 
 The position comes from the public log. The terms come from a backup granting
@@ -918,6 +925,13 @@ eleven of them on the shape of the challenge the Ledger Sync app accepts.
 Twenty-
 two on the console, loaded in a real browser — including one that posts
 `<img src=x onerror=…>` through the agent feed and checks no node is created.
+
+Before any of it, `scripts/docs-check.sh` reads this file and the ones in
+`docs/`: every command they tell you to run exists and has the flags they pass
+it, every link resolves, and every Hedera topic id named is the one the
+gateway is anchoring to right now. Four bugs in one day were things written
+down that had stopped being true, including this script being described as
+running a suite it never ran.
 
 Then forty-five against the chip: every refusal in order, the contract-call
 bindings, settlement arithmetic, the velocity window, mandate recovery, label
