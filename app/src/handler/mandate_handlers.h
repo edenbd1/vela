@@ -32,6 +32,16 @@ int handler_get_mandate(uint8_t id);
 int handler_create_mandate(buffer_t *cdata);
 
 /**
+ * Put an envelope back after a device is replaced.
+ *
+ * Same terms as a grant, plus the sequence number and the amount already
+ * spent. The position comes from the public audit log and is shown on the
+ * device for the person restoring it to check — see the note on
+ * handler_create_mandate for why the chip cannot check it itself.
+ */
+int handler_restore_mandate(buffer_t *cdata);
+
+/**
  * The hot path. Check the draw against the envelope and reserve it.
  *
  * No approval: the tap already happened, once, when the mandate was granted.

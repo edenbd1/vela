@@ -92,6 +92,7 @@ int apdu_dispatcher(const command_t *cmd) {
             return 0;
 
         case VELA_CREATE_MANDATE:
+        case VELA_RESTORE_MANDATE:
         case VELA_AUTHORIZE_SPEND:
         case VELA_AUTHORIZE_CALL:
         case VELA_SETTLE_CONFIRM:
@@ -105,6 +106,8 @@ int apdu_dispatcher(const command_t *cmd) {
 
             if (cmd->ins == VELA_CREATE_MANDATE) {
                 return handler_create_mandate(&buf);
+            } else if (cmd->ins == VELA_RESTORE_MANDATE) {
+                return handler_restore_mandate(&buf);
             } else if (cmd->ins == VELA_AUTHORIZE_SPEND) {
                 return handler_authorize_spend(&buf);
             } else if (cmd->ins == VELA_AUTHORIZE_CALL) {

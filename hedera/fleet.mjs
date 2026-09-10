@@ -15,6 +15,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 
+import { writeFileSync } from "node:fs";
+
 import { BridgeTransport } from "./ledger-signer.mjs";
 import { openInstance } from "./instance.mjs";
 import { makeTopic } from "./topic.mjs";
@@ -24,6 +26,7 @@ dotenv.config({ path: join(ROOT, ".env") });
 
 const CLA = 0xe0;
 const [GET, CREATE] = [0x10, 0x11];
+const BACKUP = join(ROOT, ".vela-fleet-backup.json");
 
 const FLEET = [
   { label: "research-1",  budget: 50_000_000n, perCall: 10_000_000n, tag: 0xa1 },
@@ -94,4 +97,33 @@ const instance = openInstance(topic);
 console.log(`\n  grant epoch ${instance}`);
 console.log(`  every draw from now on is anchored under it, on ${topic},`);
 console.log(`  and every chain there starts at draw 1.`);
+
+// --- what a replacement device would need ---------------------------------
+//
+// A mandate is NVRAM state, not something derived from a seed: restore your
+// 24 words onto a new Flex and the keys come back while every envelope is
+// gone. Recovery needs the terms, and the terms are not on the chain — the
+// log carries a digest of them, deliberately, because it is public.
+//
+// So they are written here. No secret is in this file: an agent id, a
+// budget, a ceiling, a payee. What makes it safe to keep is that it is not
+// trusted on its own — hedera/recover.mjs re-derives the digest from it and
+// refuses anything the chain never saw, and the position comes from the
+// chain rather than from here.
+writeFileSync(BACKUP, JSON.stringify({
+  topic,
+  instance,
+  granted: new Date().toISOString(),
+  mandates: FLEET.map((a) => ({
+    label: a.label,
+    agentId: Buffer.alloc(20, a.tag).toString("hex"),
+    payees: [String(payee)],
+    budgetTotal: String(a.budget),
+    perCallMax: String(a.perCall),
+    expiry: 0,
+  })),
+}, null, 2));
+console.log(`\n  terms backed up to ${BACKUP.replace(ROOT + "/", "")}`);
+console.log(`  it holds no secret, and recover.mjs checks it against the chain`);
+console.log(`  before it will restore anything.`);
 t.close();

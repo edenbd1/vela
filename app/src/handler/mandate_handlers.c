@@ -44,6 +44,10 @@ static bool read_bytes(buffer_t *b, uint8_t *out, size_t n) {
 /** Map a policy verdict onto the status word the host will see. */
 /// The last contract-call body, kept between AUTHORIZE_CALL and GET_LAST_BODY.
 static uint8_t g_call_body[HEDERA_CALL_BODY_MAX];
+/// Whether the mandate awaiting a tap is a restore rather than a fresh grant.
+/// Cleared on every exit from validate_create_mandate, approved or not: a flag
+/// that survives a rejection would make the next grant a silent restore.
+static bool g_pending_restore;
 static uint16_t g_last_body_len;
 
 static uint16_t sw_for(mandate_status_t st) {
@@ -159,7 +163,42 @@ int handler_get_mandate(uint8_t id) {
     return io_send_response_pointer(out, off, SWO_SUCCESS);
 }
 
+/**
+ * Grant an envelope, or put one back after a device is replaced.
+ *
+ * `restore` reads two extra fields — the sequence number and the amount
+ * already spent — and the screen says so. Same terms, different question:
+ * granting asks whether an agent may have 0.5 HBAR, restoring asks whether
+ * it had already spent 0.38 of it.
+ *
+ * The chip cannot check that position itself, and pretending otherwise would
+ * be the dangerous version of this feature. It could verify a signature it
+ * made over the last draw — and that would prove nothing, because this chip
+ * will sign whatever it is handed, including a record fabricated a second
+ * ago. Ed25519 over your own key is not evidence to yourself.
+ *
+ * What can check it is the audit log, which is public, and the person holding
+ * the device, who is standing there anyway because they are restoring it. So
+ * the position is shown on the trusted display in the same units the log
+ * publishes, and `node hedera/recover.mjs` reads it off the mirror node so
+ * nobody has to remember a number. The trust model is exactly the grant path:
+ * a human reads a screen and taps.
+ */
+static int handler_create_or_restore(buffer_t *cdata, bool restore);
+
 int handler_create_mandate(buffer_t *cdata) {
+    return handler_create_or_restore(cdata, false);
+}
+
+int handler_restore_mandate(buffer_t *cdata) {
+    return handler_create_or_restore(cdata, true);
+}
+
+static int handler_create_or_restore(buffer_t *cdata, bool restore) {
+    // Set before anything can fail, so a rejected parse cannot leave the flag
+    // reading true for whatever arrives next.
+    g_pending_restore = restore;
+
     // Parse straight into the pending slot rather than a local. A mandate_t
     // is 96 bytes, and this frame is still live when NBGL is called — enough,
     // on the physical device, to take the app down. Speculos tolerated it,
@@ -262,19 +301,39 @@ int handler_create_mandate(buffer_t *cdata) {
         }
     }
 
+    // --- the position, on a restore only ----------------------------------
+    //
+    // Read last so the terms parse identically either way: a restore is a
+    // grant that also says where the counter had got to.
+    if (restore) {
+        if (!buffer_read_u32(cdata, &m->seq, BE) ||
+            !buffer_read_u64(cdata, &m->spent, BE)) {
+            return io_send_sw(SW_VELA_ARGS);
+        }
+        // A restore that claims more spent than the envelope ever held is
+        // not a restore of anything this device could have issued.
+        if (m->spent > m->budget_total) {
+            return io_send_sw(SW_VELA_ARGS);
+        }
+    }
+
     // It reaches NVRAM only if the user taps.
-    return ui_display_create_mandate();
+    return ui_display_create_mandate(restore);
 }
 
 void validate_create_mandate(bool approved) {
     if (!approved) {
+        g_pending_restore = false;
         explicit_bzero(&G_context.pending_mandate, sizeof(G_context.pending_mandate));
         io_send_sw(SWO_CONDITIONS_NOT_SATISFIED);
         return;
     }
 
     uint8_t id = 0;
-    mandate_status_t st = mandate_create(&G_context.pending_mandate, &id);
+    const bool restore = g_pending_restore;
+    g_pending_restore = false;
+    mandate_status_t st = restore ? mandate_restore(&G_context.pending_mandate, &id)
+                                  : mandate_create(&G_context.pending_mandate, &id);
     explicit_bzero(&G_context.pending_mandate, sizeof(G_context.pending_mandate));
 
     if (st != MANDATE_OK) {

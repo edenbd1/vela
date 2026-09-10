@@ -1,0 +1,198 @@
+/**
+ * Put the fleet back on a replacement device.
+ *
+ * You lost the Flex. You restored your 24 words onto a new one, so the keys
+ * are back and the accounts are back — and every envelope is gone, because a
+ * mandate is NVRAM state, not something derived from a seed. Without this, an
+ * agent that had spent 0.38 of 0.5 HBAR gets a fresh 0.5.
+ *
+ * Two halves, from two places, and neither is trusted alone:
+ *
+ *   the terms      from a backup written when the fleet was granted. Not a
+ *                  secret — payees, a budget, a ceiling — and checkable,
+ *                  because the audit log carries a digest of exactly those
+ *                  fields. A backup that has been edited does not match.
+ *
+ *   the position   from the audit log on Hedera, read through a public mirror
+ *                  node. Nothing local is consulted for this: the number that
+ *                  decides how much an agent may still spend comes from a
+ *                  chain anyone can check.
+ *
+ * The chip cannot verify the position and this does not pretend it can. It
+ * could check a signature it made over the last draw, and that would prove
+ * nothing, because the chip signs whatever it is handed — a record fabricated
+ * a second ago verifies exactly as well as a real one. Ed25519 over your own
+ * key is not evidence to yourself.
+ *
+ * What checks it is the person holding the device. The position is printed
+ * here, published on the chain, and shown on the trusted display in the same
+ * units, so the three can be compared before the tap. That is the same trust
+ * model as granting the mandate in the first place.
+ *
+ *   node hedera/recover.mjs              # what the log says, and what would happen
+ *   node hedera/recover.mjs --restore    # do it, one tap per envelope
+ */
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
+
+import { mandateDigest } from "./anchor.mjs";
+import { positions, plan as buildPlan } from "./recovery.mjs";
+import { BridgeTransport } from "./ledger-signer.mjs";
+import { liveTopic } from "./live-env.mjs";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+dotenv.config({ path: join(ROOT, ".env") });
+
+const MIRROR = process.env.HEDERA_MIRROR ??
+  "https://testnet.mirrornode.hedera.com/api/v1";
+const BACKUP = join(ROOT, ".vela-fleet-backup.json");
+const SCHEMA = "vela.draw.v1";
+
+const CLA = 0xe0;
+const RESTORE = 0x1a;
+const hbar = (t) => (Number(t) / 1e8).toFixed(4);
+
+const json = async (u) => {
+  const r = await fetch(u);
+  if (!r.ok) throw new Error(`${r.status} from ${u}`);
+  return r.json();
+};
+
+/** Every record on the topic, oldest first. */
+async function readTopic(topic) {
+  const out = [];
+  let next = `${MIRROR}/topics/${topic}/messages?limit=100&order=asc`;
+  while (next) {
+    const page = await json(
+      next.startsWith("http") ? next : `${MIRROR.replace(/\/api\/v1$/, "")}${next}`);
+    for (const m of page.messages ?? []) {
+      try {
+        const r = JSON.parse(Buffer.from(m.message, "base64").toString());
+        if (r.v === SCHEMA) out.push(r);
+      } catch { /* the topic is public; anyone may write to it */ }
+    }
+    next = page.links?.next ?? null;
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------- */
+
+const topic = liveTopic();
+if (!topic) {
+  console.log("no HEDERA_TOPIC_ID — there is no log to recover from.");
+  process.exit(1);
+}
+
+if (!existsSync(BACKUP)) {
+  console.log(`no backup at ${BACKUP}`);
+  console.log();
+  console.log("The audit log holds a digest of each envelope's terms, not the");
+  console.log("terms themselves — by design, since the log is public. Granting");
+  console.log("a fleet writes the backup; without one, the position below can");
+  console.log("still be read but there is nothing to restore it onto.");
+  process.exit(1);
+}
+
+const backup = JSON.parse(readFileSync(BACKUP, "utf8"));
+const records = await readTopic(topic);
+const seen = positions(records);
+
+console.log();
+console.log(`topic    ${topic}`);
+console.log(`source   ${MIRROR} — and nothing else`);
+console.log(`backup   ${backup.mandates.length} envelope(s), granted ${backup.instance}`);
+console.log();
+
+const digestOf = (m) => mandateDigest({
+  agentId: Buffer.from(m.agentId, "hex"),
+  payees: m.payees.map(BigInt),
+  budgetTotal: BigInt(m.budgetTotal),
+  perCallMax: BigInt(m.perCallMax),
+  expiry: m.expiry ?? 0,
+});
+
+const rows = buildPlan({
+  mandates: backup.mandates,
+  instance: backup.instance,
+  seen,
+  digestOf,
+  assumeUnused: process.argv.includes("--assume-unused"),
+});
+
+const pad = "".padEnd(14);
+for (const r of rows) {
+  if (r.refused) {
+    console.log(`  ${r.label.padEnd(14)} ${r.refused}`);
+    console.log(`  ${pad} digest ${r.digest.slice(0, 16)}…`);
+    for (const f of (r.failures ?? []).slice(0, 3)) console.log(`  ${pad} ${f}`);
+    if (r.refused === "nothing on this topic") {
+      console.log(`  ${pad} either it never drew, or it drew somewhere this is`);
+      console.log(`  ${pad} not reading. Restoring at zero is right for the`);
+      console.log(`  ${pad} first and gives back everything spent for the`);
+      console.log(`  ${pad} second. --assume-unused restores it at zero.`);
+    } else {
+      console.log(`  ${pad} Every missing draw is spending this would hand back.`);
+    }
+    console.log();
+    continue;
+  }
+  const left = BigInt(r.budgetTotal) - r.spent;
+  console.log(`  ${r.label.padEnd(14)} draw ${String(r.seq).padEnd(4)} ` +
+              `${hbar(r.spent)} spent, ${hbar(left)} left of ${hbar(r.budgetTotal)}`);
+  console.log(`  ${pad} digest ${r.digest.slice(0, 16)}…  matches the chain`);
+  console.log(r.assumed
+    ? `  ${pad} assumed unused — nothing on the chain said otherwise`
+    : `  ${pad} ${r.draws} draw(s), no gaps`);
+  console.log();
+}
+
+const plan = rows.filter((r) => !r.refused);
+if (plan.length === 0) {
+  console.log("Nothing can be restored from this log.");
+  console.log();
+  process.exit(1);
+}
+
+if (!process.argv.includes("--restore")) {
+  console.log("Nothing was written. Check those positions against the log —");
+  console.log(`  https://hashscan.io/testnet/topic/${topic}`);
+  console.log("then run again with --restore. The device will show each one");
+  console.log("before you approve it, in the same units printed here.");
+  console.log();
+  process.exit(0);
+}
+
+/* --------------------------------------------------------- the taps ---- */
+
+const t = new BridgeTransport();
+await t.open();
+
+const u64 = (v) => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(v)); return b; };
+const u32 = (v) => { const b = Buffer.alloc(4); b.writeUInt32BE(Number(v)); return b; };
+
+for (const m of plan) {
+  const label = Buffer.from(m.label, "utf8");
+  const body = Buffer.concat([
+    Buffer.from(m.agentId, "hex"),
+    Buffer.from([m.payees.length]),
+    ...m.payees.map(u64),
+    u64(m.budgetTotal), u64(m.perCallMax), u32(m.expiry ?? 0),
+    Buffer.from([label.length]), label,
+    Buffer.from([0, 0, 0xff]),      // no contract terms
+    u32(m.seq), u64(m.spent),
+  ]);
+
+  console.log(`  >>> approve the restore of '${m.label}' on the device <<<`);
+  console.log(`      ${hbar(m.spent)} spent, draw ${m.seq}`);
+  const r = await t.exchange(
+    Buffer.concat([Buffer.from([CLA, RESTORE, 0, 0, body.length]), body]));
+  console.log(`      restored into slot ${r[0]}`);
+  console.log();
+}
+
+console.log(`  The fleet is back where the log says it was.`);
+console.log(`  Nothing was re-granted: every agent resumes with what it had left.`);
+console.log();

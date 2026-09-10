@@ -204,6 +204,17 @@ uint8_t mandate_active_count(void);
 mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id);
 
 /**
+ * Write a mandate into a free slot, keeping the position it already reached.
+ *
+ * For replacing a lost device. Unlike mandate_create(), `spent` and `seq`
+ * survive — a restored envelope that started at zero would let its agent
+ * spend the whole budget a second time. `reserved` never survives: a
+ * reservation is an authorisation in flight, and nothing is in flight on a
+ * device that has just been restored.
+ */
+mandate_status_t mandate_restore(const mandate_t *m, uint8_t *out_id);
+
+/**
  * The hot path: decide whether a draw is inside the envelope, and reserve it.
  *
  * Runs entirely on-chip. On success the reservation is committed to NVRAM

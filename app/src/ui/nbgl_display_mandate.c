@@ -36,10 +36,11 @@ static char g_expiry[32];
 static char g_contracts[96];
 static char g_recipient[64];
 
-static nbgl_contentTagValue_t pairs[7];
+static nbgl_contentTagValue_t pairs[8];
 static nbgl_contentTagValueList_t pairList;
 
 static char g_revoke_title[48];
+static char g_position[48];
 
 static void create_choice(bool confirm) {
     validate_create_mandate(confirm);
@@ -53,7 +54,7 @@ static void revoke_choice(bool confirm) {
                              ui_menu_main);
 }
 
-int ui_display_create_mandate(void) {
+int ui_display_create_mandate(bool restore) {
     const mandate_t *m = &G_context.pending_mandate;
 
     explicit_bzero(g_agent, sizeof(g_agent));
@@ -63,6 +64,7 @@ int ui_display_create_mandate(void) {
     explicit_bzero(g_expiry, sizeof(g_expiry));
     explicit_bzero(g_contracts, sizeof(g_contracts));
     explicit_bzero(g_recipient, sizeof(g_recipient));
+    explicit_bzero(g_position, sizeof(g_position));
 
     if (format_hex(m->agent_id, AGENT_ID_LEN, g_agent, sizeof(g_agent)) == -1) {
         return io_send_sw(SW_VELA_ARGS);
@@ -144,17 +146,44 @@ int ui_display_create_mandate(void) {
     pairs[6].item = "Expires";
     pairs[6].value = g_expiry;
 
+    // On a restore, the position is the fact being approved, so it is a row
+    // rather than a footnote — and it is spelled in the same units the public
+    // log publishes, so the person holding the device can compare the two
+    // without converting anything.
+    uint8_t n = 7;
+    if (restore) {
+        char left[32] = {0};
+        char used[32] = {0};
+        if (!format_fpu64_trimmed(used, sizeof(used), m->spent, HBAR_DECIMALS) ||
+            !format_fpu64_trimmed(left,
+                                  sizeof(left),
+                                  m->budget_total - m->spent,
+                                  HBAR_DECIMALS)) {
+            return io_send_sw(SW_VELA_ARGS);
+        }
+        snprintf(g_position,
+                 sizeof(g_position),
+                 "%s spent, %s left\nafter draw %u",
+                 used,
+                 left,
+                 (unsigned) m->seq);
+        pairs[7].item = "Restoring at";
+        pairs[7].value = g_position;
+        n = 8;
+    }
+
     pairList.nbMaxLinesForValue = 0;
-    pairList.nbPairs = 7;
+    pairList.nbPairs = n;
     pairList.pairs = pairs;
     pairList.wrapping = true;
 
     nbgl_useCaseReview(TYPE_OPERATION,
                        &pairList,
                        &ICON_APP_VELA,
-                       "Grant a spending\nmandate",
+                       restore ? "Restore a spending\nmandate" : "Grant a spending\nmandate",
                        NULL,
-                       "Grant this mandate?\nThe agent will draw on it\nwithout asking again.",
+                       restore ? "Restore this mandate?\nCheck the position against\nthe public log first."
+                               : "Grant this mandate?\nThe agent will draw on it\nwithout asking again.",
                        create_choice);
     return 0;
 }

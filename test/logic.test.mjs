@@ -224,3 +224,107 @@ test("a grant epoch remembers the topic it was opened with", async (t) => {
   unlinkSync(FILE);
   assert.equal(currentInstance().minted, true);
 });
+
+/* ------------------------------------------------------------------------ *
+ * Recovery: what a replacement device is allowed to be told.
+ *
+ * Every assertion here is about handing back budget that was already spent.
+ * None of these failures throw — a wrong answer is a restored envelope with
+ * more money in it than the agent had left, which looks like a working
+ * recovery.
+ * ------------------------------------------------------------------------ */
+const { positions, plan } = await import("../hedera/recovery.mjs");
+
+const draw = (m, i, seq, amount, remaining, extra = {}) => ({
+  v: "vela.draw.v1", m, i: String(i), seq,
+  payee: "10388937", amount: String(amount), remaining: String(remaining),
+  tx: "0.0.1@1.0", ...extra,
+});
+
+const D = "digest-a";
+const digestOf = () => D;
+const env = { label: "research-1", budgetTotal: "50000000", perCallMax: "10000000",
+              agentId: "aa".repeat(20), payees: ["10388937"], expiry: 0 };
+
+test("a whole chain gives the position it ended at", () => {
+  const seen = positions([
+    draw(D, 7, 1, 10_000_000, 40_000_000),
+    draw(D, 7, 2, 10_000_000, 30_000_000),
+    draw(D, 7, 3, 8_000_000, 22_000_000),
+  ]);
+  const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  assert.equal(r.refused, undefined);
+  assert.equal(r.seq, 3);
+  assert.equal(r.spent, 28_000_000n, "50 - 22 = 28 spent");
+  assert.equal(r.draws, 3);
+});
+
+test("a chain with a hole in it restores nothing", () => {
+  // The hole is the whole point: draws 2 and 3 are missing, so the last
+  // record claims more left than the agent really had.
+  const seen = positions([
+    draw(D, 7, 1, 10_000_000, 40_000_000),
+    draw(D, 7, 4, 10_000_000, 30_000_000),
+  ]);
+  const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  assert.equal(r.refused, "the chain for this envelope is broken");
+  assert.ok(r.failures.some((f) => /seq 4 follows 1/.test(f)), r.failures.join("; "));
+  assert.equal(r.spent, undefined, "a refused envelope carries no position");
+});
+
+test("a chain that starts mid-sequence is a hole too", () => {
+  // Exactly what the topic-rotation bug produced: draw 1 on the old topic,
+  // draw 2 on the new one. Restoring from the new one alone would hand back
+  // whatever draw 1 spent.
+  const seen = positions([draw(D, 7, 2, 8_000_000, 41_000_000)]);
+  const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  assert.equal(r.refused, "the chain for this envelope is broken");
+});
+
+test("an envelope with no records is refused, not restored at zero", () => {
+  const [r] = plan({ mandates: [env], instance: "7", seen: new Map(), digestOf });
+  assert.equal(r.refused, "nothing on this topic");
+});
+
+test("…unless someone says it was never used", () => {
+  const [r] = plan({ mandates: [env], instance: "7", seen: new Map(), digestOf,
+                     assumeUnused: true });
+  assert.equal(r.refused, undefined);
+  assert.equal(r.spent, 0n);
+  assert.equal(r.seq, 0);
+  assert.equal(r.assumed, true, "and it is marked as an assumption");
+});
+
+test("a different grant epoch is a different envelope", () => {
+  // Same terms granted twice: same digest, and a counter that restarted.
+  // Reading across both would restore the new envelope to the old one's
+  // position, or the reverse.
+  const seen = positions([
+    draw(D, 7, 1, 10_000_000, 40_000_000),
+    draw(D, 7, 2, 10_000_000, 30_000_000),
+    draw(D, 9, 1, 1_000_000, 49_000_000),
+  ]);
+  const [older] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  const [newer] = plan({ mandates: [env], instance: "9", seen, digestOf });
+  assert.equal(older.spent, 20_000_000n);
+  assert.equal(newer.spent, 1_000_000n, "the new life starts from its own draw 1");
+});
+
+test("a log claiming more left than the envelope held is refused", () => {
+  const seen = positions([draw(D, 7, 1, 1_000_000, 99_000_000)]);
+  const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  assert.match(r.refused ?? "", /99000000 left of a 50000000 envelope/);
+});
+
+test("releases do not look like spending", () => {
+  // A release gives its headroom back. If recovery counted it as spent, an
+  // agent would lose budget it never used on every restore.
+  const seen = positions([
+    draw(D, 7, 1, 10_000_000, 40_000_000),
+    draw(D, 7, 2, 10_000_000, 30_000_000, { tx: null, r: true }),
+    draw(D, 7, 3, 5_000_000, 35_000_000),
+  ]);
+  const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  assert.equal(r.refused, undefined, JSON.stringify(r.failures));
+  assert.equal(r.spent, 15_000_000n, "10 paid + 5 paid; the release cost nothing");
+});

@@ -29,8 +29,8 @@ import approve                             # noqa: E402
 ON_DEVICE = transport.where() != "speculos"
 
 CLA = 0xE0
-GET, CREATE, AUTHORIZE, SETTLE, REVOKE, AUTH_CALL, GET_BODY = (
-    0x10, 0x11, 0x12, 0x13, 0x14, 0x18, 0x19)
+GET, CREATE, AUTHORIZE, SETTLE, REVOKE, AUTH_CALL, GET_BODY, RESTORE = (
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x18, 0x19, 0x1A)
 
 OK = 0x9000
 SW = {
@@ -137,6 +137,37 @@ def grant(label, budget, per_call, expiry=0, tag=0xA1, payee=PAYEE,
         sw, r = send(CREATE, body, timeout=60)
         t.join()
     return sw, (r[0] if r else None)
+
+
+def restore(label, budget, per_call, seq, spent, tag=0xD4, payee=PAYEE):
+    """Put an envelope back at the position the audit log says it reached."""
+    body = (bytes(20 * [tag])
+            + bytes([1]) + struct.pack(">Q", payee)
+            + struct.pack(">Q", budget) + struct.pack(">Q", per_call)
+            + struct.pack(">I", 0)
+            + bytes([len(label)]) + label.encode()
+            + bytes([0, 0, 0xFF])
+            + struct.pack(">I", seq) + struct.pack(">Q", spent))
+    if ON_DEVICE:
+        print(f"      >>> approve the RESTORE of '{label}' on the device <<<", flush=True)
+        sw, r = send(RESTORE, body, timeout=300)
+    else:
+        t = threading.Thread(target=lambda: (time.sleep(1.0), approve.approve()))
+        t.start()
+        sw, r = send(RESTORE, body, timeout=60)
+        t.join()
+    return sw, (r[0] if r else None)
+
+
+def position(slot):
+    """(spent, available, seq) as the chip reports them."""
+    sw, st = send(GET, p1=slot)
+    if sw != OK:
+        return None
+    spent = int.from_bytes(st[37:45], "big")
+    available = int.from_bytes(st[53:61], "big")
+    seq = int.from_bytes(st[65:69], "big")
+    return spent, available, seq
 
 
 def draw(slot, payee, amount, now=None):
@@ -262,6 +293,38 @@ def main():
     if ON_DEVICE:
         print("\n      >>> approve the revoke of the expired mandate <<<")
         revoke(SLOT_B)
+
+    print("\nrecovery — the device is replaced, the envelope is not")
+    # A restored envelope that started at zero would let its agent spend the
+    # whole budget a second time, which is the only way this feature can be
+    # dangerous rather than merely absent.
+    sw, rslot = restore("restored-1", 50_000_000, 10_000_000, seq=7, spent=38_000_000)
+    check("a mandate can be restored at a position", sw, OK)
+    if sw == OK:
+        pos = position(rslot)
+        check("the spend it had already made survives",
+              OK if pos and pos[0] == 38_000_000 else 0xB108, OK)
+        check("so only the remainder is available",
+              OK if pos and pos[1] == 12_000_000 else 0xB108, OK)
+        check("and the sequence continues rather than restarting",
+              OK if pos and pos[2] == 7 else 0xB108, OK)
+        check("a draw inside what is left is authorised",
+              draw(rslot, PAYEE, 10_000_000), OK)
+        # Settle takes what was quoted and what was actually spent. Settling
+        # the full quote here matters: it leaves nothing reserved, so the
+        # refusal below has to come from the restored position rather than
+        # from a reservation still being held.
+        check("settling it moves the counter on",
+              send(SETTLE, bytes([rslot]) + struct.pack(">QQ", 10_000_000, 10_000_000))[0], OK)
+        after = position(rslot)
+        check("48 of 50 HBAR are now spent",
+              OK if after and after[0] == 48_000_000 else 0xB108, OK)
+        check("and a draw past the restored remainder is refused",
+              draw(rslot, PAYEE, 10_000_000), 0xB106)
+        revoke(rslot)
+    check("a restore claiming more spent than the budget is refused",
+          restore("liar", 50_000_000, 10_000_000, seq=1, spent=60_000_000)[0],
+          0xB108)
 
     print("\nrevocation")
     check("a slot can be revoked", revoke(SLOT_A), OK)

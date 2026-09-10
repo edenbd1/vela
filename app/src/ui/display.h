@@ -60,7 +60,7 @@ int ui_display_token_transaction(void);
  * the tap, the bounds live in the Secure Element and no software can widen
  * them — not the host, not the agent, not this app.
  */
-int ui_display_create_mandate(void);
+int ui_display_create_mandate(bool restore);
 
 /**
  * Ask the user to confirm killing a mandate.

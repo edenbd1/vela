@@ -49,3 +49,9 @@ broker/usage.json
 
 # Operator credential, minted per gateway run.
 .vela-operator-token
+
+# The fleet's terms, for restoring onto a replacement device. No secret is in
+# it — an agent id, a budget, a ceiling, a payee — but it names the fleet, and
+# recover.mjs checks it against the chain rather than trusting it, so a copy
+# in the repository would be a stale one waiting to confuse someone.
+.vela-fleet-backup.json

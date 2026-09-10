@@ -128,7 +128,18 @@ uint64_t mandate_available(uint8_t id) {
     return m->budget_total - committed;
 }
 
-mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id) {
+/**
+ * Shared body for granting and restoring.
+ *
+ * `keep_position` is the only difference, and it is the whole reason this is
+ * not one function with a default argument: a grant must start at zero, and
+ * that guarantee is worth more than the duplication saved by making it
+ * optional somewhere a caller could get it wrong. mandate_create() cannot
+ * produce a mandate that is already part-spent, whatever it is handed.
+ */
+static mandate_status_t mandate_write(const mandate_t *m,
+                                      uint8_t *out_id,
+                                      bool keep_position) {
     if (m == NULL || out_id == NULL) {
         return MANDATE_ERR_ARGS;
     }
@@ -150,9 +161,13 @@ mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id) {
         mandate_t fresh;
         memcpy(&fresh, m, sizeof(fresh));
         fresh.in_use = 1;
+        // Never carried over. A reservation is an authorisation in flight,
+        // and nothing is in flight on a device that has just been restored.
         fresh.reserved = 0;
-        fresh.spent = 0;
-        fresh.seq = 0;
+        if (!keep_position) {
+            fresh.spent = 0;
+            fresh.seq = 0;
+        }
 
         nvm_write((void *) &N_storage.mandates[i], (void *) &fresh, sizeof(fresh));
         explicit_bzero(&fresh, sizeof(fresh));
@@ -162,6 +177,25 @@ mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id) {
     }
 
     return MANDATE_ERR_NO_SLOT;
+}
+
+mandate_status_t mandate_create(const mandate_t *m, uint8_t *out_id) {
+    return mandate_write(m, out_id, false);
+}
+
+/**
+ * Put an envelope back where the audit log says it had got to.
+ *
+ * The position is not checked here and cannot be: this chip signs whatever it
+ * is handed, so a record it "signed" is not evidence to itself. It was
+ * checked by a person reading it off the trusted display and comparing it
+ * with a log anyone can verify. See handler_create_mandate.
+ */
+mandate_status_t mandate_restore(const mandate_t *m, uint8_t *out_id) {
+    if (m != NULL && m->spent > m->budget_total) {
+        return MANDATE_ERR_ARGS;
+    }
+    return mandate_write(m, out_id, true);
 }
 
 mandate_status_t mandate_authorize(uint8_t id,

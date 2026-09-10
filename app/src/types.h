@@ -30,7 +30,8 @@ typedef enum {
     VELA_QUIT_APP = 0x15,         /// return to the dashboard, so a host can reload
     VELA_GET_PUBKEY = 0x16,       /// the buyer's Ed25519 key, to derive its account
     VELA_AUTHORIZE_CALL = 0x18,   /// the DeFi path: a contract call, bound to this account
-    VELA_GET_LAST_BODY = 0x19     /// the body of that call, which does not fit in one response
+    VELA_GET_LAST_BODY = 0x19,    /// the body of that call, which does not fit in one response
+    VELA_RESTORE_MANDATE = 0x1A   /// put an envelope back on a replacement device
 } command_e;
 /**
  * Enumeration with parsing state.
