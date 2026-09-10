@@ -120,6 +120,16 @@ being claimed about:
 
 Point at the tx hash. It is real HBAR on testnet.
 
+**Not a beat — a line, if it comes up.** The membership that bundle rests on
+can itself be rooted in the chip: `enroll.cjs grant … --device` makes the
+Secure Element the trustchain owner and every admission a screen. It is not
+filmed, and deliberately, because it talks to the **Ledger Sync** app rather
+than to Vela — switching apps mid-take costs thirty seconds and buys a second
+version of a point already made. If a judge asks how the ring is rooted, the
+answer is: normally by a key sealed under the Key Ring, and optionally by a
+tap. `docs/RING-ENROLL.md` has both, with the table of what the device path
+costs.
+
 ## 1:30 — three agents, one chip
 
 Console open at `http://127.0.0.1:4050`, scrolled to **The fleet, thinking**.

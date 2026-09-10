@@ -928,12 +928,15 @@ is where they have also passed.
 ```console
 $ ./scripts/test.sh
 host logic
-  pass 31
+  pass 33
+  fail 0
+the browser verifier
+  pass 11
   fail 0
 the agent loop
   60/60 passed
 ring enrolment
-  17/17 passed
+  28/28 passed
 the console
   22/22 passed
 

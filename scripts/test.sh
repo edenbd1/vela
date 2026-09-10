@@ -40,6 +40,18 @@ host_suites() {
   fi
   node --test test/logic.test.mjs >/dev/null 2>&1 || exit 1
 
+  # The browser verifier against the Node one, over nine chain shapes. This
+  # suite existed, passed, and was described in the README as part of what
+  # this script covers — and this script never ran it. A verifier that agrees
+  # with itself in a terminal and disagrees in a browser is the one failure
+  # the last shot of the demo would show a judge.
+  echo "the browser verifier"
+  if ! node --test test/chain-parity.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^# /  /'; then
+    echo "  chain-parity tests failed" >&2
+    exit 1
+  fi
+  node --test test/chain-parity.test.mjs >/dev/null 2>&1 || exit 1
+
   # Refusal-handling is a property of the loop, not of the model's mood on the
   # day, so it runs against a fake gateway, a fake broker and a scripted model
   # on ephemeral ports — with the real agent/reason.mjs as a child process.
