@@ -610,7 +610,7 @@ hand a mandate to; a mandate is what makes it survivable that someone did.
 
 ## Tests
 
-`node test/agent.test.mjs` — 16 assertions, no device, no model, no network.
+`node test/agent.test.mjs` — 60 assertions, no device, no model, no network.
 
 A fake gateway, a fake broker and a scripted model on ephemeral ports, with
 the real `agent/reason.mjs` run as a child process exactly as it ships. It

@@ -414,7 +414,7 @@ that does not check its budget is exactly the case the chip is for.
 Findings and the tool-calling failure that forced grammar-constrained
 decoding are in [docs/AGENT-LOOP.md](docs/AGENT-LOOP.md). The loop itself is
 tested without a device, a model or a network: `node test/agent.test.mjs`,
-17 assertions.
+60 assertions.
 
 ## The experiment
 
@@ -847,31 +847,42 @@ re-enrolment.
 
 Open `http://127.0.0.1:4050` to see the fleet and stop one of them.
 
-`./scripts/test.sh` runs all three suites. Seventeen host-side assertions in a
-fifth of a second — what a broker will let an agent make it fetch, and whether
-a published chain adds up — then seventeen on the agent loop, against a fake
-gateway, a fake broker and a scripted model, so refusal-handling is a tested
-property rather than something we hope an 8B model gets right in front of
-judges. Then seventeen against the chip on Speculos: the
-four refusals, the contract-call bindings, settlement arithmetic, label
+`./scripts/test.sh` runs everything that does not need a device, then the chip
+suite on Speculos.
+
+Thirty-one host-side assertions in a fifth of a second — what a broker will
+let an agent make it fetch, whether a published chain adds up, and whether the
+browser verifier agrees with the Node one line for line. Sixty on the agent
+loop, against a fake gateway, a fake broker and a scripted model, so
+refusal-handling is a tested property rather than something we hope an 8B
+model gets right in front of judges. Seventeen on Key Ring enrolment. Twenty-
+two on the console, loaded in a real browser — including one that posts
+`<img src=x onerror=…>` through the agent feed and checks no node is created.
+
+Then forty-five against the chip: every refusal in order, the contract-call
+bindings, settlement arithmetic, the velocity window, mandate recovery, label
 validation, and expiry. It boots the emulator, runs, and tears it down; no
-device and no tapping. `--device` runs the same chip assertions on the Flex,
-which is where they have also passed.
+device and no tapping. `--device` runs the same assertions on the Flex, which
+is where they have also passed.
 
 ```console
 $ ./scripts/test.sh
 host logic
-  pass 17
+  pass 31
   fail 0
 the agent loop
+  60/60 passed
+ring enrolment
   17/17 passed
+the console
+  22/22 passed
 
   PASS  a payee not on the allowlist
   PASS  the same swap, proceeds to an attacker
-  PASS  a mandate with an expiry can be granted
-  PASS  and every draw on it is refused
+  PASS  the third draw is refused, with budget still left
+  PASS  a restored mandate keeps the right to trade
   …
-17/17 passed
+45/45 passed
 ```
 
 Two claims are deliberately out of its scope, because an emulator cannot

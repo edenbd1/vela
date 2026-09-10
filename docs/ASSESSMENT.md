@@ -51,9 +51,11 @@ Verified on hardware, not asserted:
   the public log says it reached.
 - **A fleet console** that draws each agent's reasoning live, with the chip's
   refusals and the broker's shown apart.
-- **136 assertions** across five suites — 31 host-side, 45 on the agent loop,
-  17 on Key Ring enrolment, 12 on the console in a real browser, 31 against
-  the chip — each shown to fail when the thing it checks is broken.
+- **192 assertions** across seven suites — 31 host-side, 11 checking the
+  browser verifier agrees with the Node one, 60 on the agent loop, 17 on Key
+  Ring enrolment, 22 on the console in a real browser, 6 on a public CI
+  runner, and 45 against the chip — each shown to fail when the thing it
+  checks is broken.
 - **The controlled experiment**, which is the strongest single artefact: same
   rules, same attack, one variable — software settles the theft, the chip
   refuses it.
@@ -86,7 +88,7 @@ Three things came out of building it that are worth more than the feature:
   resisting.
 
 Details, and the tool-calling failure that forced grammar-constrained
-decoding, are in [AGENT-LOOP.md](AGENT-LOOP.md). 45 assertions in
+decoding, are in [AGENT-LOOP.md](AGENT-LOOP.md). 60 assertions in
 `test/agent.test.mjs`, no device and no model needed.
 
 ### ~~2. The Key Ring is not on a remote host~~ — closed 2026-09-09
