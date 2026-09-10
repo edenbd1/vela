@@ -164,6 +164,20 @@ static mandate_status_t mandate_write(const mandate_t *m,
         // Never carried over. A reservation is an authorisation in flight,
         // and nothing is in flight on a device that has just been restored.
         fresh.reserved = 0;
+
+        // The rate window restarts, and that is a decision rather than an
+        // omission. A window is a count against wall-clock time, and a
+        // restore happens at a moment the chip cannot know — carrying "four
+        // draws used" from a window that may have closed hours ago would
+        // enforce a limit against a period that no longer exists.
+        //
+        // The cost is that a restore hands back a fresh window. It is not a
+        // silent bypass: restoring requires a person approving a screen that
+        // names the envelope and its position, which is the same gate as
+        // granting one. What it does mean is that velocity limits bound the
+        // rate between restores, not across them.
+        fresh.window_draws = 0;
+        fresh.window_start = 0;
         if (!keep_position) {
             fresh.spent = 0;
             fresh.seq = 0;

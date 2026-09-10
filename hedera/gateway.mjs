@@ -153,7 +153,7 @@ function callerSlot(req, url) {
   if (String(req.headers["x-vela-operator"] ?? "") !== OPERATOR_TOKEN) return null;
 
   const asked = Number(url?.searchParams?.get("slot") ?? SLOT);
-  if (!Number.isInteger(asked) || asked < 0 || asked > 2) return null;
+  if (!Number.isInteger(asked) || asked < 0 || asked >= SLOT_COUNT) return null;
   return { slot: asked, agent: null, anonymous: true };
 }
 
@@ -208,6 +208,38 @@ const REFUSALS = {
                     "The chip will encode the contract, the function and the amount you " +
                     "asked for, and refuse the one field that lets the proceeds leave" },
 };
+
+/**
+ * How many slots this device has.
+ *
+ * Read from the chip on first use rather than hardcoded, because it has been
+ * hardcoded once already: the app went from three slots to eight and this
+ * gateway kept reporting three, so mandates restored into slots 3 to 5 were
+ * invisible to the console and unaddressable by an operator. A number the
+ * device owns should not be duplicated here.
+ *
+ * `not_found` means an empty slot that exists; anything else means it does
+ * not. Capped so a firmware that answers `not_found` to everything cannot
+ * spin here.
+ */
+let slotCount = null;
+async function discoverSlots() {
+  if (slotCount !== null) return slotCount;
+  let n = 0;
+  while (n < 64) {
+    try {
+      await signer.transport.exchange(Buffer.from([0xe0, 0x10, n, 0, 0]));
+    } catch (e) {
+      if (e?.sw !== 0xb102) break;
+    }
+    n += 1;
+  }
+  slotCount = n || 1;
+  return slotCount;
+}
+
+/** What the rest of this file reads. Set once the device has been asked. */
+let SLOT_COUNT = 3;
 
 let signer;
 let lastDraw = null;
@@ -775,8 +807,15 @@ const routes = {
    * said plainly rather than presented as a design choice.
    */
   "GET /mandates": async (_req, res) => {
+    // Asked here rather than at startup: the device is often not connected
+    // when this process begins, and a count taken then is a count taken from
+    // a guess. Once is enough, and it is cheap — one refused GET per slot.
+    if (await deviceReady()) {
+      SLOT_COUNT = await discoverSlots().catch(() => SLOT_COUNT);
+    }
+
     const slots = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < SLOT_COUNT; i++) {
       // "no mandate here" and "the device did not answer" are different
       // facts, and collapsing them shows an empty fleet for a device that is
       // merely closed — the most misleading picture this console could draw,

@@ -430,6 +430,26 @@ def main():
     check("a restore without the velocity block is refused, not misread",
           send(RESTORE, short, timeout=20)[0], 0xB108)
 
+    # The spend position survives a restore and the rate window does not.
+    # Deliberate: a window counts against wall-clock time, and a restore
+    # happens at a moment the chip cannot know, so carrying a count from a
+    # window that may have closed hours ago enforces a limit against a period
+    # that no longer exists. It is not a silent bypass — restoring needs a
+    # person approving a screen that names the position.
+    sw, rl = restore("restored-rate", 50_000_000, 10_000_000, seq=6,
+                     spent=20_000_000, tag=0xD7,
+                     window_secs=3600, max_per_window=2)
+    check("a rate limit survives a restore", sw, OK)
+    if sw == OK:
+        _, st_rl = send(GET, p1=rl)
+        window, cap, used, start = velocity_of(st_rl)
+        check("the terms come back", OK if (window, cap) == (3600, 2) else 0xB108, OK)
+        check("the window itself restarts",
+              OK if (used, start) == (0, 0) else 0xB108, OK)
+        check("so draws are allowed again",
+              draw(rl, PAYEE, 1_000_000, now=1_800_000_000), OK)
+        revoke(rl)
+
     check("a restore claiming more spent than the budget is refused",
           restore("liar", 50_000_000, 10_000_000, seq=1, spent=60_000_000)[0],
           0xB108)

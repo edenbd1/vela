@@ -660,6 +660,42 @@ left, who it may pay — with per-mandate detail and revocation, plus a
 *Revoke all mandates* button. Authority you cannot see is not authority you
 control, so it is the home screen rather than a settings sub-page.
 
+### A rate limit, in silicon
+
+`ops-nightly` is granted four draws an hour. On the device:
+
+```console
+  draw 1: paid 0.01 HBAR, 0.19 left
+  draw 2: paid 0.01 HBAR, 0.18 left
+  draw 3: paid 0.01 HBAR, 0.17 left
+  draw 4: paid 0.01 HBAR, 0.16 left
+  draw 5: REFUSED too_fast
+```
+
+And the envelope afterwards, read from the chip:
+
+```
+  available   0.16 HBAR      — the budget is untouched
+  window      4/4 draws used
+```
+
+That is the point. The refusal has nothing to do with money left. A budget
+bounds *how much*; this bounds *how fast* — and speed is where an agent
+differs from a person. The envelope that survives forty honest payments in a
+night is the one a compromised agent empties in ninety seconds.
+
+There is no clock in a Secure Element, so `now` comes from the host. A host
+that winds it forward only resets a counter it could have waited out; one that
+winds it backward is refused, which is the single lie this can catch without a
+clock of its own. The agent is told `terminal: false` — waiting helps, and
+nothing else does, the opposite of every other refusal here.
+
+A restore brings the spend position back and starts a fresh window,
+deliberately: a window counts against wall-clock time, and a restore happens
+at a moment the chip cannot know. Velocity bounds the rate *between* restores,
+not across them — and a restore needs a person approving a screen that names
+the envelope and its position.
+
 ### Losing the device
 
 A mandate is NVRAM state, not something derived from a seed. Restore your 24
