@@ -47,8 +47,11 @@ function mindFor(agent) {
   box.append(head, steps);
 
   const host = document.getElementById("minds");
-  const empty = host.querySelector(".none");
-  if (empty) empty.remove();
+  // The empty state is a sibling of the grid now, not a child of it, so
+  // removing "a .none inside #minds" stopped hiding it — and the page told
+  // you no agent was running directly above three running agents.
+  const empty = document.getElementById("minds-empty");
+  if (empty) empty.hidden = true;
   host.append(box);
 
   const m = { box, steps, last: null };
@@ -62,6 +65,8 @@ function onAgentEvent(e) {
   if (e.kind === "start") {
     const old = minds.get(e.agent);
     if (old) { old.box.remove(); minds.delete(e.agent); }
+    const empty = document.getElementById("minds-empty");
+    if (empty) empty.hidden = true;
     const m = mindFor(e.agent);
     if (e.model) {
       const tag = document.createElement("span");

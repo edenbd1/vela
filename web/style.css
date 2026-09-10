@@ -1,323 +1,333 @@
+/*
+ * Vela — the console.
+ *
+ * No build step and no framework, on purpose. This project's argument is that
+ * you can audit what it holds; a page whose provenance is a lockfile would be
+ * arguing the other way. It also means the whole thing is static files, so it
+ * can be hosted for someone who has neither the device nor the six processes.
+ *
+ * The colour rules are load-bearing rather than decorative, and there are
+ * only three:
+ *
+ *   red     the Secure Element refused. Nothing on any host can change it.
+ *   amber   a host refused, or an agent flagged something. Editable, arguable.
+ *   green   it happened, and there is a transaction id to check.
+ *
+ * A reader who learns only that has learned the product.
+ */
+
 :root {
   --bg: #0b0d10;
-  --panel: #14171c;
-  --line: #232830;
-  --ink: #e7ebf0;
-  --dim: #8b95a3;
-  --faint: #5b6672;
-  --ok: #4ade80;
-  --refuse: #f87171;
-  --advise: #fbbf24;
+  --panel: #14181e;
+  --panel-2: #1a1f27;
+  --line: #232935;
+  --line-soft: #1b212a;
+
+  --ink: #e8ecf2;
+  --dim: #98a3b3;
+  --faint: #626d7d;
+
+  --chip: #ff6b6b;      /* the Secure Element said no */
+  --host: #fbbf24;      /* a host said no, or an agent flagged something */
+  --ok: #4ade80;        /* it happened */
   --accent: #7dd3fc;
+
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+
+  --radius: 12px;
+  --gap: 18px;
 }
 
 * { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--sans);
+  font-size: 14.5px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
-code, .mono, b.num { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-/* ---------- header ---------- */
-header {
-  display: flex; align-items: center; gap: 18px;
-  padding: 22px 28px;
+code, .mono { font-family: var(--mono); }
+
+/* ----------------------------------------------------------------- chrome */
+
+header.top {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 26px;
+  background: rgba(11, 13, 16, .86);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
 }
-.mark { width: 40px; height: 40px; }
-.title h1 { margin: 0; font-size: 21px; letter-spacing: .2px; }
-.title p { margin: 2px 0 0; color: var(--dim); font-size: 13.5px; }
+header.top .mark { width: 30px; height: 30px; }
+header.top h1 {
+  margin: 0; font-size: 16px; letter-spacing: -0.01em; font-weight: 650;
+}
+header.top .tag {
+  color: var(--dim); font-size: 12.5px; margin-left: 2px;
+}
+header.top nav { margin-left: auto; display: flex; gap: 4px; }
+header.top nav a {
+  color: var(--dim); font-size: 12.5px; padding: 6px 11px;
+  border-radius: 7px; text-decoration: none;
+}
+header.top nav a:hover { color: var(--ink); background: var(--panel-2); }
+
 .device {
-  margin-left: auto; display: flex; align-items: center; gap: 8px;
-  font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--dim);
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+  padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
 }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
-.dot.on { background: var(--ok); box-shadow: 0 0 10px rgba(74,222,128,.6); }
-.dot.off { background: var(--refuse); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(74,222,128,.14); }
+.dot.off { background: var(--chip); }
+.dot.demo { background: var(--host); }
 
-/* ---------- layout ---------- */
-main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-  padding: 22px 28px 40px;
-  max-width: 1180px;
-  margin: 0 auto;
-}
-.card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 20px 22px;
-}
-.feed, .proof { grid-column: span 1; }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+main { max-width: 1220px; margin: 0 auto; padding: 30px 26px 90px; }
 
-h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: .3px; }
-h3 { margin: 20px 0 8px; font-size: 12.5px; color: var(--dim); font-weight: 600;
-     text-transform: uppercase; letter-spacing: .6px; }
+section { margin: 0 0 44px; scroll-margin-top: 76px; }
+
+h2.section {
+  margin: 0 0 6px; font-size: 20px; letter-spacing: -0.015em; font-weight: 650;
+}
+p.lede { margin: 0 0 20px; color: var(--dim); max-width: 74ch; }
 .src {
-  font-weight: 400; text-transform: none; letter-spacing: 0;
-  color: var(--faint); font-size: 11.5px; margin-left: 8px;
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 9px;
 }
-.lede { color: var(--dim); font-size: 13.5px; margin: 0 0 14px; }
+.src a { color: var(--accent); border-bottom: 1px solid var(--line); text-decoration: none; }
 
-/* ---------- envelope ---------- */
-.numbers { display: flex; gap: 26px; margin-bottom: 16px; }
-.numbers div { display: flex; flex-direction: column; }
-.numbers b {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 26px; font-weight: 600; letter-spacing: -.5px;
-}
-.numbers span { color: var(--faint); font-size: 11.5px; text-transform: uppercase;
-                letter-spacing: .6px; margin-top: 2px; }
-
-.bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden;
-       background: #1c2128; }
-.bar i { display: block; height: 100%; transition: width .4s ease; }
-.bar .spent { background: var(--accent); }
-.bar .reserved { background: var(--advise); }
-.bar .left { background: #2b3138; }
-
-.legend { display: flex; gap: 18px; margin-top: 10px;
-          font-size: 12px; color: var(--dim); }
-.legend b { font-family: ui-monospace, Menlo, monospace; color: var(--ink); }
-.k { display: inline-block; width: 8px; height: 8px; border-radius: 2px;
-     margin-right: 5px; }
-.k.spent { background: var(--accent); }
-.k.reserved { background: var(--advise); }
-.k.left { background: #2b3138; }
-
-ul { list-style: none; margin: 0; padding: 0; }
-.payees li, .denied li {
-  font-family: ui-monospace, Menlo, monospace; font-size: 13px;
-  padding: 7px 10px; border-radius: 7px; margin-bottom: 6px;
-  background: #191d23; border-left: 3px solid var(--ok);
-}
-.denied li { border-left-color: var(--advise); }
-.denied li .why, .payees li .why { color: var(--dim); font-size: 12px; margin-left: 8px; }
-li.none { background: none; border: 0; color: var(--faint); font-size: 13px;
-          padding-left: 0; font-family: inherit; }
-
-/* ---------- tiers ---------- */
-.tiers { display: flex; flex-direction: column; gap: 9px; }
-button {
-  font: inherit; color: var(--ink); background: #1b2027;
-  border: 1px solid var(--line); border-radius: 9px;
-  padding: 12px 15px; cursor: pointer; text-align: left;
-  display: flex; align-items: center; gap: 12px;
-  transition: border-color .15s, background .15s;
-}
-button:hover:not(:disabled) { border-color: #3a424e; background: #20262e; }
-button:disabled { opacity: .5; cursor: default; }
-button .price {
-  margin-left: auto; font-family: ui-monospace, Menlo, monospace;
-  font-size: 13px; color: var(--dim);
-}
-button .over { color: var(--refuse); }
-.hint { color: var(--faint); font-size: 12.5px; min-height: 18px; margin: 12px 0 0; }
-
-/* ---------- feed ---------- */
-ol { list-style: none; margin: 0; padding: 0; }
-#events li, #receipts li {
-  border-left: 3px solid var(--line);
-  padding: 9px 12px; margin-bottom: 7px; border-radius: 0 7px 7px 0;
-  background: #191d23; font-size: 13px;
-}
-#events li.paid { border-left-color: var(--ok); }
-#events li.refused { border-left-color: var(--refuse); }
-#events li.advised { border-left-color: var(--advise); }
-#events li .head { display: flex; gap: 10px; align-items: baseline; }
-#events li .who {
-  font-family: ui-monospace, Menlo, monospace; font-size: 11px;
-  text-transform: uppercase; letter-spacing: .6px; color: var(--faint);
-}
-#events li.paid .who { color: var(--ok); }
-#events li.refused .who { color: var(--refuse); }
-#events li.advised .who { color: var(--advise); }
-#events li .detail { color: var(--dim); font-size: 12.5px; margin-top: 3px; }
-#events li a, #receipts li a { color: var(--accent); text-decoration: none; }
-
-/* The topic id is a link, and it was rendering in the browser's default
-   #0000EE on a near-black background — invisible, and it is the one link on
-   this page a judge is meant to click to check the log for themselves.
-   Styled by ancestor rather than by id so the next link dropped into a .src
-   inherits it instead of repeating the bug. */
-.src a { color: var(--accent); text-decoration: none; border-bottom: 1px solid #2b3440; }
-.src a:hover { border-bottom-color: var(--accent); }
-#events li a:hover { text-decoration: underline; }
-
-#receipts li { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
-#receipts li.released { border-left-color: var(--advise); }
-#receipts li.signed { border-left-color: var(--ok); }
-
-/* ---------- footer ---------- */
-footer {
-  display: flex; gap: 16px; align-items: center;
-  padding: 18px 28px; border-top: 1px solid var(--line);
-  color: var(--faint); font-size: 12.5px;
-}
-footer a { margin-left: auto; color: var(--dim); text-decoration: none; }
-footer a:hover { color: var(--ink); }
-
-/* ---------- contract terms ---------- */
-.bound {
-  margin: 0; padding: 9px 12px; border-radius: 7px;
-  background: #191d23; border-left: 3px solid var(--ok);
-  font-family: ui-monospace, Menlo, monospace; font-size: 13px;
-}
-.bound.none { border-left-color: var(--faint); color: var(--faint); }
-
-/* ---------- the experiment ---------- */
-.defi { grid-column: 1 / -1; }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 760px) { .pair { grid-template-columns: 1fr; } }
-
-button.scenario {
-  flex-direction: column; align-items: flex-start; gap: 6px;
-  padding: 14px 16px;
-}
-button.scenario b { font-weight: 600; font-size: 14px; }
-button.scenario em {
-  font-style: normal; font-family: ui-monospace, Menlo, monospace;
-  font-size: 11.5px; color: var(--faint); word-break: break-all;
-}
-.tag {
-  font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
-  text-transform: uppercase; letter-spacing: .7px;
-  padding: 2px 7px; border-radius: 4px;
-}
-.tag.ok { background: rgba(74,222,128,.14); color: var(--ok); }
-.tag.bad { background: rgba(248,113,113,.14); color: var(--refuse); }
-
-.onefield {
-  margin: 14px 0 18px; padding: 11px 14px; border-radius: 8px;
-  background: #191d23; color: var(--dim); font-size: 13px;
-  border-left: 3px solid var(--accent);
-}
-.onefield b { color: var(--ink); }
-
-button.scenario code {
-  font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
-  background: #23282f; padding: 1px 5px; border-radius: 4px;
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 20px 22px;
 }
 
-/* ---------- the fleet ---------- */
-.fleet { grid-column: 1 / -1; }
-.agents { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-@media (max-width: 900px) { .agents { grid-template-columns: 1fr; } }
+/* ------------------------------------------------------------------- hero */
 
+.hero { padding: 26px 0 34px; }
+.hero h2 {
+  margin: 0 0 12px; font-size: 30px; line-height: 1.22;
+  letter-spacing: -0.025em; font-weight: 660; max-width: 20ch;
+}
+.hero h2 em { font-style: normal; color: var(--accent); }
+.hero p { margin: 0; color: var(--dim); max-width: 62ch; font-size: 15px; }
+
+.claims { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.claim {
+  display: flex; align-items: baseline; gap: 9px;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 7px 14px; font-size: 12.5px; color: var(--dim);
+}
+.claim b { color: var(--ink); font-family: var(--mono); font-weight: 500; }
+
+/* ------------------------------------------------------------------ fleet */
+
+.fleet-grid {
+  display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+}
 .agent {
-  background: #191d23; border: 1px solid var(--line);
+  background: var(--panel); border: 1px solid var(--line);
   border-left: 3px solid var(--line);
-  border-radius: 9px; padding: 14px 16px; cursor: pointer;
-  transition: border-color .15s, background .15s;
+  border-radius: var(--radius); padding: 17px 19px;
+  cursor: pointer; transition: border-color .15s, background .15s;
 }
-.agent:hover { background: #1d222a; }
-.agent.on { border-color: #3a424e; border-left-color: var(--accent); background: #1d222a; }
-.agent.free { cursor: default; opacity: .45; }
-.agent.free:hover { background: #191d23; }
-
-.agent .name {
-  display: flex; align-items: baseline; gap: 8px;
-  font-weight: 600; font-size: 14.5px; margin-bottom: 2px;
-}
-.agent .slot {
-  font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
-  color: var(--faint); text-transform: uppercase; letter-spacing: .6px;
-}
+.agent:hover { background: var(--panel-2); }
+.agent.on { border-left-color: var(--accent); background: var(--panel-2); }
+.agent.free { opacity: .5; cursor: default; }
+.agent .row { display: flex; align-items: baseline; justify-content: space-between; }
+.agent .name { font-weight: 620; font-size: 15px; }
+.agent .slot { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
 .agent .amount {
-  font-family: ui-monospace, Menlo, monospace; font-size: 19px;
-  letter-spacing: -.3px; margin: 6px 0 8px;
+  font-family: var(--mono); font-size: 25px; margin: 9px 0 3px;
+  letter-spacing: -0.02em;
 }
-.agent .minibar { height: 5px; border-radius: 3px; background: #2b3138; overflow: hidden; display: flex; }
-.agent .minibar i { display: block; height: 100%; }
-.agent .minibar .spent { background: var(--accent); }
-.agent .minibar .reserved { background: var(--advise); }
-.agent .grants {
-  margin-top: 10px; display: flex; flex-direction: column; gap: 3px;
-  font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--dim);
+.agent .amount span { font-size: 13px; color: var(--faint); margin-left: 4px; }
+.agent .of { font-size: 11.5px; color: var(--faint); font-family: var(--mono); }
+
+.meter { height: 5px; border-radius: 3px; background: var(--line); display: flex; margin: 12px 0 10px; overflow: hidden; }
+.meter i { display: block; height: 100%; }
+.meter .spent { background: var(--accent); }
+.meter .held { background: var(--host); }
+
+.grants { display: flex; flex-wrap: wrap; gap: 5px; }
+.grant {
+  font-family: var(--mono); font-size: 10.5px; color: var(--dim);
+  background: var(--panel-2); border: 1px solid var(--line-soft);
+  border-radius: 5px; padding: 2px 7px;
 }
-.agent .grants .q { color: var(--faint); }
-.agent .unknown {
-  margin-top: 8px; font-size: 11.5px; color: var(--advise);
-}
+.agent.on .grant { background: var(--panel); }
 
-/* ---------- revocation ---------- */
-button.revoke {
-  width: 100%; margin-top: 22px; justify-content: center;
-  border-color: #4a2b2f; color: #fca5a5; background: #1f1618;
-}
-button.revoke:hover:not(:disabled) { background: #2a1c1e; border-color: #6b3a40; }
-button.revoke.waiting { color: var(--advise); border-color: #4a3f1f; background: #1f1c14; }
+/* --------------------------------------------------------------- thinking */
 
-
-/* ---------------------------------------------------- the fleet, thinking */
-/*
- * One column per agent, because the claim is that several of them are
- * running at once on machines you do not control. A single merged log would
- * read as one process doing things in order, which is the opposite.
- */
-/* Full width, like .fleet and .defi. Three agents reasoning need the room,
-   and a one-column card left the right half of the page empty — which is how
-   the layout had been rendering since this card was added, unseen, because
-   the page was throwing before any of it ran. */
-.thinking { grid-column: 1 / -1; }
-
-/* The envelope had the same gap beside it for the same reason: every other
-   card on that row spans the grid, so nothing ever landed in column two. */
-.envelope { grid-column: 1 / -1; }
-
-.minds {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
-}
+/* auto-fill, not auto-fit: with one agent running, auto-fit stretches its
+   column across the whole page and a single reasoning trace reads as a wall
+   of text. Empty tracks are the better failure. */
+.minds { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
 .mind {
-  border: 1px solid var(--line, #23262e);
-  border-radius: 10px;
-  padding: 12px 14px;
-  min-width: 0;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 0; overflow: hidden; min-width: 0;
 }
 .mind > header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 0 8px;
-  border: 0;
-  margin: 0;
+  display: flex; align-items: baseline; gap: 9px;
+  padding: 13px 18px; border-bottom: 1px solid var(--line-soft);
+  background: var(--panel-2);
 }
-.mind .who { font-weight: 600; }
-.mind .slot { font-size: 11px; opacity: .55; }
-.mind .steps { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
-.mind .steps li { padding: 3px 0; border-top: 1px solid rgba(255,255,255,.04); }
+.mind .who { font-weight: 620; }
+.mind .meta { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.mind .steps { margin: 0; padding: 6px 18px 16px; list-style: none; }
+.mind .steps li { padding: 9px 0; border-top: 1px solid var(--line-soft); }
 .mind .steps li:first-child { border-top: 0; }
-.mind .call { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.mind .thought { display: block; opacity: .5; font-size: 11.5px; line-height: 1.35; }
-.mind .out { display: block; font-size: 11.5px; margin-top: 2px; }
-.mind .out.refused { color: #ff6b6b; }
-.mind .out.bought  { color: #4ade80; }
-.mind .out.error   { color: #fbbf24; }
+.mind .call { font-family: var(--mono); font-size: 12.5px; }
+.mind .thought {
+  display: block; color: var(--faint); font-size: 12px;
+  line-height: 1.45; margin-top: 3px;
+}
+.mind .out { display: block; font-size: 12px; margin-top: 5px; font-family: var(--mono); }
+.mind .out.refused { color: var(--chip); }
+.mind .out.host    { color: var(--host); }
+.mind .out.bought  { color: var(--ok); }
+.mind .out.flagged { color: var(--host); font-style: italic; font-family: var(--sans); }
 .mind .verdict {
-  margin: 10px 0 0; padding-top: 8px;
-  border-top: 1px solid rgba(255,255,255,.06);
-  font-size: 12px; opacity: .75;
+  margin: 0; padding: 13px 18px; border-top: 1px solid var(--line-soft);
+  font-size: 12.5px; color: var(--dim); background: var(--panel-2);
 }
 .mind.live .who::after {
   content: ""; display: inline-block; width: 6px; height: 6px;
-  margin-left: 7px; border-radius: 50%; background: #4ade80;
-  animation: pulse 1.2s ease-in-out infinite;
+  margin-left: 8px; border-radius: 50%; background: var(--ok);
+  animation: pulse 1.3s ease-in-out infinite;
 }
-@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .2 } }
 
-/* Something a third party wrote into an agent's context, quoted by the agent.
-   Amber rather than red: nothing was refused here, and nothing went wrong —
-   the agent noticed, which is the good outcome of a bad situation. */
-.mind .out.flagged { color: #fbbf24; font-style: italic; }
+.empty {
+  color: var(--faint); font-size: 13px; padding: 30px; text-align: center;
+  border: 1px dashed var(--line); border-radius: var(--radius);
+}
+.empty code { color: var(--dim); }
+
+/* -------------------------------------------------------------- the chip */
+
+.split { display: grid; gap: var(--gap); grid-template-columns: 1fr 1fr; align-items: start; }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+
+.envelope .figures { display: flex; gap: 30px; flex-wrap: wrap; margin: 4px 0 16px; }
+.envelope .figures div b {
+  display: block; font-family: var(--mono); font-size: 22px;
+  letter-spacing: -0.02em; font-weight: 500;
+}
+.envelope .figures div span {
+  font-size: 10.5px; color: var(--faint); text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+h3.sub {
+  margin: 20px 0 8px; font-size: 11px; color: var(--faint);
+  text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
+}
+ul.bound { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+ul.bound li {
+  font-family: var(--mono); font-size: 12.5px;
+  background: var(--panel-2); border-left: 2px solid var(--ok);
+  border-radius: 0 6px 6px 0; padding: 7px 12px;
+}
+ul.bound li.advisory { border-left-color: var(--host); }
+ul.bound li.none { border-left-color: var(--line); color: var(--faint); font-family: var(--sans); }
+ul.bound li em { font-style: normal; color: var(--dim); margin-left: 8px; }
+
+.actions { display: grid; gap: 8px; margin-top: 6px; }
+button.act {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; width: 100%; text-align: left;
+  background: var(--panel-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 9px;
+  padding: 12px 15px; font-size: 13.5px; font-family: inherit;
+  cursor: pointer; transition: border-color .15s, background .15s;
+}
+button.act:hover:not(:disabled) { border-color: #33404f; background: #1f242d; }
+button.act:disabled { opacity: .45; cursor: not-allowed; }
+button.act .price { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+button.act .price.over { color: var(--chip); }
+button.act.danger { border-color: #4a2626; color: #ffb4b4; }
+button.act.danger:hover:not(:disabled) { background: #241618; border-color: #6b3333; }
+
+.hint { font-size: 12px; color: var(--faint); margin: 9px 0 0; min-height: 1.3em; }
+
+/* the pair: same call, one field different */
+.pair { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+@media (max-width: 760px) { .pair { grid-template-columns: 1fr; } }
+button.scenario {
+  text-align: left; background: var(--panel-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px; padding: 15px;
+  cursor: pointer; font-family: inherit; font-size: 13.5px;
+}
+button.scenario:hover:not(:disabled) { border-color: #33404f; }
+button.scenario:disabled { opacity: .5; cursor: not-allowed; }
+button.scenario .badge {
+  display: inline-block; font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: .06em;
+  padding: 3px 8px; border-radius: 5px; margin-bottom: 9px;
+}
+button.scenario .badge.ok  { background: rgba(74,222,128,.13); color: var(--ok); }
+button.scenario .badge.bad { background: rgba(255,107,107,.13); color: var(--chip); }
+button.scenario b { display: block; font-weight: 600; margin-bottom: 5px; }
+button.scenario em {
+  font-style: normal; font-family: var(--mono);
+  font-size: 11px; color: var(--faint);
+}
+.onefield {
+  margin: 12px 0 0; padding: 11px 15px; font-size: 13px; color: var(--dim);
+  background: var(--panel-2); border-left: 2px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+}
+.onefield b { color: var(--ink); }
+
+/* ------------------------------------------------------------------- log */
+
+ol.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+ol.log li {
+  display: grid; grid-template-columns: 76px 1fr; gap: 12px;
+  padding: 11px 14px; border-radius: 9px;
+  background: var(--panel-2); border-left: 2px solid var(--line);
+  font-size: 13px;
+}
+ol.log li .who {
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
+  text-transform: uppercase; letter-spacing: .05em; padding-top: 2px;
+}
+ol.log li .detail { color: var(--faint); font-size: 12px; display: block; margin-top: 3px; font-family: var(--mono); }
+ol.log li.chip     { border-left-color: var(--chip); }
+ol.log li.chip .who { color: var(--chip); }
+ol.log li.paid     { border-left-color: var(--ok); }
+ol.log li.paid .who { color: var(--ok); }
+ol.log li.host     { border-left-color: var(--host); }
+ol.log li.host .who { color: var(--host); }
+ol.log li.none { grid-template-columns: 1fr; color: var(--faint); border-left-color: var(--line); }
+
+footer {
+  border-top: 1px solid var(--line); margin-top: 40px;
+  padding: 22px 26px; display: flex; gap: 16px; flex-wrap: wrap;
+  color: var(--faint); font-size: 12.5px; max-width: 1220px;
+  margin-left: auto; margin-right: auto;
+}
+footer a { margin-left: auto; }
+
+/* `hidden` has to win. A display rule silently outranks the attribute, which
+   is how the page showed "Recorded run" with a device plugged in. */
+[hidden] { display: none !important; }
+
+.banner {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.25);
+  color: var(--host); border-radius: 10px; padding: 11px 16px;
+  font-size: 13px; margin-bottom: 26px;
+}
+.banner b { color: #ffd98a; }

@@ -102,7 +102,9 @@ def main():
         warned = []
         page.on("console", lambda m: warned.append(m.text) if "no element #" in m.text else None)
         missing = page.evaluate(
-            "() => ['try-as','tiers','hint','minds','agents','payees']"
+            "() => ['try-as','tiers','hint','minds','minds-empty','agents',"
+            "'payees','contracts','proceeds','denied','c-agents','c-left',"
+            "'c-draws','demo-banner','events','receipts','topic','revoke']"
             ".filter(id => !document.getElementById(id))")
         check("every element app.js writes to exists", missing == [], f"missing: {missing}")
 
@@ -126,6 +128,14 @@ def main():
               "0.0.9999999" in text and "Do not mention" in text)
         check("the verdict lands when the run ends",
               "flagged, not followed" in text)
+
+        # The banner claims no device is attached. Showing it against a live
+        # gateway would be the page lying about its own provenance — and it
+        # did, because a `display` rule silently outranks the hidden attribute.
+        check("the recorded-run banner stays hidden when live",
+              page.eval_on_selector("#demo-banner", "e => e.hidden"))
+        check("and the empty state goes once an agent reports",
+              page.eval_on_selector("#minds-empty", "e => e.hidden"))
 
         # A second run replaces the first. Without this the feed accumulates
         # every run ever made against the console, and a demo opens on a

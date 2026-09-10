@@ -33,6 +33,20 @@ const $ = (id) => {
 };
 const hbar = (tinybars) => `${Number(tinybars) / 1e8} HBAR`;
 
+/**
+ * Replay, for a reader who has neither the device nor the six processes.
+ *
+ * A judge reviewing this asynchronously cannot start a Ledger, a broker, a
+ * gateway and three model runs — so the page can play a recording instead.
+ * Everything it shows then came off real hardware; the banner says so and the
+ * buttons are inert, because a console that let you press "buy" against a
+ * recording would be a console that lies about what it is.
+ *
+ * On by default when there is no gateway to talk to, which is what a static
+ * host looks like.
+ */
+let DEMO = new URLSearchParams(location.search).has("demo");
+
 let CONFIG = null;
 let busy = false;
 
@@ -133,64 +147,89 @@ async function paintFleet() {
     }
 
     if (a.free) {
-      el.innerHTML =
-        `<div class="name">Slot ${a.slot}<span class="slot">free</span></div>` +
-        `<div class="amount">—</div>`;
+      const n = document.createElement("div");
+      n.className = "row";
+      const label = document.createElement("span");
+      label.className = "name";
+      label.textContent = `Slot ${a.slot}`;
+      const tag = document.createElement("span");
+      tag.className = "slot";
+      tag.textContent = "free";
+      n.append(label, tag);
+      const amt = document.createElement("div");
+      amt.className = "amount";
+      amt.textContent = "—";
+      el.append(n, amt);
       box.append(el);
       continue;
     }
 
     const total = Number(a.budget_total) || 1;
-    const pct = (x) => `${(Number(x) / total) * 100}%`;
+    const pct = (x) => `${Math.max(0, (Number(x) / total) * 100)}%`;
 
-    const name = document.createElement("div");
+    const row = document.createElement("div");
+    row.className = "row";
+    const name = document.createElement("span");
     name.className = "name";
-    name.append(document.createTextNode(a.label));
+    name.textContent = a.label;
     const slot = document.createElement("span");
     slot.className = "slot";
     slot.textContent = `slot ${a.slot}`;
-    name.append(slot);
+    row.append(name, slot);
 
     const amount = document.createElement("div");
     amount.className = "amount";
-    amount.textContent = hbar(a.available);
+    amount.textContent = (Number(a.available) / 1e8).toFixed(2);
+    const unit = document.createElement("span");
+    unit.textContent = "HBAR";
+    amount.append(unit);
 
-    const bar = document.createElement("div");
-    bar.className = "minibar";
-    const spent = Number(a.budget_total) - Number(a.available);
-    bar.innerHTML = `<i class="spent" style="width:${pct(spent)}"></i>` +
-                    `<i class="left" style="width:${pct(a.available)}"></i>`;
+    const of = document.createElement("div");
+    of.className = "of";
+    of.textContent = `of ${(Number(a.budget_total) / 1e8).toFixed(2)} granted` +
+                     `  ·  ${(Number(a.per_call_max) / 1e8).toFixed(2)} max per draw`;
 
-    el.append(name, amount, bar);
+    // Spent and reserved are different facts and the meter keeps them apart:
+    // one is gone, the other is an authorisation in flight that may yet come
+    // back. Collapsing them would make a held reservation look like a loss.
+    const spent = Number(a.budget_total) - Number(a.available) - Number(a.reserved ?? 0);
+    const meter = document.createElement("div");
+    meter.className = "meter";
+    const s1 = document.createElement("i");
+    s1.className = "spent"; s1.style.width = pct(spent);
+    const s2 = document.createElement("i");
+    s2.className = "held"; s2.style.width = pct(a.reserved ?? 0);
+    meter.append(s1, s2);
+
+    el.append(row, amount, of, meter);
 
     const grants = document.createElement("div");
     grants.className = "grants";
-    if (a.grants?.length) {
-      for (const g of a.grants) {
-        const row = document.createElement("span");
-        row.textContent = g.name;
-        const q = document.createElement("span");
-        q.className = "q";
-        q.textContent = `  ${g.used}/${g.limit}`;
-        row.append(q);
-        grants.append(row);
-      }
-    } else {
-      const row = document.createElement("span");
-      row.className = "q";
-      row.textContent = "no capabilities granted";
-      grants.append(row);
+    for (const g of a.grants ?? []) {
+      const chip = document.createElement("span");
+      chip.className = "grant";
+      chip.textContent = `${g.name} ${g.used}/${g.limit}`;
+      grants.append(chip);
+    }
+    if (!a.grants?.length) {
+      const chip = document.createElement("span");
+      chip.className = "grant";
+      chip.textContent = "no capabilities granted";
+      grants.append(chip);
+    }
+    if (a.calls?.contracts?.length) {
+      const chip = document.createElement("span");
+      chip.className = "grant";
+      chip.textContent = `may call ${a.calls.contracts[0]}`;
+      grants.append(chip);
     }
     el.append(grants);
 
-    // A mandate the chip holds that the broker has never heard of. Surfaced
-    // rather than hidden: the chip is the half that cannot be edited from
-    // here, so a disagreement is the broker's problem, not the device's.
     if (!a.known_to_broker) {
-      const warn = document.createElement("div");
-      warn.className = "unknown";
+      const warn = document.createElement("span");
+      warn.className = "grant";
       warn.textContent = "on the device, unknown to the broker";
-      el.append(warn);
+      grants.append(warn);
     }
 
     el.onclick = () => { selected = a.slot; refresh(); };
@@ -236,20 +275,28 @@ async function refresh() {
   $("available").textContent = hbar(m.available);
   $("percall").textContent = hbar(m.per_call_max);
   $("draws").textContent = m.draws_so_far;
-  $("spent").textContent = hbar(m.spent);
-  $("reserved").textContent = hbar(m.reserved);
 
   const total = Number(m.budget_total) || 1;
-  const pct = (x) => `${(Number(x) / total) * 100}%`;
+  const pct = (x) => `${Math.max(0, (Number(x) / total) * 100)}%`;
   const bar = $("bar");
   bar.querySelector(".spent").style.width = pct(m.spent);
-  bar.querySelector(".reserved").style.width = pct(m.reserved);
-  bar.querySelector(".left").style.width = pct(m.available);
+  bar.querySelector(".held").style.width = pct(m.reserved);
+
+  // The three numbers at the top of the page, from the chip and the fleet.
+  const liveAgents = (fleet?.agents ?? []).filter((a) => !a.free && !a.unknown);
+  $("c-agents").textContent = String(liveAgents.length);
+  $("c-left").textContent =
+    (liveAgents.reduce((t, a) => t + Number(a.available), 0) / 1e8).toFixed(2);
+  $("c-draws").textContent =
+    String(liveAgents.reduce((t, a) => t + Number(a.draws ?? 0), 0));
 
   $("payees").innerHTML = "";
   for (const p of m.payees ?? []) {
     const li = document.createElement("li");
     li.textContent = p;
+    const note = document.createElement("em");
+    note.textContent = "anything else is refused in the chip";
+    li.append(note);
     $("payees").append(li);
   }
 
@@ -265,8 +312,7 @@ async function refresh() {
       const li = document.createElement("li");
       li.textContent = c;
       if (calls.selectors.length) {
-        const why = document.createElement("span");
-        why.className = "why";
+        const why = document.createElement("em");
         why.textContent = calls.selectors.join(" ");
         li.append(why);
       }
@@ -275,8 +321,12 @@ async function refresh() {
   }
 
   const bound = calls?.proceeds ?? "unknown — this chip predates contract calls";
-  $("proceeds").textContent = bound;
-  $("proceeds").className = calls?.recipient_arg == null ? "bound none" : "bound";
+  const pr = $("proceeds");
+  pr.innerHTML = "";
+  const prLi = document.createElement("li");
+  prLi.textContent = bound;
+  if (calls?.recipient_arg == null) prLi.className = "none";
+  pr.append(prLi);
 
   const denied = d.advisory?.denied ?? [];
   $("denied").innerHTML = denied.length
@@ -284,9 +334,13 @@ async function refresh() {
     : '<li class="none">nothing flagged</li>';
   for (const x of denied) {
     const li = document.createElement("li");
+    // Amber, not green. The enclave is advice: it narrows what the gateway
+    // will ask for and cannot narrow what the chip will sign. Drawing it in
+    // the same colour as a hardware bound would claim an authority it has
+    // not got.
+    li.className = "advisory";
     li.textContent = x.payee;
-    const why = document.createElement("span");
-    why.className = "why";
+    const why = document.createElement("em");
     why.textContent = x.reason;
     li.append(why);
     $("denied").append(li);
@@ -306,7 +360,8 @@ function paintTiers(m) {
     const overCeiling = tinybars > Number(m.per_call_max);
 
     const b = document.createElement("button");
-    b.disabled = busy;
+    b.className = "act";
+    b.disabled = busy || DEMO;
     b.append(document.createTextNode(`Buy ${tier.label}`));
 
     const price = document.createElement("span");
@@ -459,7 +514,7 @@ async function revoke() {
   btn.disabled = true;
   btn.classList.add("waiting");
   btn.textContent = `waiting for a finger on the device…`;
-  $("revoke-hint").textContent =
+  $("hint").textContent =
     `the device is asking whether to forget ${row.label}. Nothing has changed yet.`;
 
   let d;
@@ -485,10 +540,10 @@ async function revoke() {
       detail: "the envelope is gone from NVRAM. Nothing on any host had to " +
               "be rotated, and the agent's next draw fails at the chip.",
     });
-    $("revoke-hint").textContent = "";
+    $("hint").textContent = "";
     selected = null;
   } else {
-    $("revoke-hint").textContent = d.advice ?? d.reason ?? "not revoked";
+    $("hint").textContent = d.advice ?? d.reason ?? "not revoked";
   }
 
 

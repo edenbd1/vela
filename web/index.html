@@ -4,17 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vela — a spending limit your agent cannot argue with</title>
+<meta name="description" content="A spending mandate that lives inside a Ledger Secure Element. Agents propose; the chip decides.">
 <link rel="icon" href="/brand/vela-mark-64.png">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
-<header>
+<header class="top">
   <img src="/brand/vela-mark-white.svg" alt="" class="mark">
-  <div class="title">
+  <div>
     <h1>Vela</h1>
-    <p>A spending mandate that lives inside a Ledger Secure Element.</p>
   </div>
+  <span class="tag">a spending limit your agent cannot argue with</span>
+  <nav>
+    <a href="#fleet">Fleet</a>
+    <a href="#thinking">Agents</a>
+    <a href="#envelope">Envelope</a>
+    <a href="#boundary">The boundary</a>
+    <a href="#log">Log</a>
+  </nav>
   <div class="device" id="device">
     <span class="dot" id="dot"></span>
     <span id="device-text">connecting…</span>
@@ -23,134 +31,166 @@
 
 <main>
 
-  <!-- ================= the fleet ================= -->
-  <section class="card fleet">
-    <h2>The fleet <span class="src">spending from the chip · capabilities from the broker</span></h2>
-    <p class="lede">
-      Three agents on three machines, none of which has a device attached.
-      This is the only place both halves of what they may do are visible at
-      once — and only one half can be edited from here.
-    </p>
-    <div class="agents" id="agents"></div>
-  </section>
+  <!-- shown only when the page is replaying a recording -->
+  <div class="banner" id="demo-banner" hidden>
+    <b>Recorded run.</b>
+    <span>No device is attached. Every figure below came off a Ledger Flex on
+      <span id="demo-when">—</span>, and the buttons are inert.</span>
+  </div>
 
-  <!-- ================= the fleet, thinking ================= -->
-  <section class="card thinking">
-    <h2>The fleet, thinking
-      <span class="src" id="think-src">reported by the agents · spending from the chip</span></h2>
-    <p class="lede">
-      Each agent is a model run on a host with no device. They do not know
-      about each other. What they decide is theirs; what they may spend is
-      not, and the red lines below are the Secure Element saying so.
+  <section class="hero">
+    <h2>Agents propose. <em>The chip decides.</em></h2>
+    <p>
+      A human grants one envelope with one tap — this agent, this budget, this
+      ceiling, these payees. After that the agent runs unattended on a machine
+      with no key on it, and every payment is checked inside a Secure Element
+      that no host can read or edit.
     </p>
-    <div class="minds" id="minds">
-      <p class="none">
-        No agent is running. Start one:
-        <code>VELA_EVENTS=http://127.0.0.1:4050/api/events node agent/swarm.mjs</code>
-      </p>
+    <div class="claims">
+      <div class="claim"><b id="c-agents">—</b> agents</div>
+      <div class="claim"><b id="c-left">—</b> HBAR still authorised</div>
+      <div class="claim"><b id="c-draws">—</b> draws, all anchored publicly</div>
+      <div class="claim">keys on these hosts <b>none</b></div>
     </div>
   </section>
 
-  <!-- ================= the selected agent ================= -->
-  <section class="card envelope">
-    <h2>
+  <!-- ============================================================ fleet -->
+  <section id="fleet">
+    <h2 class="section">The fleet
+      <span class="src">budgets from the chip · capabilities from the broker</span>
+    </h2>
+    <p class="lede">
+      Each agent runs somewhere else, and none of those machines has a device
+      attached. This is the only place both halves of what they may do are
+      visible at once — and only one half can be edited from here.
+    </p>
+    <div class="fleet-grid" id="agents"></div>
+  </section>
+
+  <!-- ========================================================= thinking -->
+  <section id="thinking">
+    <h2 class="section">What they are thinking
+      <span class="src">reported by the agents themselves</span>
+    </h2>
+    <p class="lede">
+      This console cannot watch the agents — the whole point is that they run
+      elsewhere — so they report. What they decide is theirs. What they may
+      spend is not, and the red lines are the Secure Element saying so.
+    </p>
+    <div class="minds" id="minds"></div>
+    <p class="empty" id="minds-empty">
+      No agent is running. Start one with
+      <code>VELA_EVENTS=http://127.0.0.1:4050/api/events node agent/swarm.mjs</code>
+    </p>
+  </section>
+
+  <!-- ========================================================= envelope -->
+  <section id="envelope">
+    <h2 class="section">
       <span id="sel-name">—</span>
       <span class="src" id="sel-slot"></span>
     </h2>
-
-    <!-- Buying a tier from here acts as the selected agent, not as the
-         operator. The label says so, because a button that spends someone
-         else's envelope should never be ambiguous about whose it is. -->
-    <p class="lede">Buy an inference <span class="src" id="try-as">as —</span></p>
-    <div class="tiers" id="tiers"></div>
-    <p class="hint" id="hint">the chip decides. This page only asks.</p>
-
-    <div class="numbers">
-      <div><b id="available">—</b><span>available</span></div>
-      <div><b id="percall">—</b><span>max per draw</span></div>
-      <div><b id="draws">—</b><span>draws</span></div>
-    </div>
-
-    <div class="bar" id="bar" title="spent / reserved / available">
-      <i class="spent"></i><i class="reserved"></i><i class="left"></i>
-    </div>
-    <div class="legend">
-      <span><i class="k spent"></i> spent <b id="spent">—</b></span>
-      <span><i class="k reserved"></i> reserved <b id="reserved">—</b></span>
-      <span><i class="k left"></i> available</span>
-    </div>
-
-    <h3>May pay <span class="src">hardware boundary</span></h3>
-    <ul class="payees" id="payees"></ul>
-
-    <h3>May call <span class="src">contracts</span></h3>
-    <ul class="payees" id="contracts"><li class="none">no contract calls</li></ul>
-
-    <h3>Proceeds <span class="src">bound in the chip</span></h3>
-    <p class="bound" id="proceeds">—</p>
-
-    <h3>Advised against <span class="src">enclave, advisory</span></h3>
-    <ul class="denied" id="denied"><li class="none">nothing flagged</li></ul>
-
-    <button class="revoke" id="revoke">Revoke this agent</button>
-    <p class="hint" id="revoke-hint">
-      the device will ask. It does not forget until someone answers with a finger.
-    </p>
-  </section>
-
-  <!-- ================= the experiment ================= -->
-  <section class="card defi" id="defi">
-    <h2>Trade freely. Exfiltrate nothing.</h2>
     <p class="lede">
-      A transfer names its payee in the transaction. A contract call names only
-      the contract — where the value lands is decided by ABI arguments the
-      transaction does not interpret. Under prompt injection, that argument is
-      what an attacker rewrites, because it turns a plausible swap into a theft.
+      Read out of NVRAM on the device. This page does not hold these figures
+      and cannot correct them.
     </p>
 
-    <div class="pair">
-      <button class="scenario" data-case="good">
-        <span class="tag ok">the agent</span>
-        <b>swap — proceeds to itself</b>
-        <em id="sig-good">…</em>
-      </button>
-      <button class="scenario" data-case="steal">
-        <span class="tag bad">the same agent, hijacked</span>
-        <b>swap — proceeds to an attacker</b>
-        <em id="sig-steal">…</em>
-      </button>
+    <div class="split">
+      <div class="panel envelope">
+        <div class="figures">
+          <div><b id="available">—</b><span>available</span></div>
+          <div><b id="percall">—</b><span>max per draw</span></div>
+          <div><b id="draws">—</b><span>draws</span></div>
+        </div>
+        <div class="meter" id="bar"><i class="spent"></i><i class="held"></i></div>
+
+        <h3 class="sub">May pay <span class="src">hardware boundary</span></h3>
+        <ul class="bound" id="payees"></ul>
+
+        <h3 class="sub">May call <span class="src">contracts</span></h3>
+        <ul class="bound" id="contracts"><li class="none">no contract calls</li></ul>
+
+        <h3 class="sub">Proceeds <span class="src">bound in the chip</span></h3>
+        <ul class="bound" id="proceeds"><li class="none">—</li></ul>
+
+        <h3 class="sub">Advised against <span class="src">enclave · advisory only</span></h3>
+        <ul class="bound" id="denied"><li class="none">nothing flagged</li></ul>
+      </div>
+
+      <div class="panel">
+        <h3 class="sub" style="margin-top:0">Buy an inference
+          <span class="src" id="try-as">as —</span></h3>
+        <div class="actions" id="tiers"></div>
+        <p class="hint" id="hint">the chip decides. This page only asks.</p>
+
+        <h3 class="sub">Stop this agent</h3>
+        <button class="act danger" id="revoke">Revoke this agent</button>
+        <p class="hint">
+          the device will ask. It does not forget until someone answers with a
+          finger — and nothing on any host has to be rotated.
+        </p>
+      </div>
     </div>
-    <p class="onefield">
-      Same contract. Same function. Same amount.
-      <b>One field differs: the address in argument 1.</b>
+  </section>
+
+  <!-- ========================================================= boundary -->
+  <section id="boundary">
+    <h2 class="section">Trade freely. Exfiltrate nothing.</h2>
+    <p class="lede">
+      A transfer names its payee in the transaction, so any software policy can
+      read it. A contract call names only the contract — where the value lands
+      is an ABI argument the transaction does not interpret. Under prompt
+      injection that argument is exactly what an attacker rewrites, because it
+      turns a plausible swap into a theft.
     </p>
 
-    <div class="tiers">
-      <button class="scenario" data-case="approve">
-        Unlimited <code>approve()</code> to the attacker, on the allowed router
-      </button>
-      <button class="scenario" data-case="other">
-        The legitimate swap, on a router the mandate never named
-      </button>
+    <div class="panel">
+      <div class="pair">
+        <button class="scenario" data-case="good">
+          <span class="badge ok">the agent</span>
+          <b>swap — proceeds to itself</b>
+          <em id="sig-good">…</em>
+        </button>
+        <button class="scenario" data-case="steal">
+          <span class="badge bad">the same agent, hijacked</span>
+          <b>swap — proceeds to an attacker</b>
+          <em id="sig-steal">…</em>
+        </button>
+      </div>
+      <p class="onefield">
+        Same contract. Same function. Same amount.
+        <b>One field differs: the address in argument 1.</b>
+      </p>
+      <div class="pair" style="margin-top:12px">
+        <button class="scenario" data-case="approve">
+          <b>unlimited approve()</b>
+          <em>to the attacker, on the router the mandate allows</em>
+        </button>
+        <button class="scenario" data-case="other">
+          <b>the legitimate swap</b>
+          <em>on a router the mandate never named</em>
+        </button>
+      </div>
+      <p class="hint" id="defi-hint"></p>
     </div>
-    <p class="hint" id="defi-hint"></p>
   </section>
 
-  <!-- ================= the feed ================= -->
-  <section class="card feed">
-    <h2>What happened</h2>
-    <ol id="events"><li class="none">nothing yet</li></ol>
-  </section>
+  <!-- ============================================================== log -->
+  <section id="log">
+    <h2 class="section">What happened <span class="src">this session</span></h2>
+    <ol class="log" id="events"><li class="none">nothing yet</li></ol>
 
-  <!-- ================= the proof ================= -->
-  <section class="card proof">
-    <h2>The public log <span class="src" id="topic">—</span></h2>
+    <h2 class="section" style="margin-top:34px">The public log
+      <span class="src" id="topic">—</span>
+    </h2>
     <p class="lede">
       Every draw is anchored on Hedera with a statement the chip signed.
-      Anyone can check it without trusting this page.
+      Anyone can check it from the mirror node without trusting this page.
     </p>
-    <button id="load-receipts">Read the log from the mirror node</button>
-    <ol id="receipts"></ol>
+    <button class="act" id="load-receipts">
+      Read the log from the mirror node <span class="price">no local state</span>
+    </button>
+    <ol class="log" id="receipts" style="margin-top:10px"></ol>
   </section>
 
 </main>
