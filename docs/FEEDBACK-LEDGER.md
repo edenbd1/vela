@@ -825,6 +825,22 @@ is whether to remove something from Ledger Sync, which reads as *this device
 is being unlinked from your sync group* — the destructive interpretation, and
 the one that makes a careful person tap **Keep**.
 
+**And what the operator actually saw was not that.** Told to expect a
+Remove/Keep choice, the person holding the Flex reported a *"Tap to continue"*
+screen and, after tapping it, the Ledger Sync home screen — with the host
+still timing out. Three attempts, five minutes of transport timeout each, same
+result. So either this build shows something other than what
+`ui_display_update_instances` implies, or an intermediate screen consumes the
+tap that the choice needed. We cannot tell from outside: the only signal the
+host gets is silence on `signBlock p1=COMMAND len=2`, and `0x6901` on
+everything else until the screen clears.
+
+That is the finding, more than the wording. A confirmation whose prompt the
+caller cannot name, cannot describe to the person holding the device, and
+cannot distinguish from a hang, is one the caller cannot support. We are
+leaving `revoke --device` in the tree, written and marked unproven, rather
+than claiming an eviction we have not seen complete.
+
 **What it costs.** A prompt whose wording contradicts the caller's intent gets
 answered wrong, and answered wrong in the safe-looking direction, so the
 failure is a timeout rather than an error. We spent two rounds on this: the
