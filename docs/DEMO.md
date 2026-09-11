@@ -36,13 +36,32 @@ unknown slot.
 draws an hour, and makes the audit topic as part of granting — binding it to
 the grant epoch, so every chain on that topic starts at draw 1.
 
-Export the tokens the beats need:
+Run `fleet.mjs` even if the fleet looks fine: a chain granted under an older
+build can start mid-sequence, and the verifier will correctly call that a gap
+in the last shot.
+
+The tokens the beats need come out of the Key Ring, not out of your shell
+history. One host holds one membership and may run several agents, so the
+sealed value is an object from agent label to token — `swarm.mjs` and
+`agent/run.sh` both claim it themselves and neither needs anything exported:
 
 ```bash
-export RESEARCH=…  OPS=…       # printed once by broker/enroll.mjs
-``` Run it even if the
-fleet looks fine: a chain granted under an older build can start mid-sequence,
-and the verifier will correctly call that a gap in the last shot.
+node broker/enroll.mjs research-1     # prints each token once
+node broker/enroll.mjs ops-nightly
+node broker/enroll.mjs watcher
+node host/ring/enroll.cjs grant "$(node -p "require('./host/ring/.member.json').publicKey")" \
+     "$(node -p "require('./host/ring/.member.json').name")" \
+     --seal '{"research-1":"…","ops-nightly":"…","watcher":"…"}'
+```
+
+Two beats still want one in the environment, because they type the request
+themselves rather than run an agent: 2:10 hands a task on the command line,
+and 3:10 is five raw `curl`s against the rate limit.
+
+```bash
+export RESEARCH=…   # 2:10, the injected task
+export OPS=…        # 3:10, the velocity beat
+```
 
 Two things to have ready before the camera is on, because both take longer
 than the video:
