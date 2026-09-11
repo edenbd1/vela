@@ -912,6 +912,14 @@ Getting there took four status words, none of which names what is wrong —
 what we first concluded. [Finding 17](docs/FEEDBACK-LEDGER.md) has the trail,
 and `host/ring/challenge-probe.cjs` walks the first two gates on a real Flex.
 
+Admitting a *second* member works as well, which is a different path again:
+the device re-parses its own prior blocks before signing a new one. Ejecting
+one is `revoke --device` — written, and the one thing here that is not proven.
+It closes the stream and re-admits whoever remains, all on the chip; the close
+times out with no screen tapped and the device answers `0x6901`, busy, which
+is not one of the app's own status words. `docs/RING-ENROLL.md` says where it
+stops and what is still unknown.
+
 Eviction is the half that makes enrolment worth having, and it rotates:
 
 ```console

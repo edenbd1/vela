@@ -147,6 +147,25 @@ anything else — which `handler_sign_block` reports as `0xB007 SW_BAD_STATE`.
 `Permissions.KEY_READER`, the least-privilege value the library offers and the
 obvious one for a CI runner, is refused.
 
+A second member works too, and it is worth saying because it is a different
+path: creating the tree signs one block, admitting into an existing one makes
+the device re-parse its own prior blocks before it will sign. Device-rooted
+enrolment does not stop at the first host.
+
+Eviction is `revoke --device`, and it is **written but not proven**. `revoke`
+used to load the software-rooted chain unconditionally, so a member admitted
+by a tap could not be ejected at all — it answered "'second-runner' is not a
+member. In the ring: vps-frankfurt" while `members --device` listed exactly
+that name. Two rosters, two files, one of them addressable.
+
+The device path closes the stream, opens the next branch and re-admits
+everyone who remains, all signed on the chip, with OWNER permissions for the
+same reason admission uses them. Where it stops: SeedID passes, the close
+times out with no screen tapped, and the device then answers 0x6901 — busy,
+not one of the app's own status words — to a plain get-app-name. Whether
+`COMMAND_CLOSE_STREAM` displays at all on Ledger Sync 1.2.2 is the open
+question. Nothing is written when it fails: the roster is saved last.
+
 So the two paths differ, and the difference is on the screen and in the
 listing rather than buried:
 
@@ -156,6 +175,7 @@ listing rather than buried:
 | admission | decrypt and sign, no tap | a tap per member |
 | member gets | `KEY_READER` | `OWNER` — the only thing the app signs |
 | `--seal` | yes | refused: `ApduDevice.readKey` throws by design |
+| eviction | `revoke <name>` | `revoke <name> --device`, written, not proven |
 | stored in | `trustchain.enc` | `trustchain.device.json` |
 
 Two files, because they are two chains with two roots. Mixing them would put a
