@@ -158,7 +158,8 @@ Azure hardware asked a Secure Element in a flat in Paris for money, got
 refused. The refusal did not happen on the runner, in the gateway, or in any
 policy file: it happened in NVRAM the runner cannot read, cannot raise and
 cannot route around. The draw is anchored as message 15 on
-`0.0.10463705` and `hedera/verify.mjs` reports 4 of 4 envelopes verifying.
+`0.0.10463705`, an epoch since superseded — the topic rotates with every
+fleet grant, which is why nothing here quotes one as permanent.
 
 The envelope was disposable on purpose — 0.05 HBAR, one payee, granted with
 `hedera/grant-one.mjs` into a free slot under the epoch already open, and

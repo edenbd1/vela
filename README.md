@@ -543,7 +543,7 @@ Ledger Flex.
 |---|---|
 | Payment signed in the Secure Element | account [`0.0.10397072`](https://hashscan.io/testnet/account/0.0.10397072) — its private key exists on no disk here |
 | x402 settlement | Blocky402 facilitator, `CRYPTOTRANSFER`, `result: SUCCESS` |
-| Public audit log | topic [`0.0.10463705`](https://hashscan.io/testnet/topic/0.0.10463705) — a new one per grant, so this is the latest rather than the only |
+| Public audit log | topic [`0.0.10472746`](https://hashscan.io/testnet/topic/0.0.10472746) — a new one per grant, so this is the latest rather than the only |
 | On-chip refusals | `payee_not_allowed`, `over_per_call`, `over_budget` |
 | NVRAM persistence | *IDENTICAL — the envelope survived a full application restart* |
 
@@ -580,25 +580,25 @@ local state, no trust in this repo, no trust in the host that produced the log.
 ```console
 $ node hedera/verify.mjs            # or pass a topic id
 
-topic   0.0.10463705
+topic   0.0.10472746
 source  https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
 
-mandate 0f39b1086dbf4421…  granted 1789063530  8 draw(s)
+mandate 0f39b1086dbf4421…  granted 1789113006  8 draw(s)
+  ok    seq 2 follows 1 with no gap
+  ok    remaining 41000000 = 49000000 - 8000000
+  ok    seq 3 follows 2 with no gap
+  ok    draw 3 released within the envelope (31000000 <= 41000000)
   …
-  ok    seq 6 follows 5 with no gap
-  ok    remaining 18000000 = 19000000 - 1000000
   ok    seq 7 follows 6 with no gap
-  ok    draw 7 released within the envelope (8000000 <= 18000000)
-  ok    seq 8 follows 7 with no gap
-  ok    remaining 10000000 = 18000000 - 8000000
-  ok    draw 1: 8000000 tinybars reached 0.0.10388937
-  ok    draw 2: contract call on 0.0.5000001, signed here and submitted elsewhere
-  ok    draw 3: contract call on 0.0.5000001, signed here and submitted elsewhere
-  ok    draw 4: 8000000 tinybars reached 0.0.10388937
-  ok    draw 5: contract call on 0.0.5000001, signed here and submitted elsewhere
-  ok    draw 6: 1000000 tinybars reached 0.0.10388937
-  ok    draw 7: released, nothing paid
-  ok    draw 8: 8000000 tinybars reached 0.0.10388937
+  ok    remaining 33000000 = 41000000 - 8000000
+  ok    draw 1: contract call on 0.0.5000001, signed here and submitted elsewhere
+  ok    draw 2: 8000000 tinybars reached 0.0.10388937
+  ok    draw 3: released, nothing paid
+  ok    draw 4: released, nothing paid
+  ok    draw 5: released, nothing paid
+  ok    draw 6: released, nothing paid
+  ok    draw 7: 8000000 tinybars reached 0.0.10388937
+  ok    draw 8: contract call on 0.0.5000001, signed here and submitted elsewhere
   key   the debited account is under b662cae30b34a322…
   ok    draw 1: signed by the device, and the numbers match
   …
@@ -607,12 +607,18 @@ mandate 0f39b1086dbf4421…  granted 1789063530  8 draw(s)
 3 of 3 envelope(s) verify.
 ```
 
-Read the middle of that. Draw 7 reserved 8000000 and was released; draw 8
-starts from 18000000 — where draw 6 left off, as if the release had never
-happened. That is the invariant, and it is checked against a balance the chip
-signed rather than a number the host asserted. It is also the invariant
+Read the middle of that. Draws 3 to 6 reserved and released; draw 7 starts
+from 41000000 — where draw 2 left off, as if the releases had never happened.
+That is the invariant, and it is checked against a balance the chip signed
+rather than a number the host asserted. It is also the invariant
 `hedera/recovery.mjs` was reading wrong: a chain ending on a release restored
 the envelope short by exactly that draw.
+
+Draw 1 is a contract call. It reserves a sequence number exactly as a transfer
+does, and `hedera/defi.mjs` used to leave it unpublished — which put a hole at
+the front of this chain and had the verifier refuse the whole envelope. From
+outside, a hole is indistinguishable from a payment somebody chose not to
+publish, and it should be.
 
 Each anchored record carries a 29-byte statement the chip signed —
 `mandate_id ‖ seq ‖ payee ‖ amount ‖ remaining` — plus its Ed25519 signature.
@@ -745,11 +751,11 @@ gets a fresh 0.5.
 
 ```console
 $ node hedera/recover.mjs
-topic    0.0.10463705
+topic    0.0.10472746
 source   https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
-backup   3 envelope(s), granted 1789063530
+backup   3 envelope(s), granted 1789113006
 
-  research-1     draw 8    0.4000 spent, 0.1000 left of 0.5000
+  research-1     draw 8    0.2200 spent, 0.2800 left of 0.5000
                  digest 0f39b1086dbf4421…  matches the chain
                  8 draw(s), no gaps
 ```
@@ -780,9 +786,9 @@ the answer is markable:
 
 ```console
 $ node hedera/recover.mjs --check
-  research-1     chip agrees  chain 0.4000 spent, chip 0.4000 (0.2500 settled + 0.1500 reserved)
-  ops-nightly    chip agrees  chain 0.0400 spent, chip 0.0400 (0.0400 settled + 0.0000 reserved)
-  watcher        chip agrees  chain 0.0200 spent, chip 0.0200 (0.0200 settled + 0.0000 reserved)
+  research-1     chip agrees  chain 0.2200 spent, chip 0.2200 (0.1600 settled + 0.0600 reserved)
+  ops-nightly    chip agrees  chain 0.0100 spent, chip 0.0100 (0.0100 settled + 0.0000 reserved)
+  watcher        chip agrees  chain 0.0100 spent, chip 0.0100 (0.0100 settled + 0.0000 reserved)
 
   The log reconstructs what the Secure Element is holding, to the tinybar.
 ```
