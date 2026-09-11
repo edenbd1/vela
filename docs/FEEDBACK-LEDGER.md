@@ -792,6 +792,59 @@ device path: sealing needs the group key in this process, and
 `ApduDevice.readKey` throws by design — the chip does not hand out the key it
 protects.
 
+## 18. One screen says "Remove from Ledger Sync?" for two different acts
+
+**What we were trying to do.** Eject a member from a trustchain rooted in the
+Secure Element — the eviction half of Key Ring enrolment, signed on the chip
+rather than under a key on the host.
+
+**What happens.** Everything up to the last APDU works. The device re-parses
+the whole existing stream, accepts the new block header, and then goes quiet:
+
+```
+  signBlock p1=BLOCK_START len=75  -> 9000   (42ms)
+  signBlock p1=COMMAND    len=2    !! timeout  (120s)
+```
+
+Two bytes: `COMMAND_CLOSE_STREAM`. It is not a failure. `signer_parse_command`
+sets `ret_sw = false` for that case and calls `ui_display_update_instances()`,
+so the app deliberately sends no status word and waits for a screen. The
+screen is up the whole time.
+
+**The screen is this** (`src/ui/nbgl_display.c`):
+
+```c
+    nbgl_useCaseChoice(&ICON_TRASH,
+                       "Remove from\nLedger Sync?",
+                       NULL, "Remove", "Keep", ui_update_callback);
+```
+
+A trash icon and *"Remove from Ledger Sync?"*. From the operator's side, the
+act requested was "eject one member from a trustchain"; what the device asks
+is whether to remove something from Ledger Sync, which reads as *this device
+is being unlinked from your sync group* — the destructive interpretation, and
+the one that makes a careful person tap **Keep**.
+
+**What it costs.** A prompt whose wording contradicts the caller's intent gets
+answered wrong, and answered wrong in the safe-looking direction, so the
+failure is a timeout rather than an error. We spent two rounds on this: the
+first attempt timed out with nobody watching, and the second needed an APDU
+trace to establish that the device was asking a question at all rather than
+hanging. Nothing in the protocol package says `close()` shows a screen, and
+nothing in the screen says which stream.
+
+**What would fix it.** Name the subject. *"Remove 'second-runner' from this
+trustchain?"* would be unambiguous, and the app already has the member name in
+`G_context.stream.trusted_member`. Failing that, one line in the protocol
+package: `StreamTree.close()` requires a user confirmation on an `ApduDevice`,
+and the prompt is the Ledger Sync removal screen.
+
+**Also.** While that prompt is up the device answers `0x6901` to a plain
+`b001` get-app-name. That is BOLOS reporting busy rather than one of the app's
+own status words, and it is the only outward sign that a screen is waiting —
+worth knowing, because it is indistinguishable from a wedged device unless you
+have the source open.
+
 ## Tutorial we would have wanted
 
 Nothing linked from the "getting started" path covers the actual arc of writing
