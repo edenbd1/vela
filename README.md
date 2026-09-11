@@ -148,6 +148,15 @@ be a confused deputy with an API key. So an agent supplies only declared
 parameters, each matched against a pattern before it reaches a template, and
 an invalid request never gets far enough to have a credential attached.
 
+`49 calls left` is a window, not a lifetime. A grant is either a bare number,
+which means *ever* and is what a one-shot capability wants, or
+`{ limit, window_seconds }` — the same shape the mandate uses for velocity,
+one layer down. It was a lifetime counter first, and `research-1` walked into
+the wall after a few days of ordinary runs: `capability_exhausted`, with no
+way to see it coming and no way back. Re-granting its mandate on the device
+did not help, because the chip and the broker count different things and
+neither knows about the other.
+
 `wallet-cli ring encrypt --key <name>` derives a distinct key per name, so the
 ring itself carries the scoping: a member enrolled for `vela.risk-feed` is not
 thereby enrolled for `vela.market-data`. That boundary survives the filesystem
@@ -955,7 +964,7 @@ Open `http://127.0.0.1:4050` to see the fleet and stop one of them.
 `./scripts/test.sh` runs everything that does not need a device, then the chip
 suite on Speculos.
 
-Thirty-three host-side assertions in a fifth of a second — what a broker will
+Thirty-nine host-side assertions in a fifth of a second — what a broker will
 let an agent make it fetch, whether a published chain adds up, and whether the
 browser verifier agrees with the Node one line for line. Sixty on the agent
 loop, against a fake gateway, a fake broker and a scripted model, so
@@ -982,7 +991,7 @@ is where they have also passed.
 ```console
 $ ./scripts/test.sh
 host logic
-  pass 33
+  pass 39
   fail 0
 the browser verifier
   pass 11

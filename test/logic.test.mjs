@@ -233,6 +233,58 @@ test("a grant epoch remembers the topic it was opened with", async (t) => {
  * more money in it than the agent had left, which looks like a working
  * recovery.
  * ------------------------------------------------------------------------ */
+/* --------------------------------------------------------------------------
+ * Capability quotas.
+ *
+ * `risk.screen: 50` meant fifty calls ever, which is a wall an agent walks
+ * toward without being able to see it — research-1 hit it after a few days of
+ * ordinary runs and simply stopped being able to screen. Re-granting its
+ * mandate on the device did not help: the chip and the broker count different
+ * things and neither knows about the other.
+ * ----------------------------------------------------------------------- */
+{
+  const { quotaOf, spentOf } = await import("../broker/capability.mjs");
+
+  test("a bare number still means 'ever'", () => {
+    const q = quotaOf(50);
+    assert.deepEqual(q, { limit: 50, window: 0 });
+    const used = new Map([["a:risk", { count: 50, start: 1 }]]);
+    assert.equal(spentOf(used, "a:risk", q, 10_000_000).count, 50,
+                 "no window, so no refill, however long you wait");
+  });
+
+  test("a windowed grant refills once the window has passed", () => {
+    const q = quotaOf({ limit: 3, window_seconds: 3600 });
+    const used = new Map([["a:risk", { count: 3, start: 1000 }]]);
+    assert.equal(spentOf(used, "a:risk", q, 1000 + 3599).count, 3, "still inside");
+    assert.equal(spentOf(used, "a:risk", q, 1000 + 3600).count, 0, "next window");
+  });
+
+  test("the new window starts when it is first observed, not on the clock", () => {
+    const q = quotaOf({ limit: 3, window_seconds: 100 });
+    const used = new Map([["a:risk", { count: 3, start: 1000 }]]);
+    assert.equal(spentOf(used, "a:risk", q, 5000).start, 5000);
+  });
+
+  test("winding the clock back does not hand back a window", () => {
+    const q = quotaOf({ limit: 3, window_seconds: 3600 });
+    const used = new Map([["a:risk", { count: 3, start: 1000 }]]);
+    assert.equal(spentOf(used, "a:risk", q, 500).count, 3);
+  });
+
+  test("usage written in the old format is read, not discarded", () => {
+    // broker/usage.json held plain integers before this. Reading them as zero
+    // would hand every agent its quota back on the deploy that changed it.
+    const q = quotaOf({ limit: 10, window_seconds: 3600 });
+    const used = new Map([["a:risk", 7]]);
+    assert.equal(spentOf(used, "a:risk", q, 0).count, 7);
+  });
+
+  test("an ungranted capability is not a zero quota", () => {
+    assert.equal(quotaOf(undefined), null, "null refuses; 0 would exhaust");
+  });
+}
+
 const { positions, plan } = await import("../hedera/recovery.mjs");
 
 const draw = (m, i, seq, amount, remaining, extra = {}) => ({

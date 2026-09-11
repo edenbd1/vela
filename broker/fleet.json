@@ -1,57 +1,69 @@
 {
-  "capabilities": {
+ "capabilities": {
+  "risk.screen": {
+   "description": "Screen one Hedera account against the private risk feed",
+   "secret": "vela.risk-feed",
+   "method": "GET",
+   "url": "http://127.0.0.1:4040/risk/{account}",
+   "header": "x-api-key",
+   "params": {
+    "account": "^0\\.0\\.[0-9]{1,12}$"
+   }
+  },
+  "infer.triage": {
+   "description": "Buy one triage inference",
+   "secret": "vela.seller-token",
+   "method": "GET",
+   "url": "http://127.0.0.1:4021/infer/triage",
+   "header": "x-client-token",
+   "params": {}
+  }
+ },
+ "agents": {
+  "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1": {
+   "label": "research-1",
+   "slot": 0,
+   "grants": {
     "risk.screen": {
-      "description": "Screen one Hedera account against the private risk feed",
-      "secret": "vela.risk-feed",
-      "method": "GET",
-      "url": "http://127.0.0.1:4040/risk/{account}",
-      "header": "x-api-key",
-      "params": {
-        "account": "^0\\.0\\.[0-9]{1,12}$"
-      }
+     "limit": 50,
+     "window_seconds": 3600
     },
     "infer.triage": {
-      "description": "Buy one triage inference",
-      "secret": "vela.seller-token",
-      "method": "GET",
-      "url": "http://127.0.0.1:4021/infer/triage",
-      "header": "x-client-token",
-      "params": {}
+     "limit": 20,
+     "window_seconds": 3600
     }
+   },
+   "token_sha256": "06f896c63ba736bb414312890c0656aa8c7fa88c222fd0c83154c21dedcd9b6a"
   },
-  "agents": {
-    "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1": {
-      "label": "research-1",
-      "slot": 0,
-      "grants": {
-        "risk.screen": 50,
-        "infer.triage": 20
-      },
-      "token_sha256": "06f896c63ba736bb414312890c0656aa8c7fa88c222fd0c83154c21dedcd9b6a"
-    },
-    "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": {
-      "label": "ops-nightly",
-      "slot": 1,
-      "grants": {
-        "infer.triage": 5
-      },
-      "token_sha256": "54b9c6f4ccb96aee4664b47017f92b058cb44c89c2d23be354b3511c4415d2f0"
-    },
-    "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3": {
-      "label": "watcher",
-      "slot": 2,
-      "grants": {
-        "risk.screen": 200
-      },
-      "token_sha256": "03e230412eba68e63b2a2c99c83c3d8f0a85a0ef0ce38910eecaef1ae86f4426"
-    },
-    "9de980aa335df2af27ea4c640c09878ca7d9dd91": {
-      "label": "remote-1",
-      "slot": 3,
-      "grants": {
-        "infer.triage": 5
-      },
-      "token_sha256": "4d46f8457bd3410d6f30a56ffab0afefc0aeba27b4b6e65f8c9022fbf48b01ce"
+  "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": {
+   "label": "ops-nightly",
+   "slot": 1,
+   "grants": {
+    "infer.triage": {
+     "limit": 5,
+     "window_seconds": 3600
     }
+   },
+   "token_sha256": "54b9c6f4ccb96aee4664b47017f92b058cb44c89c2d23be354b3511c4415d2f0"
+  },
+  "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3": {
+   "label": "watcher",
+   "slot": 2,
+   "grants": {
+    "risk.screen": {
+     "limit": 200,
+     "window_seconds": 3600
+    }
+   },
+   "token_sha256": "03e230412eba68e63b2a2c99c83c3d8f0a85a0ef0ce38910eecaef1ae86f4426"
+  },
+  "9de980aa335df2af27ea4c640c09878ca7d9dd91": {
+   "label": "remote-1",
+   "slot": 3,
+   "grants": {
+    "infer.triage": 5
+   },
+   "token_sha256": "4d46f8457bd3410d6f30a56ffab0afefc0aeba27b4b6e65f8c9022fbf48b01ce"
   }
+ }
 }

@@ -29,7 +29,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { backingFor, reveal, PLAINTEXT, RING } from "./secrets.mjs";
-import { buildUrl } from "./capability.mjs";
+import { buildUrl, quotaOf, spentOf } from "./capability.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.BROKER_PORT ?? 4060);
@@ -59,8 +59,8 @@ const used = new Map(Object.entries((() => {
 })()));
 const useKey = (agentId, cap) => `${agentId}:${cap}`;
 
-function bump(key, to) {
-  used.set(key, to);
+function bump(key, next) {
+  used.set(key, next);
   try {
     writeFileSync(USAGE_FILE, JSON.stringify(Object.fromEntries(used), null, 2) + "\n");
   } catch (e) {
@@ -128,12 +128,15 @@ const routes = {
 
     json(res, 200, {
       agent: agent.label,
-      capabilities: Object.entries(agent.grants).map(([name, limit]) => ({
+      capabilities: Object.entries(agent.grants).map(([name, grant]) => ({
         name,
         description: fleet().capabilities[name]?.description ?? "unknown capability",
         params: Object.keys(fleet().capabilities[name]?.params ?? {}),
-        calls_used: used.get(useKey(agent.id, name)) ?? 0,
-        calls_allowed: limit,
+        // The count in the window that is open now, not the count ever, or
+        // the agent reads a number it cannot act on.
+        calls_used: spentOf(used, useKey(agent.id, name), quotaOf(grant)).count,
+        calls_allowed: quotaOf(grant).limit,
+        refills_every_seconds: quotaOf(grant).window || null,
         // Named so a demo cannot quietly claim hardware it did not use.
         secret_backing: backingFor(fleet().capabilities[name]?.secret) ?? "missing",
       })),
@@ -157,8 +160,11 @@ const routes = {
         agent_id: id,
         label: a.label,
         slot: a.slot,
-        grants: Object.entries(a.grants).map(([name, limit]) => ({
-          name, limit, used: used.get(useKey(id, name)) ?? 0,
+        grants: Object.entries(a.grants).map(([name, grant]) => ({
+          name,
+          limit: quotaOf(grant).limit,
+          window_seconds: quotaOf(grant).window || null,
+          used: spentOf(used, useKey(id, name), quotaOf(grant)).count,
         })),
       })),
       note: "what each agent may invoke. What each may spend is on the device.",
@@ -188,8 +194,9 @@ const server = createServer(async (req, res) => {
 
   // Granted to *this* agent, and the refusal says so without listing what
   // anyone else holds.
-  const limit = agent.grants[name];
-  if (limit === undefined) {
+  const quota = quotaOf(agent.grants[name]);
+  const limit = quota?.limit;
+  if (quota === null) {
     return json(res, 200, {
       ok: false, refused: true, reason: "not_granted",
       advice: `'${agent.label}' has no grant for '${name}'`,
@@ -197,11 +204,17 @@ const server = createServer(async (req, res) => {
     });
   }
 
-  const count = used.get(useKey(agent.id, name)) ?? 0;
+  const quotaKey = useKey(agent.id, name);
+  const window = spentOf(used, quotaKey, quota);
+  const count = window.count;
   if (count >= limit) {
     return json(res, 200, {
       ok: false, refused: true, reason: "capability_exhausted",
-      advice: `'${agent.label}' was granted ${limit} calls of '${name}' and has used them`,
+      advice: quota.window
+        ? `'${agent.label}' may call '${name}' ${limit} time(s) per ` +
+          `${quota.window}s and has used them; it refills`
+        : `'${agent.label}' was granted ${limit} calls of '${name}' and has used them`,
+      terminal: !quota.window,
     });
   }
 
@@ -230,7 +243,7 @@ const server = createServer(async (req, res) => {
       headers: { [cap.header]: secret.value },
     });
     const body = await upstream.text();
-    bump(useKey(agent.id, name), count + 1);
+    bump(quotaKey, { count: count + 1, start: window.start });
 
     json(res, 200, {
       ok: upstream.ok,
