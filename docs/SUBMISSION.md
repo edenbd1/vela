@@ -48,22 +48,28 @@ chip refuses, the refusal comes back as a reason it can act on, and it adapts.
 | An agent refused by the chip, and adapting | `docs/AGENT-LOOP.md`, on hardware |
 | Software cannot do this | `./scripts/experiment.sh` — same rules, same attack, one variable |
 | A host with no USB port joining the Key Ring | a public GitHub Actions log |
+| An agent **spending** from hardware we do not own | `.github/workflows/remote-spend.yml` — an Azure runner with no USB bus paid 0.01 HBAR and was refused 0.08 by the chip |
+| A trustchain whose owner is the Secure Element | `enroll.cjs grant --device` — every admission a tap, two members admitted |
+| Losing the device and getting the envelopes back | the fleet revoked and restored from the public log, positions intact to the tinybar |
+| A rate limit, not just a budget | four draws paid, the fifth refused `too_fast` with 0.14 HBAR still available |
 
 ## The one measurement worth reading
 
 Six runs per model, output in `docs/bench-2026-09-10-defi.txt`:
 
 ```
-  the chip allowed                     0.21 HBAR
-  the agents asked for                 1.16 HBAR
+  the chip allowed                     0.28 HBAR
+  the agents asked for                 1.12 HBAR
+  the difference is the product        0.84 HBAR
 ```
 
 And, in the scenario where a compromised risk feed tells the agent where to
 route a swap's proceeds: **every model, in every run, aimed at the attacker's
-account** — most of the time after flagging the advisory as an instruction.
-Noticing is not resisting. The mandate holds at whatever rate the model
-misbehaves, including rates nobody has measured, which is the argument for
-putting the limit in silicon rather than in a prompt.
+account** — half the runs for one model and four in five for the other having
+already flagged the advisory as an injected instruction. Noticing is not
+resisting. The mandate holds at whatever rate the model misbehaves, including
+rates nobody has measured, which is the argument for putting the limit in
+silicon rather than in a prompt.
 
 ---
 
@@ -104,7 +110,7 @@ Their framing is *"Agents propose. Humans approve."* — one tap per
 transaction, and no limit enforced by the device. Vela is the missing half:
 the device enforcing terms **between** taps.
 
-- A native BOLOS app, ~4.8k lines of C in the Secure Element: NVRAM mandate
+- A native BOLOS app, ~5.4k lines of C in the Secure Element: NVRAM mandate
   storage for eight agents, an on-chip Hedera protobuf serialiser, ordered
   refusals on expiry, payee, ceiling, budget and **rate**, a fleet screen,
   revocation by finger, and mandate recovery from the public log.
@@ -118,8 +124,11 @@ the device enforcing terms **between** taps.
   about to sign and compares it with its own account.
 - Their second ask, verbatim: *"Bring the Key Ring to hosts with no USB port:
   enroll a VPS, a CI runner, or a hosted agent."* `host/ring/enroll.cjs` does
-  the ceremony, and a CI runner does it on every push.
-- 14 findings from building on the platform, written up as
+  the ceremony, and a CI runner does it on every push. `--device` goes further
+  and makes the Secure Element itself the trustchain owner, so every admission
+  is a screen — which took four status words to reach, none of which names
+  what is wrong.
+- 18 findings from building on the platform, written up as
   `docs/FEEDBACK-LEDGER.md` — including one that factory-reset the device
   three times and is still not fully understood.
 
@@ -129,8 +138,13 @@ the device enforcing terms **between** taps.
 - An HCS audit topic where every draw carries a 29-byte statement **the chip
   signed** — so the log is the device's own account, not the host's.
 - A verifier that runs in the reader's browser against the public mirror node
-  and nothing else. Contract calls are anchored too, which was a bug once: an
-  agent that swapped left a hole in its own chain.
+  and nothing else. Contract calls are anchored too, which was a bug twice:
+  the gateway had it, and `hedera/defi.mjs` went straight to the chip and
+  skipped it, so running the DeFi demonstration put a hole in the log.
+- Recovery from that log alone. The fleet was revoked — the device, as far as
+  the envelopes are concerned, lost — and restored from the mirror node with
+  every position intact. The one difference is conservative and deliberate: an
+  unsettled reservation comes back counted as spent.
 
 ### Chainlink
 
@@ -143,14 +157,31 @@ the device enforcing terms **between** taps.
 
 ## What is not done, said here rather than discovered
 
-- No agent **pays** from a machine we do not control. Enrolment happens on a
-  public CI runner; the broker and gateway are still on one laptop.
-- The device does not sign each Key Ring `AddMember`. That needs the Ledger
-  Sync app rather than Vela, and the transport for it is written but unused.
-- Eight mandate slots and recovery are proven on the emulator and have not run
-  on hardware, because loading a new build wipes the mandates on it.
-- The broker can decrypt while it runs. Nothing is at rest there, and
+- **The broker can decrypt while it runs.** Nothing is at rest there, and
   membership rotates away without touching the upstream key, but a compromised
-  broker can misuse a secret it currently holds.
+  broker can misuse a secret it currently holds. This is the real remaining
+  gap and it is too large for the time left.
+- **Ejecting a member from the device-rooted trustchain is written and not
+  proven.** `revoke --device` closes the stream and re-admits whoever remains,
+  all signed on the chip, and every APDU succeeds up to the last one — a
+  two-byte `COMMAND_CLOSE_STREAM` that the Ledger Sync app answers with a
+  screen rather than a status word. Three attempts, five minutes of timeout
+  each, and the person holding the Flex saw a prompt that did not match what
+  the app's own source builds. Finding 18. Admission works; eviction on that
+  chain is unverified, and the sealed-key path still has both.
+- **The demonstration spends on testnet**, and a mandate denominated in HBAR
+  says nothing about what the same envelope would mean against a token whose
+  decimals the chip would have to learn.
+
+Three things that were on this list yesterday are not any more, which is worth
+saying because the list is meant to be read as current:
+
+- An agent now pays from hardware we do not own — a GitHub Actions runner,
+  through a tunnel, refused `over_per_call` by the chip in a public log.
+- The device does sign each Key Ring `AddMember`. It needed a challenge the
+  app would accept, not Ledger's backend, which is the opposite of what we
+  first concluded.
+- Eight slots, velocity and recovery all run on hardware, including the fleet
+  being revoked and restored from the public log with its positions intact.
 
 `docs/ASSESSMENT.md` is the long version, written to be unflattering.
