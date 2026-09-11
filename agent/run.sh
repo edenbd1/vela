@@ -30,7 +30,23 @@ fi
 BUNDLE="${VELA_BUNDLE:-}"
 if [ -z "${AGENT_TOKEN:-}" ] && [ -n "$BUNDLE" ] && [ -f "$BUNDLE" ]; then
   echo "  token from the Key Ring bundle, not from the environment" >&2
-  AGENT_TOKEN="$(node ../host/ring/enroll.cjs claim "$BUNDLE" --quiet)"
+  SEALED="$(node ../host/ring/enroll.cjs claim "$BUNDLE" --quiet)"
+  # One host, one membership, several agents — so the sealed value is a JSON
+  # object from agent label to token. A bare string is what a single-agent
+  # host sealed before that and still means "the token, for whoever asks".
+  AGENT_TOKEN="$(SEALED="$SEALED" NAME="${AGENT_NAME:-research-1}" node -e '
+    const s = process.env.SEALED ?? "";
+    try {
+      const m = JSON.parse(s);
+      process.stdout.write(typeof m === "object" && m
+        ? (m[process.env.NAME] ?? "") : s);
+    } catch { process.stdout.write(s); }
+  ')"
+  [ -n "$AGENT_TOKEN" ] || {
+    echo "  the bundle carries no token for '${AGENT_NAME:-research-1}'" >&2
+    echo "  seal one:  node broker/enroll.mjs ${AGENT_NAME:-research-1}" >&2
+    exit 1
+  }
   export AGENT_TOKEN
 fi
 

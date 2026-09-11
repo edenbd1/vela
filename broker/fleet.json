@@ -27,7 +27,7 @@
         "risk.screen": 50,
         "infer.triage": 20
       },
-      "token_sha256": "616e675cca03c3d60ad4786fb0e039e43d8783aa8357c619010f6fc81af24a9f"
+      "token_sha256": "06f896c63ba736bb414312890c0656aa8c7fa88c222fd0c83154c21dedcd9b6a"
     },
     "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": {
       "label": "ops-nightly",
@@ -35,7 +35,7 @@
       "grants": {
         "infer.triage": 5
       },
-      "token_sha256": "c4fcc0d4fefdfe5948ccafbc512d42c2b31afe16c07fca41de674e934d09a779"
+      "token_sha256": "54b9c6f4ccb96aee4664b47017f92b058cb44c89c2d23be354b3511c4415d2f0"
     },
     "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3": {
       "label": "watcher",
@@ -43,7 +43,7 @@
       "grants": {
         "risk.screen": 200
       },
-      "token_sha256": "2fc093f577d35d14d2777faf3fb0d559fa05e8c3426af2f772857e4e749f6517"
+      "token_sha256": "03e230412eba68e63b2a2c99c83c3d8f0a85a0ef0ce38910eecaef1ae86f4426"
     },
     "9de980aa335df2af27ea4c640c09878ca7d9dd91": {
       "label": "remote-1",

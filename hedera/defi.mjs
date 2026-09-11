@@ -17,6 +17,9 @@ import dotenv from "dotenv";
 import { keccak256, toUtf8Bytes } from "ethers";
 
 import { BridgeTransport } from "./ledger-signer.mjs";
+import { makeAnchor, mandateDigest, callRecord } from "./anchor.mjs";
+import { currentInstance } from "./instance.mjs";
+import { live, liveTopic } from "./live-env.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
@@ -65,7 +68,13 @@ async function state() {
     .catch((e) => (e.sw === 0xb102 ? null : Promise.reject(e)));
   if (!s || s.length < 69) return null;
   return {
+    // The terms as well as the position: anchoring a call needs the digest,
+    // and the digest is over exactly these fields.
+    agent: s.subarray(1, 21),
+    budgetTotal: s.readBigUInt64BE(21),
+    perCallMax: s.readBigUInt64BE(45),
     available: s.readBigUInt64BE(53),
+    expiry: s.readUInt32BE(61),
     seq: s.readUInt32BE(65),
     payees: Array.from({ length: s.readUInt8(69) },
                        (_, i) => s.readBigUInt64BE(70 + i * 8)),
@@ -120,7 +129,14 @@ async function call({ contract, calldata, amount = 1_000_000n }) {
     // trip and nothing else — the signature above is over these bytes, so a
     // body that does not match is a body that will not verify.
     const encoded = await t.exchange(Buffer.from([CLA, GET_BODY, 0, 0, 0]));
-    return { sw: 0x9000, seq: r.readUInt32BE(0), bodyLen, sig, body: encoded };
+    return {
+      sw: 0x9000, seq: r.readUInt32BE(0), bodyLen, sig, body: encoded,
+      // The chip's own statement about this draw and its signature over it.
+      // Same offsets the gateway reads, because it is the same response.
+      remaining: r.readBigUInt64BE(4),
+      anchor: r.subarray(78, 78 + 29),
+      anchorSig: r.subarray(78 + 29, 78 + 29 + 64),
+    };
   } catch (e) {
     if (e.sw) return { sw: e.sw };
     throw e;
@@ -155,14 +171,56 @@ const cases = [
    { contract: OTHER_ROUTER, calldata: Buffer.concat([SWAP, word(1), addressWord(SELF)]) }],
 ];
 
+/**
+ * Anchor the one call the chip authorised.
+ *
+ * An AUTHORIZE_CALL burns a sequence number exactly as a transfer does. Leave
+ * it unpublished and the log reads 2,3,4 where it should read 1,2,3,4 — and a
+ * verifier correctly refuses the whole envelope, because from outside a hole
+ * is indistinguishable from a payment somebody chose not to publish.
+ *
+ * That is written up in anchor.mjs and implemented in the gateway, and this
+ * file went straight to the chip and skipped it. Running the DeFi
+ * demonstration broke the audit chain; `verify.mjs` said `FAIL seq 2 follows
+ * 0` immediately afterwards, which is the check doing its job on us.
+ *
+ * `tx` is null and stays null: the body is signed here and submitted
+ * elsewhere, so claiming a transaction id we have not seen would be the one
+ * kind of lie this log cannot survive.
+ */
+const anchorTo = liveTopic()
+  ? makeAnchor({ topicId: liveTopic(),
+                 operatorId: live("HEDERA_TREASURY_ID"),
+                 operatorKey: live("HEDERA_TREASURY_KEY") })
+  : null;
+
 for (const [label, req] of cases) {
   const r = await call(req);
   const name = SW[r.sw] ?? `0x${r.sw.toString(16)}`;
-  const extra = r.sw === 0x9000
-    ? `  (draw #${r.seq}, ${r.bodyLen}-byte body signed, ${r.body.length} fetched)`
-    : "";
+  let extra = "";
+  if (r.sw === 0x9000) {
+    extra = `  (draw #${r.seq}, ${r.bodyLen}-byte body signed, ${r.body.length} fetched)`;
+    if (anchorTo) {
+      const n = await anchorTo.submit(callRecord({
+        mandateHash: mandateDigest({
+          agentId: st.agent, payees: st.payees,
+          budgetTotal: st.budgetTotal, perCallMax: st.perCallMax,
+          expiry: st.expiry,
+        }),
+        instance: currentInstance().id,
+        seq: r.seq,
+        contract: req.contract,
+        amount: 1_000_000n,
+        remaining: r.remaining,
+        anchor: r.anchor,
+        anchorSig: r.anchorSig,
+      }));
+      extra += `, anchored as message #${n}`;
+    }
+  }
   console.log(`  ${label.padEnd(40)} ${name}${extra}`);
 }
+anchorTo?.close();
 
 console.log(`\n  Only one field differed between the first two: the address in`);
 console.log(`  argument 1. Same contract, same function, same amount.`);

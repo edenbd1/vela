@@ -76,15 +76,61 @@ const DEFAULT = {
         "envelope allows. Report a verdict.",
 };
 
+/**
+ * The tokens, out of the Key Ring, once.
+ *
+ * A bundle is named for the *host* that was enrolled, not for an agent —
+ * agent/run.sh says so in as many words, and it is the right model: one host
+ * holds one membership and may run several agents. This file used to look for
+ * `bundle-<agent-label>.json`, which under that convention never exists, so
+ * every agent fell through to "no token" and the whole swarm skipped itself.
+ *
+ * So the sealed value is a JSON object from label to token. One membership,
+ * one ciphertext, one claim for the fleet — rather than one bundle per agent,
+ * which would make a host's identity and an agent's identity the same thing.
+ * A bare string still works and is read as the token for whoever asks, which
+ * is what a single-agent host sealed before this.
+ */
+function bundlePath() {
+  if (process.env.VELA_BUNDLE) return process.env.VELA_BUNDLE;
+  const member = join(ROOT, "host", "ring", ".member.json");
+  if (!existsSync(member)) return null;
+  try {
+    const name = JSON.parse(readFileSync(member, "utf8")).name;
+    const b = join(ROOT, "host", "ring", `bundle-${name}.json`);
+    return existsSync(b) ? b : null;
+  } catch { return null; }
+}
+
+let sealed;                       // claimed at most once per run
+async function fromBundle() {
+  if (sealed !== undefined) return sealed;
+  const bundle = bundlePath();
+  if (!bundle) return (sealed = null);
+  const out = await new Promise((r) => {
+    const p = spawn(process.execPath,
+      [join(ROOT, "host/ring/enroll.cjs"), "claim", bundle, "--quiet"],
+      { stdio: ["ignore", "pipe", "ignore"] });
+    let s = ""; p.stdout.on("data", (d) => (s += d));
+    p.on("close", () => r(s.trim()));
+  });
+  if (!out) return (sealed = null);
+  try {
+    const parsed = JSON.parse(out);
+    sealed = (parsed && typeof parsed === "object") ? parsed : { "*": out };
+  } catch {
+    sealed = { "*": out };
+  }
+  return sealed;
+}
+
 /** Whatever token this label has, from wherever it is kept. */
-function tokenFor(label) {
+async function tokenFor(label) {
   const fromEnv = process.env[`VELA_TOKEN_${label.toUpperCase().replace(/-/g, "_")}`];
   if (fromEnv) return fromEnv;
 
-  const bundle = join(ROOT, "host", "ring", `bundle-${label}.json`);
-  if (existsSync(bundle)) return { bundle };
-
-  return null;
+  const map = await fromBundle();
+  return map ? (map[label] ?? map["*"] ?? null) : null;
 }
 
 const wanted = process.argv.slice(2);
@@ -129,23 +175,13 @@ console.log(`${DIM}They do not know about each other. The device does.${OFF}\n`)
 function run(agent, tint) {
   const brief = BRIEFS[agent.label] ?? DEFAULT;
   return new Promise(async (resolve) => {
-    const tok = tokenFor(agent.label);
-    if (!tok) {
+    const token = await tokenFor(agent.label);
+    if (!token) {
       console.log(`${tint}${agent.label.padEnd(14)}${OFF} no token — ` +
-                  `mint one (node broker/enroll.mjs ${agent.label}) or enrol ` +
-                  `this host and grant it`);
+                  `mint one (node broker/enroll.mjs ${agent.label}) and seal it ` +
+                  `into this host's bundle, or set ` +
+                  `VELA_TOKEN_${agent.label.toUpperCase().replace(/-/g, "_")}`);
       return resolve({ ...agent, skipped: true });
-    }
-
-    let token = tok;
-    if (tok.bundle) {
-      token = await new Promise((r) => {
-        const p = spawn(process.execPath,
-          [join(ROOT, "host/ring/enroll.cjs"), "claim", tok.bundle, "--quiet"],
-          { stdio: ["ignore", "pipe", "ignore"] });
-        let s = ""; p.stdout.on("data", (d) => (s += d));
-        p.on("close", () => r(s.trim()));
-      });
     }
 
     const p = spawn(process.execPath, [join(HERE, "reason.mjs")], {
