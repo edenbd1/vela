@@ -449,34 +449,56 @@ function members(onDevice = false) {
  * path — `grant <pubkey> <name> --seal <value>` does that for a member who
  * is staying.
  */
-async function revoke(name) {
-  const state = loadChain();
-  if (!state) throw new Error("no trustchain yet — nobody to eject");
+async function revoke(name, onDevice = false) {
+  // Eviction is the half that makes enrolment worth having, and for a while
+  // it existed only for the software-rooted chain: `revoke` loaded that file
+  // unconditionally, so a member admitted by a tap could not be ejected at
+  // all. It answered "'second-runner' is not a member" while the device chain
+  // held exactly that name — the two rosters are separate files and only one
+  // of them was addressable.
+  const file = onDevice ? CHAIN_FILE_DEVICE : CHAIN_FILE;
+  const state = loadChain(file);
+  if (!state) {
+    throw new Error(onDevice
+      ? "no device-rooted trustchain — nobody to eject"
+      : "no trustchain yet — nobody to eject");
+  }
   if (!state.members[name]) {
     throw new Error(
-      `'${name}' is not a member. In the ring: ` +
-      `${Object.keys(state.members).join(", ") || "(nobody)"}`);
+      `'${name}' is not a member of the ${onDevice ? "device-rooted" : "sealed"} ` +
+      `trustchain. In it: ` +
+      `${Object.keys(state.members).join(", ") || "(nobody)"}` +
+      (onDevice ? "" : "\n  (a member admitted with --device is in the other " +
+                       "one: enroll.cjs members --device)"));
   }
 
   const remaining = Object.entries(state.members).filter(([n]) => n !== name);
-  const owner = ownerOf(state);
+  const owner = onDevice ? await deviceOwner() : ownerOf(state);
   let tree = StreamTree.deserialize(state.tree);
 
   const oldPath = state.path;
+  if (onDevice) console.log(">>> approve closing the current stream on the device <<<");
   tree = await tree.close(oldPath, owner);
 
   const increment = (state.increment ?? 0) + 1;
   const path = tree.getApplicationRootPath(APP_INDEX, increment);
 
+  // OWNER on the device path for the same reason admission uses it: the Sync
+  // app signs an AddMember only when the permissions are OWNER, and refuses
+  // anything else as SW_BAD_STATE. Re-sharing to a key reader would fail here
+  // and leave the stream closed with nobody re-admitted — which is an
+  // eviction that takes everyone down with it.
+  const permissions = onDevice ? Permissions.OWNER : Permissions.KEY_READER;
   for (const [n, m] of remaining) {
-    tree = await tree.share(path, owner, unhex(m.publicKey), n, Permissions.KEY_READER);
+    if (onDevice) console.log(`>>> approve re-admitting '${n}' on the new path <<<`);
+    tree = await tree.share(path, owner, unhex(m.publicKey), n, permissions);
   }
 
   state.tree = tree.serialize();
   state.path = path;
   state.increment = increment;
   delete state.members[name];
-  saveChain(state);
+  saveChain(state, file);
 
   // Fresh bundles for whoever is left. Without a secret: re-sealing one is a
   // deliberate act, and quietly re-issuing a token during an eviction is the
@@ -540,7 +562,7 @@ async function main() {
     case "grant":   return grant(args[0], args[1] ?? "enrolled-host", seal,
                                  rest.includes("--device"));
     case "claim":   return claim(args[0], rest.includes("--quiet"));
-    case "revoke":  return revoke(args[0]);
+    case "revoke":  return revoke(args[0], rest.includes("--device"));
     case "members": return members(rest.includes("--device"));
     case "forget":  return forget();
     default:
@@ -549,7 +571,7 @@ async function main() {
       console.log("  enroll.cjs grant <pubkey> <name> [--seal V] [--device]");
   console.log("       --device signs each admission on the Flex (needs Ledger Sync)");
       console.log("  enroll.cjs claim <bundle.json> [--quiet]   back on the host");
-      console.log("  enroll.cjs revoke <name>                   eject, and rotate the key");
+      console.log("  enroll.cjs revoke <name> [--device]        eject, and rotate the key");
   console.log("  enroll.cjs members [--device]              who is in");
       console.log("  enroll.cjs forget                          drop this host's identity");
       process.exit(2);
