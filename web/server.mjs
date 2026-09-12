@@ -306,6 +306,17 @@ const server = createServer(async (req, res) => {
 
     const body = await r.json().catch(() => ({}));
     if (body.error) {
+      // Our own relay fails a call in flight when the tab holding the device
+      // lets go. That is not a screen waiting for a finger, and telling
+      // someone who just pressed Release to go and answer the Flex sends them
+      // to look at a device that is asking nothing.
+      if (!relay.held() && /holding the device/.test(body.error)) {
+        return reply({
+          state: "no-bridge",
+          why: "the tab that was holding the Flex let go",
+          fix: "connect the Flex from this page, or run python3 host/bridge.py",
+        });
+      }
       return reply({ state: "busy", why: body.error, fix: "answer or dismiss the screen on the Flex" });
     }
     if (!body.data) {

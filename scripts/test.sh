@@ -75,6 +75,16 @@ host_suites() {
   fi
   node --test test/relay.test.mjs >/dev/null 2>&1 || exit 1
 
+  # Ledger's HID framing, which the page does itself. The console connected,
+  # named the app and the version, and read every mandate short: the one call
+  # anyone could watch working was fourteen bytes and fitted in one packet.
+  echo "the HID framing"
+  if ! node --test test/framing.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^# /  /'; then
+    echo "  framing tests failed" >&2
+    exit 1
+  fi
+  node --test test/framing.test.mjs >/dev/null 2>&1 || exit 1
+
   # Refusal-handling is a property of the loop, not of the model's mood on the
   # day, so it runs against a fake gateway, a fake broker and a scripted model
   # on ephemeral ports — with the real agent/reason.mjs as a child process.
@@ -114,6 +124,20 @@ host_suites() {
   else
     echo "  not running on :4050 — skipped"
   fi
+
+  # The one path no other suite here can reach: a browser holding a Ledger.
+  # It found two bugs in a row — a Connect that blinded the rest of the page,
+  # and a reassembly that truncated every reply over 57 bytes — and neither
+  # was visible without a real browser and a device. It replays a recording
+  # off a Flex, so it needs neither.
+  echo "the console holding the device"
+  local w
+  w=$(python3 test/webhid_test.py) || {
+    echo "$w" | grep -E "FAIL|passed" | sed 's/^ */  /'
+    echo "  WebHID tests failed" >&2
+    exit 1
+  }
+  echo "$w" | tail -1 | sed 's/^ */  /'
   echo ""
 }
 

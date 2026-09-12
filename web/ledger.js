@@ -25,7 +25,7 @@ const PACKET = 64;
 export const supported = () =>
   typeof navigator !== "undefined" && !!navigator.hid && window.isSecureContext;
 
-function frame(apdu) {
+export function frame(apdu) {
   const body = new Uint8Array(2 + apdu.length);
   new DataView(body.buffer).setUint16(0, apdu.length);
   body.set(apdu, 2);
@@ -45,13 +45,27 @@ function frame(apdu) {
   return packets;
 }
 
-/** Reassemble, and stop at the length the first packet declared. */
-function unframe(packets) {
+/**
+ * Reassemble, or say that it cannot yet.
+ *
+ * `null` while packets are still in flight, and that return is the whole
+ * point of this function. It used to hand back whatever had arrived so far —
+ * `out.slice(0, expected)` on a 57-byte array is a 57-byte array, not a short
+ * read anyone would notice — and the caller resolved on it. Everything under
+ * 58 bytes worked, which is every reply the device panel makes, so the pill
+ * said "Connected" while every mandate read came back truncated with two
+ * bytes of somebody's budget parsed as the status word.
+ */
+export function unframe(packets) {
   let expected = null;
   const out = [];
   for (let i = 0; i < packets.length; i++) {
     const p = packets[i];
-    if (i === 0) {
+    // Ledger's transport multiplexes: tag 0x05 is APDU traffic, and a ping
+    // reply on the same channel is not part of this answer.
+    if (p.length < 5 || p[2] !== TAG) continue;
+    if (expected === null) {
+      if (p.length < 7) return null;
       expected = new DataView(p.buffer, p.byteOffset).getUint16(5);
       out.push(...p.subarray(7));
     } else {
@@ -59,6 +73,7 @@ function unframe(packets) {
     }
     if (out.length >= expected) break;
   }
+  if (expected === null || out.length < expected) return null;
   return new Uint8Array(out.slice(0, expected));
 }
 
@@ -111,12 +126,9 @@ export class WebHidLedger {
         () => done(reject, new Error("the device did not answer")), timeout);
 
       const onReport = (e) => {
-        const p = new Uint8Array(e.data.buffer);
-        packets.push(p);
-        try {
-          const full = unframe(packets);
-          if (full.length) done(resolve, full);
-        } catch { /* more packets to come */ }
+        packets.push(new Uint8Array(e.data.buffer));
+        const full = unframe(packets);
+        if (full) done(resolve, full);
       };
 
       this.device.addEventListener("inputreport", onReport);
