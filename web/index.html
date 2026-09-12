@@ -17,6 +17,7 @@
   </div>
   <span class="tag">a spending limit your agent cannot argue with</span>
   <nav>
+    <a href="#why">Why</a>
     <a href="#fleet">Fleet</a>
     <a href="#thinking">Agents</a>
     <a href="#envelope">Envelope</a>
@@ -53,6 +54,75 @@
       <div class="claim"><b id="c-draws">—</b> draws, all anchored publicly</div>
       <div class="claim">keys on these hosts <b>none</b></div>
     </div>
+  </section>
+
+  <!-- ============================================================== why -->
+  <section id="why">
+    <h2 class="section">Where the limit lives
+      <span class="src">the same attack, three times</span>
+    </h2>
+    <p class="lede">
+      An agent that does real work needs a credential and a way to spend. Today
+      you copy both onto whatever machine it runs on — so every guardrail runs
+      in the process being attacked. Here is one request, made three times,
+      with the limit in a different place each time.
+    </p>
+
+    <div class="tracks">
+      <div class="track">
+        <div class="track-h">The limit is a number in a file</div>
+        <div class="rail">
+          <span class="node">agent asks</span>
+          <span class="run ok"></span>
+          <span class="end ok mono">SETTLED</span>
+        </div>
+        <p class="track-note">
+          The agent reached the file first and raised the ceiling. A spend cap
+          in the same memory a prompt injection just reached is not a limit —
+          it is a suggestion, enforced by the thing being attacked.
+        </p>
+      </div>
+
+      <div class="track">
+        <div class="track-h">The limit is a person at the screen</div>
+        <div class="rail">
+          <span class="node">agent asks</span>
+          <span class="run host"></span>
+          <span class="node host">you approve</span>
+          <span class="run ok"></span>
+          <span class="end ok mono">SETTLED</span>
+        </div>
+        <p class="track-note">
+          Hardware custody proves you approved. It also asks you to approve
+          every payment, one at a time — which is exactly what an agent
+          working overnight cannot have.
+        </p>
+      </div>
+
+      <div class="track is-vela">
+        <div class="track-h">The limit is inside the Secure Element</div>
+        <div class="rail">
+          <span class="node">agent asks</span>
+          <span class="run chip short"></span>
+          <span class="end chip mono">REFUSED</span>
+          <span class="reason mono">payee_not_allowed</span>
+        </div>
+        <p class="track-note">
+          You granted one envelope, once, with one tap: this agent, this
+          budget, this ceiling, these payees, this rate. The agent then runs
+          unattended, and the chip checks every payment against terms no host
+          can read or edit. It holds the only key that can sign, so an agent
+          that decides to ignore the limit has nothing to sign with.
+        </p>
+      </div>
+    </div>
+
+    <p class="why-foot">
+      All three lines above are a real command, not a diagram:
+      <code>./scripts/experiment.sh</code> runs the same attack against a
+      software policy and against the chip, with root on this machine in both
+      cases.
+    </p>
   </section>
 
   <!-- ============================================================ fleet -->
