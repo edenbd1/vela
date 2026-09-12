@@ -989,8 +989,8 @@ it, every link resolves, every Hedera topic id named is the one the gateway is
 anchoring to right now, and every stated count of findings matches the ledger
 that holds them. Four bugs in one day were things written down that had
 stopped being true, including this script being described as running a suite
-it never ran — and the count check went in after "fourteen findings" survived
-in two documents while there were eighteen.
+it never ran — and the count check went in after a total of fourteen survived
+in two documents while the ledger held eighteen.
 
 Then forty-five against the chip: every refusal in order, the contract-call
 bindings, settlement arithmetic, the velocity window, mandate recovery, label
