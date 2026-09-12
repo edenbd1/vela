@@ -271,6 +271,22 @@ async function refresh() {
     return null;
   }
 
+  // Unreadable is not empty. Saying "no mandate in the chip" to someone whose
+  // Flex is merely on the dashboard describes a revoked fleet — which is the
+  // one picture this console must never draw by accident.
+  if (d.unknown) {
+    $("dot").className = "dot off";
+    $("device-text").textContent = "device not answering";
+    $("available").textContent = "—";
+    // textContent, not innerHTML: `why` is a string the device handed us, and
+    // this page asserts elsewhere that nothing it is handed becomes markup.
+    const li = document.createElement("li");
+    li.className = "none";
+    li.textContent = d.why ?? "the device did not answer";
+    $("payees").replaceChildren(li);
+    return null;
+  }
+
   if (!d.mandate) {
     $("dot").className = "dot off";
     $("device-text").textContent = "no mandate in the chip";

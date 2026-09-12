@@ -531,7 +531,25 @@ const routes = {
   "GET /envelope": async (req, res) => {
     const who = callerSlot(req, new URL(req.url, "http://localhost"));
     if (!who) return json(res, 401, { error: "unknown token" });
-    const e = await envelope(who.slot);
+    // "no mandate here" and "the device did not answer" are different facts,
+    // and this endpoint collapsed them — telling a caller whose Flex was
+    // simply on the dashboard that the slot was empty and "not an error you
+    // can retry past", when re-opening Vela is exactly the fix. /mandates
+    // learned this already; /envelope had not.
+    let e;
+    try {
+      e = await envelope(who.slot);
+    } catch (err) {
+      return json(res, 200, {
+        slot: who.slot,
+        agent: who.agent,
+        mandate: null,
+        unknown: true,
+        why: String(err?.message ?? err).slice(0, 160),
+        note: "the device did not answer, so this says nothing about what is " +
+              "in this slot. It may hold an envelope and simply be unreadable.",
+      });
+    }
     if (!e) {
       return json(res, 200, {
         slot: who.slot,
