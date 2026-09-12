@@ -15,16 +15,11 @@
   <div>
     <h1>Vela</h1>
   </div>
-  <span class="tag">a spending limit your agent cannot argue&nbsp;with</span>
   <nav>
-    <a href="#why">Why</a>
-    <a href="#held">Holds</a>
     <a href="#fleet">Fleet</a>
-    <a href="#thinking">Agents</a>
     <a href="#envelope">Envelope</a>
-    <a href="#boundary">The boundary</a>
+    <a href="#thinking">Agents</a>
     <a href="#log">Log</a>
-    <a href="/verify.html">Verify</a>
   </nav>
   <div class="device" id="device">
     <span class="dot" id="dot"></span>
@@ -42,155 +37,19 @@
   </div>
 
   <section class="hero">
-    <h2>Agents propose.<br><em>The chip decides.</em></h2>
+    <img src="/brand/vela-mark.svg" alt="" class="hero-mark">
+    <h2>A spending mandate<br>held in a Secure Element</h2>
     <p>
       A human grants one envelope with one tap — this agent, this budget, this
-      ceiling, these payees. After that the agent runs unattended on a machine
-      with no key on it, and every payment is checked inside a Secure Element
-      that no host can read or edit.
+      ceiling, these payees. The agent then runs unattended on a machine with
+      no key on it, and every payment is checked inside a chip no host can
+      read or edit.
     </p>
     <div class="claims">
       <div class="claim"><b id="c-agents">—</b> agents</div>
-      <div class="claim"><b id="c-left">—</b> HBAR still authorised</div>
-      <div class="claim"><b id="c-draws">—</b> draws, all anchored publicly</div>
-      <div class="claim"><b>none</b> keys on these hosts</div>
+      <div class="claim"><b id="c-left">—</b> HBAR authorised</div>
+      <div class="claim"><b id="c-draws">—</b> draws anchored</div>
     </div>
-  </section>
-
-  <!-- ============================================================== why -->
-  <section id="why">
-    <h2 class="section">Where the limit lives
-      <span class="src">the same attack, three times</span>
-    </h2>
-    <p class="lede">
-      An agent that does real work needs a credential and a way to spend. Today
-      you copy both onto whatever machine it runs on — so every guardrail runs
-      in the process being attacked. Here is one request, made three times,
-      with the limit in a different place each time.
-    </p>
-
-    <div class="tracks">
-      <div class="track">
-        <div class="track-h">The limit is a number in a file</div>
-        <div class="rail">
-          <span class="node">agent asks</span>
-          <span class="run ok"></span>
-          <span class="end ok mono">SETTLED</span>
-        </div>
-        <p class="track-note">
-          The agent reached the file first and raised the ceiling. A spend cap
-          in the same memory a prompt injection just reached is not a limit —
-          it is a suggestion, enforced by the thing being attacked.
-        </p>
-      </div>
-
-      <div class="track">
-        <div class="track-h">The limit is a person at the screen</div>
-        <div class="rail">
-          <span class="node">agent asks</span>
-          <span class="run host"></span>
-          <span class="node host">you approve</span>
-          <span class="run ok"></span>
-          <span class="end ok mono">SETTLED</span>
-        </div>
-        <p class="track-note">
-          Hardware custody proves you approved. It also asks you to approve
-          every payment, one at a time — which is exactly what an agent
-          working overnight cannot have.
-        </p>
-      </div>
-
-      <div class="track is-vela">
-        <div class="track-h">The limit is inside the Secure Element</div>
-        <div class="rail">
-          <span class="node">agent asks</span>
-          <span class="run chip short"></span>
-          <span class="end chip mono">REFUSED</span>
-          <span class="reason mono">payee_not_allowed</span>
-        </div>
-        <p class="track-note">
-          You granted one envelope, once, with one tap: this agent, this
-          budget, this ceiling, these payees, this rate. The agent then runs
-          unattended, and the chip checks every payment against terms no host
-          can read or edit. It holds the only key that can sign, so an agent
-          that decides to ignore the limit has nothing to sign with.
-        </p>
-      </div>
-    </div>
-
-    <p class="why-foot">
-      All three lines above are a real command, not a diagram:
-      <code>./scripts/experiment.sh</code> runs the same attack against a
-      software policy and against the chip, with root on this machine in both
-      cases.
-    </p>
-  </section>
-
-  <!-- ============================================================= held -->
-  <section id="held">
-    <h2 class="section">What the agent holds
-      <span class="src">each machine, describing itself</span>
-    </h2>
-    <p class="lede">
-      A limit on spending is half of it. The other half is the credential —
-      the API key you would normally copy onto the same machine. Neither of
-      these hosts has one, and neither is taking our word for it: these are
-      the lines they print about themselves before they start work.
-    </p>
-
-    <div class="split holds">
-      <div class="panel hold">
-        <div class="hold-h">
-          A container on this laptop
-          <span class="src">agent/run.sh</span>
-        </div>
-        <dl class="inv">
-          <dt>api keys</dt>        <dd class="none">none</dd>
-          <dt>private keys</dt>    <dd class="none">none</dd>
-          <dt>recovery phrase</dt> <dd class="none">none</dd>
-          <dt>usb devices</dt>     <dd class="none">none — this is a container</dd>
-          <dt>broker token</dt>    <dd>one — scoped to this agent, revocable, useless elsewhere</dd>
-        </dl>
-        <p class="hold-note">
-          The one thing it holds arrives sealed. This host is a member of the
-          Ledger Key Ring, so it <em>derives</em> the key that opens its token
-          rather than being handed one — and the upstream API keys never reach
-          it at all. It asks the broker to screen an account and gets a score
-          back; the credential is decrypted under the Key Ring for that one
-          request and dropped. Evict the host and the ring rotates: what it
-          kept opens nothing.
-        </p>
-      </div>
-
-      <div class="panel hold">
-        <div class="hold-h">
-          A GitHub runner on Azure
-          <span class="src">.github/workflows/remote-spend.yml</span>
-        </div>
-        <dl class="inv">
-          <dt>host</dt>     <dd>Linux 6.17.0-1022-azure x86_64</dd>
-          <dt>usb</dt>      <dd class="none">no usb bus</dd>
-          <dt>ledger</dt>   <dd class="none">no ledger tooling</dd>
-          <dt>seed</dt>     <dd class="none">none</dd>
-          <dt>envelope</dt> <dd class="none">none — it is in NVRAM on a device this job cannot address</dd>
-        </dl>
-        <p class="hold-note">
-          Then it spends. Hardware neither of us owns bought an inference for
-          <b>0.01 HBAR</b>, asked for eight times the ceiling, and was refused
-          <span class="mono chip">over_per_call</span> — by a chip in a flat in
-          Paris that the job has no address for. The refusal did not happen on
-          the runner, in the gateway, or in a policy file. The whole log is
-          public.
-        </p>
-      </div>
-    </div>
-
-    <p class="why-foot">
-      The container needs no VPS and there isn't one. An agent reaches the
-      gateway over HTTP and does not care where it is, so "a machine you do
-      not control" turned out to be a routing question wearing a hosting
-      question's clothes.
-    </p>
   </section>
 
   <!-- ============================================================ fleet -->
