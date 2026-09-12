@@ -6,18 +6,29 @@
  * and rotates the topic, so running it to add a fourth agent would end three
  * working chains. This adds one without touching either.
  *
- * It writes nothing to .vela-fleet-backup.json. A short-lived envelope for an
- * experiment is not something a replacement device needs back, and putting it
- * in the backup would have recover.mjs offering to restore it forever.
+ * It writes nothing to .vela-fleet-backup.json by default. A short-lived
+ * envelope for an experiment is not something a replacement device needs
+ * back, and putting it in the backup would have recover.mjs offering to
+ * restore it forever.
  *
- *   node hedera/grant-one.mjs <label> <budget-hbar> <per-call-hbar>
+ * `--keep` is the other case, and it stopped being rare: this is what the
+ * console's Grant button runs, so an envelope can now be granted from a web
+ * page by somebody who has no idea a replacement device will not get it back.
+ * The default stays silent-by-omission rather than surprising, and
+ * `recover.mjs --check` names every envelope on the chip that no backup
+ * covers.
+ *
+ *   node hedera/grant-one.mjs <label> <budget-hbar> <per-call-hbar> [--keep]
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { createHash } from "node:crypto";
 
+import { readFileSync, writeFileSync } from "node:fs";
+
 import { BridgeTransport } from "./ledger-signer.mjs";
+import { recordMandate } from "./recovery.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
@@ -25,9 +36,12 @@ dotenv.config({ path: join(ROOT, ".env") });
 const CLA = 0xe0;
 const [GET, CREATE] = [0x10, 0x11];
 
-const [label, budgetHbar, perCallHbar] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const KEEP = args.includes("--keep");
+const [label, budgetHbar, perCallHbar] = args.filter((a) => !a.startsWith("--"));
 if (!label || !budgetHbar || !perCallHbar) {
-  console.log("usage: node hedera/grant-one.mjs <label> <budget-hbar> <per-call-hbar>");
+  console.log("usage: node hedera/grant-one.mjs <label> <budget-hbar> <per-call-hbar> [--keep]");
+  console.log("  --keep  also record it for recovery, as fleet.mjs does");
   process.exit(1);
 }
 
@@ -72,6 +86,27 @@ console.log(`\n  >>> approve '${label}' on the device ` +
 const r = await t.exchange(
   Buffer.concat([Buffer.from([CLA, CREATE, 0, 0, body.length]), body]));
 console.log(`      granted in slot ${r[0]}`);
+
+if (KEEP) {
+  // Appended to the epoch that is already open, because that is the one this
+  // envelope was granted under — writing a fresh file would drop the fleet.
+  const path = join(ROOT, ".vela-fleet-backup.json");
+  let backup;
+  try { backup = JSON.parse(readFileSync(path, "utf8")); }
+  catch { backup = { mandates: [] }; }
+  const entry = {
+    label,
+    agentId: tag.toString("hex"),
+    payees: [String(payee)],
+    budgetTotal: String(budget),
+    perCallMax: String(perCall),
+    expiry: 0,
+  };
+  writeFileSync(path, JSON.stringify(recordMandate(backup, entry), null, 1));
+  console.log(`      recorded for recovery in .vela-fleet-backup.json`);
+} else {
+  console.log(`      not recorded for recovery — pass --keep if it should be`);
+}
 console.log();
 console.log(`  revoke it with:  curl -s -X POST http://127.0.0.1:4030/revoke \\`);
 console.log(`                     -H 'x-vela-operator: '"$(cat .vela-operator-token)" \\`);

@@ -546,3 +546,83 @@ test("a hole inside the latest grant is still refused", () => {
   const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
   assert.equal(r.refused, "the chain for this envelope is broken");
 });
+
+/* ------------------------------------------- what a new device gets back ---
+ * grant-one.mjs writes nothing to the backup by default, and that was a fine
+ * trade while it was a command someone typed for an experiment. It is what the
+ * console's Grant button runs now, so an envelope can be granted from a web
+ * page by somebody with no idea a replacement device will not get it back.
+ *
+ * `--keep` is the other case. The merge is here because this file decides
+ * whether an envelope comes back, and the write that feeds it should be held
+ * by the same tests.
+ */
+const { recordMandate } = await import("../hedera/recovery.mjs");
+
+const one = (label, budget = "5000000") => ({
+  label, agentId: "aa".repeat(20), payees: ["10388937"],
+  budgetTotal: budget, perCallMax: "1000000", expiry: 0,
+});
+
+test("an envelope is added without disturbing the fleet", () => {
+  const before = { topic: "0.0.1", instance: "7", mandates: [one("research-1")] };
+  const after = recordMandate(before, one("remote-1"));
+  assert.deepEqual(after.mandates.map((m) => m.label), ["research-1", "remote-1"]);
+  // The epoch and topic are what bind these to a chain. Rewriting the file
+  // without them would leave a backup that restores against nothing.
+  assert.equal(after.topic, "0.0.1");
+  assert.equal(after.instance, "7");
+});
+
+test("granting the same label again leaves one record, not two", () => {
+  // Revoke and re-grant is the ordinary case, and two records would have
+  // recovery offer to restore an envelope that was superseded.
+  const after = recordMandate(
+    recordMandate({ mandates: [] }, one("remote-1", "5000000")),
+    one("remote-1", "9000000"));
+  assert.equal(after.mandates.length, 1);
+  assert.equal(after.mandates[0].budgetTotal, "9000000", "the later grant wins");
+});
+
+test("a backup that does not exist yet is not a reason to lose the envelope", () => {
+  for (const empty of [{}, { mandates: undefined }, null, undefined]) {
+    const after = recordMandate(empty, one("remote-1"));
+    assert.equal(after.mandates.length, 1, JSON.stringify(empty));
+  }
+});
+
+test("a --keep entry finds its own chain on the public topic", async () => {
+  // The merge is the easy half. The half that actually decides whether an
+  // envelope comes back is the *shape* of the entry: recovery locates a chain
+  // by recomputing the mandate digest from these fields, so one of them
+  // missing or stringified differently gives a digest that matches nothing,
+  // and the restore silently has nothing to restore.
+  //
+  // The digest below is remote-1's, read off topic 0.0.10498583 by
+  // hedera/verify.mjs. If this entry can reproduce it, the entry is complete.
+  const { createHash } = await import("node:crypto");
+  const { mandateDigest } = await import("../hedera/anchor.mjs");
+
+  const label = "remote-1";
+  const entry = {
+    label,
+    // What grant-one.mjs derives when there is nobody to hand out tags.
+    agentId: createHash("sha256").update(label).digest().subarray(0, 20)
+             .toString("hex"),
+    payees: ["10388937"],                    // HEDERA_TREASURY_ID
+    budgetTotal: "5000000",                  // 0.05 HBAR
+    perCallMax: "1000000",                   // 0.01 HBAR
+    expiry: 0,
+  };
+
+  const m = recordMandate({ mandates: [] }, entry).mandates[0];
+  // Exactly how hedera/recover.mjs reads a backup entry.
+  const digest = mandateDigest({
+    agentId: Buffer.from(m.agentId, "hex"),
+    payees: m.payees.map(BigInt),
+    budgetTotal: m.budgetTotal,
+    perCallMax: m.perCallMax,
+    expiry: m.expiry ?? 0,
+  });
+  assert.equal(digest.slice(0, 16), "699722a32363a210");
+});

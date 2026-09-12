@@ -210,6 +210,28 @@ if (process.argv.includes("--check")) {
                   `${behind > 0 ? "nobody published" : "the chip has never made"}`);
     }
   }
+  // The other direction, which had been silent: envelopes the chip is holding
+  // that this backup has never heard of. grant-one.mjs deliberately writes
+  // nothing here — a throwaway envelope should not be offered back forever —
+  // and that was a fine trade while it was a command you typed. It is the
+  // console's Grant button now, so somebody can grant an envelope from a web
+  // page with no idea a replacement device will not get it back.
+  //
+  // Not a failure, so it does not change the exit code. It is a fact about
+  // what this file covers, and the whole point of the file is that someone
+  // can trust what it says.
+  const uncovered = slots.filter((s) => !plan.some((r) => r.label === s.label));
+  if (uncovered.length) {
+    console.log();
+    console.log(`  ${uncovered.length} envelope(s) on the chip are not in this backup:`);
+    for (const s of uncovered) {
+      console.log(`  ${"".padEnd(14)}${s.label} (slot ${s.slot})`);
+    }
+    console.log(`  ${"".padEnd(14)}granted with grant-one.mjs, which does not write one.`);
+    console.log(`  ${"".padEnd(14)}A replacement device will not get them back.`);
+    console.log(`  ${"".padEnd(14)}node hedera/grant-one.mjs <label> <budget> <ceiling> --keep`);
+  }
+
   console.log();
   console.log(disagreed === 0
     ? "  The log reconstructs what the Secure Element is holding, to the tinybar."

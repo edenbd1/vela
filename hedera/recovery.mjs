@@ -19,6 +19,23 @@ import { checkChain, splitGrants } from "./anchor.mjs";
  * across both lives would restore an envelope to a position from a different
  * one.
  */
+/**
+ * Put one envelope into a backup, replacing any record of the same label.
+ *
+ * Lives here rather than in grant-one.mjs because this file is what decides
+ * whether a replacement device gets an envelope back, and the write that feeds
+ * it should be held by the same tests.
+ *
+ * Replace, not append: granting the same label twice — which is exactly what
+ * revoking and re-granting looks like — would otherwise leave two records, and
+ * recovery would offer to restore an envelope that was superseded. The chip
+ * holds one, so the backup holds one.
+ */
+export function recordMandate(backup, entry) {
+  const mandates = (backup?.mandates ?? []).filter((m) => m.label !== entry.label);
+  return { ...backup, mandates: [...mandates, entry] };
+}
+
 export function positions(records) {
   const grouped = new Map();
   for (const r of records) {
