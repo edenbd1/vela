@@ -104,7 +104,12 @@ if not live:
     print("  \033[33m!\033[0m no grant epoch — nothing to compare against")
     sys.exit(0)
 
-docs = sorted(list(root.glob("*.md")) + list((root / "docs").glob("*.md")))
+# The frontend too. verify.html carried a hardcoded topic that went stale two
+# grant epochs ago, so the first thing a reader checked was an abandoned log —
+# from the one page whose argument is "do not trust me, check". Markdown was
+# the only thing being scanned.
+docs = (sorted(list(root.glob("*.md")) + list((root / "docs").glob("*.md")))
+        + sorted((root / "web").glob("*.html")) + sorted((root / "web").glob("*.js")))
 TOPIC = re.compile(r"0\.0\.\d{7,}")
 stale = {}
 for d in docs:
@@ -113,7 +118,8 @@ for d in docs:
         # hashscan topic URL or next to the word topic; everything else here
         # is an account and rotates for different reasons.
         txt = d.read_text()
-        if re.search(rf"topic/{re.escape(t)}|topic\s+{re.escape(t)}|audit log {re.escape(t)}", txt):
+        if re.search(rf"topic/{re.escape(t)}|topic\s+{re.escape(t)}|"
+                     rf"audit log {re.escape(t)}|topic-in\" value=\"{re.escape(t)}", txt):
             if t != live:
                 stale.setdefault(str(d), set()).add(t)
 for d, ts in stale.items():

@@ -86,7 +86,11 @@ function onAgentEvent(e) {
     call.className = "call";
     call.textContent = e.call || e.tool;
     li.append(call);
-    if (e.thought) {
+    // A thought that only repeats the name of the tool being called is the
+    // model narrating the line above it. Two lines, one fact, and the second
+    // one pushes the actual reasoning further down the column.
+    const bare = (e.thought || "").trim();
+    if (bare && bare !== (e.tool || "").trim() && bare !== (e.call || "").trim()) {
       const t = document.createElement("span");
       t.className = "thought";
       t.textContent = e.thought;

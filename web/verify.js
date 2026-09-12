@@ -129,4 +129,20 @@ $("topic-in").onkeydown = (e) => { if (e.key === "Enter") run(); };
 // A topic in the query string makes the result linkable, which is the point:
 // "check it yourself" should be a URL, not an instruction.
 const asked = new URLSearchParams(location.search).get("topic");
-if (asked) { $("topic-in").value = asked; run(); }
+if (asked) {
+  $("topic-in").value = asked;
+  run();
+} else {
+  // Otherwise ask the console which topic is live. The field held a
+  // hardcoded id that went stale two grant epochs ago, so the first thing a
+  // reader verified was an abandoned log — the worst possible result from a
+  // page whose whole argument is "do not trust me, check".
+  //
+  // Same origin only, and a failure is not an error: this page is asserted to
+  // work as static files with no API at all, and the hardcoded value below is
+  // what it falls back to.
+  fetch("/api/config")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((c) => { if (c && c.topic) $("topic-in").value = c.topic; })
+    .catch(() => {});
+}
