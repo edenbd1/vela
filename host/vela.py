@@ -32,8 +32,12 @@ INS_QUIT_APP = 0x15
 INS_GET_PUBKEY = 0x16
 
 # Testnet accounts from the Blocky402 spike; the payer is ours.
-PAYER = 10365982
-PAYEE = 10365984
+# From the environment, like every other tool here. These were accounts from
+# an early testnet run, so a draw asked the chip to sign a transfer between
+# two accounts nobody uses.
+PAYER = int(os.environ.get("HEDERA_BUYER_ID", "0.0.10397072").split(".")[-1])
+FEE_PAYER = 7_162_784          # the Blocky402 facilitator
+PAYEE = int(os.environ.get("HEDERA_TREASURY_ID", "0.0.10388937").split(".")[-1])
 NODE = 3
 
 TINYBAR = 100_000_000  # 1 HBAR
@@ -79,11 +83,22 @@ class Device:
         return self.send(INS_GET_PUBKEY, p1=index)
 
     def authorize(self, slot: int, payee: int, amount: int, payer=PAYER,
-                  node=NODE, fee=100_000_000, now=None):
-        """Ask the chip to authorise and sign one transfer."""
+                  node=NODE, fee=100_000_000, now=None, fee_payer=FEE_PAYER):
+        """Ask the chip to authorise and sign one transfer.
+
+        Seven u64 and three u32. The fee payer at the front arrived with x402
+        — the facilitator pays Hedera's fee while the buyer pays the seller —
+        and this file was left at six, so every draw it made came back 0xb108
+        bad_request. Nothing referenced it and no document mentioned it, which
+        is how a CLI stays broken while every suite stays green.
+
+        A draw burns a sequence number whether or not anything is paid. Settle
+        it, or the log ends before the chip does and the next published draw
+        lands as a gap — see host/verify_body.py, which publishes a release.
+        """
         now = int(time.time()) if now is None else now
         data = bytes([slot]) + struct.pack(
-            ">QQQQQQIII", payer, payee, node, amount, fee, now, 0, 120, now)
+            ">QQQQQQQIII", fee_payer, payer, payee, node, amount, fee, now, 0, 120, now)
         r = self.send(INS_AUTHORIZE_SPEND, data)
         seq, available = struct.unpack(">IQ", r[:12])
         body_len = r[12]

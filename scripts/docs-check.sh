@@ -178,6 +178,34 @@ print(f"  \033[32m✓\033[0m {checked} stated count(s) match the ledger"
 sys.exit(1 if bad else 0)
 ENDOFPY
 
+# The inverse of the first check.
+#
+# That one asks whether every documented command exists. This asks whether
+# every command that exists is documented — because an entry point nothing
+# references and nothing mentions is one nobody runs, and one nobody runs
+# rots. host/verify_body.py did: the chip grew a fee-payer field with x402,
+# its APDU body never followed, and the single check that asks whether the
+# device signs what it was asked to sign answered bad_request for weeks while
+# every suite stayed green.
+#
+# Only files with a shebang, and only those referenced by nothing at all —
+# a helper a script calls is maintained by that script breaking.
+echo
+echo "entry points nothing references"
+orphans=0
+while IFS= read -r f; do
+  head -1 "$f" | grep -q "^#!" || continue
+  base=$(basename "$f")
+  n=$(grep -rl "$base" --exclude-dir=node_modules --exclude-dir=.git . 2>/dev/null |
+      grep -v "^${f}$" | wc -l | tr -d " ")
+  if [ "$n" = "0" ]; then
+    note "${f#./} — no document and no caller; it will rot"
+    orphans=$((orphans + 1))
+  fi
+done < <(find . -maxdepth 2 \( -name "*.mjs" -o -name "*.py" -o -name "*.sh" -o -name "*.cjs" \) \
+         -not -path "*/node_modules/*" -not -path "./.git/*" | sort)
+[ "$orphans" = 0 ] && ok "every entry point has a caller or a mention"
+
 echo
 [ "$fail" = 0 ] && echo "the documentation describes this repository." \
                || echo "the documentation describes a previous one."

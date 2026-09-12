@@ -989,6 +989,25 @@ re-enrolment.
 
 Open `http://127.0.0.1:4050` to see the fleet and stop one of them.
 
+Four tools that are not part of any flow above, listed because an entry point
+nobody documents is one nobody maintains — `host/verify_body.py` rotted for
+weeks exactly that way:
+
+```bash
+./scripts/speculos.sh             # Vela in the emulator: instant boot, no USB to wedge
+node hedera/demo.mjs              # grant, draw three times, anchor each — one tap, at the start
+python3 host/verify_body.py       # ask for a draw and check what the chip actually signed
+python3 host/probe.py read        # the mandates, in one bounded APDU round trip
+python3 host/vela.py list         # the same, through the host CLI that predates the gateway
+```
+
+`verify_body.py` is the one worth knowing about. It decodes the body the
+device returned as Hedera protobuf and checks that the transfer credits the
+account that was asked for, that the amount is the one the mandate cleared,
+and that the signature verifies under the key the device derived. It settles
+its own draw to zero and publishes the release before it exits, because a draw
+burns a sequence number whether or not anything is paid.
+
 `./scripts/test.sh` runs everything that does not need a device, then the chip
 suite on Speculos.
 
