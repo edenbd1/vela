@@ -98,7 +98,10 @@ function onAgentEvent(e) {
     }
     m.steps.append(li);
     m.last = li;
-    m.box.scrollTop = m.box.scrollHeight;
+    // The steps list is what scrolls, not the card around it. Scrolling the
+    // card did nothing while the list grew without bound, which is how one
+    // agent in a retry loop came to set the height of the whole page.
+    m.steps.scrollTop = m.steps.scrollHeight;
     return;
   }
 

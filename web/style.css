@@ -1,482 +1,436 @@
-/* Vela console.
+/* Vela console, in Agama's visual system.
  *
- * The visual language is Agama's, measured from app.agama.finance rather than
- * guessed: a forest-green frame with a cream sheet inset in it, Inter, pill
- * controls, hairline-bordered cards, and headlines large enough to be read
- * from across a room.
+ * Not an impression of it: the values below are lifted from
+ * agamafinance/agama-app-looping — globals.css for the frame, gradients and
+ * pills, tailwind.config.ts for the palette, and the components for type and
+ * spacing. Where a number looks oddly precise (10.5px, 47px, 32.8px) it is
+ * because that is what the source says.
  *
- * Three colours are load-bearing and they are the only ones allowed to mean
- * something. Agama's own palette happens to carry all three, which is why the
- * dark theme's red/amber/green map onto its deep red, terracotta and emerald
- * without inventing a hue:
+ * Inter is served from web/fonts rather than Google's CDN. The app loads it
+ * with next/font; we cannot, because test/console_test.py asserts this page
+ * contacts no origin but itself — and that assertion is part of the argument.
  *
+ * Three colours are load-bearing and mean exactly one thing each:
  *     --chip   the Secure Element refused
  *     --host   a host refused, or an agent flagged an instruction
  *     --ok     it happened
- *
- * Mono is reserved for words a machine produced — status words, account ids,
- * tool calls. If it is in mono, something other than us wrote it.
- *
- * No webfont link: test/console_test.py asserts this page contacts no origin
- * but itself, and that assertion is worth more than a guaranteed Inter.
+ * Mono means a machine produced the words. Nothing else gets colour.
  */
+@font-face {
+  font-family: "InterVela";
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --forest:   #254839;
-  --forest-2: #1f3d31;
-  --forest-3: #14271f;
-  --forest-4: #2e5944;
+  /* tailwind.config.ts */
+  --bg:        #254839;
+  --panel:     #fdf8ed;
+  --surface:   #f6efde;
+  --surface-2: #ede5cf;
+  --border:        rgba(8, 25, 18, .12);
+  --border-strong: rgba(8, 25, 18, .22);
+  --fg:       #254839;
+  --fg-muted: #48685a;
+  --brand-600: #1f3d31;
+  --brand-700: #14271f;
 
-  --cream:  #fdf8ed;
-  --card:   #fffdf8;
-  --card-2: #f7f2e4;
+  /* the tint system the app builds every surface from */
+  --tint-04: rgba(37, 72, 57, .04);
+  --tint-06: rgba(37, 72, 57, .06);
+  --tint-07: rgba(37, 72, 57, .07);
+  --tint-10: rgba(37, 72, 57, .10);
+  --tint-15: rgba(37, 72, 57, .15);
 
-  --line:      #e7e0cf;
-  --line-soft: #f0ead9;
-
-  --ink:   #254839;
-  --dim:   #5f7a6d;
-  --faint: #8ba194;
-
-  --chip: #9b2c2c;   /* the Secure Element said no */
-  --host: #c97a40;   /* a host said no, or an agent flagged something */
-  --ok:   #047857;   /* it happened */
+  --chip: #9b2c2c;
+  --host: #a85a2c;
+  --ok:   #047857;
 
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-
-  --r-sheet: 26px;
-  --r-card: 18px;
-  --r-pill: 999px;
-  --gap: 18px;
+  --sans: "InterVela", system-ui, -apple-system, sans-serif;
 }
 
 * { box-sizing: border-box; }
 
-html { background: var(--forest); }
+html { background: var(--bg); }
 
 body {
   margin: 0;
-  background: var(--forest);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--fg);
   font-family: var(--sans);
-  font-size: 16px;
+  font-feature-settings: 'ss01', 'cv11';   /* globals.css */
+  font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--forest); text-decoration: none; }
-a:hover { color: var(--forest-4); }
+/* globals.css, verbatim */
+.frame-gradient, body {
+  background:
+    radial-gradient(140% 100% at 70% 0%,
+      rgba(80, 130, 95, .45) 0%,
+      rgba(50, 100, 70, .30) 22%,
+      rgba(35, 75, 55, .18) 45%,
+      rgba(25, 55, 40, .08) 70%,
+      rgba(15, 35, 25, 0) 90%),
+    linear-gradient(135deg,
+      #1f3d31 0%, #254839 18%, #2e5944 38%,
+      #2b5340 58%, #1f3d31 80%, #14271f 100%);
+  background-attachment: fixed;
+}
+
+a { color: var(--fg); text-decoration: none; }
+a:hover { color: var(--brand-600); }
 code, .mono { font-family: var(--mono); }
 
-:focus-visible {
-  outline: 2px solid var(--forest-4);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
+:focus-visible { outline: 2px solid var(--brand-600); outline-offset: 2px; border-radius: 8px; }
 
-/* ------------------------------------------------------------- header ---
- * Chrome, on the frame rather than on the sheet: the sheet is the product
- * and this is the window it sits in. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(37, 72, 57, .20); border-radius: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ------------------------------------------------------------- navbar ---
+ * Navbar.tsx: pl-6 pr-[24px] py-[11px], the pill bar 47px tall with 3.5px
+ * padding, logo 32.8px. It sits on the gradient, not on the panel. */
 header.top {
   display: flex; align-items: center; gap: 14px;
-  padding: 14px 26px;
-  color: var(--cream);
-  max-width: 1500px; margin: 0 auto;
+  padding: 11px 24px 11px 24px;
+  color: #fff;
 }
-header.top .mark { width: 26px; height: 26px; }
+header.top .mark { height: 32.8px; width: auto; }
 header.top h1 {
-  margin: 0; font-size: 19px; font-weight: 600;
-  letter-spacing: -0.02em; color: var(--cream);
+  margin: 0; font-size: 19px; font-weight: 500;
+  letter-spacing: -.02em; color: #fff;
 }
-header.top .tag {
-  font-size: 13px; color: color-mix(in oklab, var(--cream) 62%, var(--forest));
-}
+header.top .tag { font-size: 13px; color: rgba(255, 255, 255, .55); }
 
-/* The pill group is Agama's nav shape. */
 header.top nav {
   margin-left: auto;
-  display: flex; gap: 2px;
-  background: color-mix(in oklab, #000 16%, var(--forest));
-  padding: 4px; border-radius: var(--r-pill);
+  display: flex; align-items: center; gap: 1px;
+  background: rgba(20, 39, 31, .55);            /* .pill-bar */
+  height: 47px; padding: 0 3.5px; border-radius: 999px;
 }
 header.top nav a {
-  font-size: 13.5px; font-weight: 500;
-  color: color-mix(in oklab, var(--cream) 72%, var(--forest));
-  padding: 6px 14px; border-radius: var(--r-pill);
-  transition: background .15s, color .15s;
+  font-size: 13px; font-weight: 400;
+  color: rgba(255, 255, 255, .72);
+  padding: 0 14px; height: 40px;
+  display: inline-flex; align-items: center;
+  border-radius: 999px;
+  transition: background .15s ease, color .15s ease;
 }
 header.top nav a:hover {
-  color: var(--cream);
-  background: color-mix(in oklab, var(--cream) 12%, transparent);
+  color: #fff;
+  background: rgba(255, 255, 255, .10);          /* .pill-active */
 }
 
 .device {
   display: flex; align-items: center; gap: 7px;
-  font-family: var(--mono); font-size: 12px;
-  color: var(--cream);
-  border: 1px solid color-mix(in oklab, var(--cream) 26%, transparent);
-  border-radius: var(--r-pill); padding: 6px 13px;
+  height: 40px; padding: 0 13px;
+  background: rgba(20, 39, 31, .55);             /* .pill-outline */
+  border-radius: 999px;
+  font-family: var(--mono); font-size: 12px; color: #fff;
+  transition: background .15s ease;
 }
-.dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--faint); flex: 0 0 auto;
-}
-.dot.on  { background: #34d399; }
-.dot.off { background: #f87171; }
+.device:hover { background: rgba(20, 39, 31, .78); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.45); flex: 0 0 auto; }
+.dot.on  { background: #6ee7b7; }
+.dot.off { background: #fca5a5; }
 
-/* -------------------------------------------------------------- sheet ---
- * Everything the reader came for, on cream, inset in the frame. */
+/* -------------------------------------------------------------- panel ---
+ * AppFrame.tsx: the beige panel floats with 10.5px of gradient showing on
+ * three sides, rounded 20px. */
 main {
-  background: var(--cream);
-  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 46px 44px 70px;
-  min-height: 80vh;
+  background: var(--panel);
+  border-radius: 20px;
+  margin: 0 10.5px 10.5px;
+  padding: 64px 56px 80px;
+  min-height: 82vh;
 }
 
-/* --------------------------------------------------------------- hero --- */
-.hero { margin-bottom: 54px; }
+/* --------------------------------------------------------------- hero ---
+ * Hero.tsx: 88px, leading 1.0, tracking -0.02em, font-light. */
+.hero { margin-bottom: 72px; }
 .hero h2 {
-  margin: 0 0 18px;
-  font-size: clamp(34px, 5vw, 54px);
-  line-height: 1.04;
-  letter-spacing: -0.03em;
-  font-weight: 600;
-  max-width: 17ch;
-  color: var(--forest);
+  margin: 0 0 22px;
+  font-size: clamp(40px, 6.4vw, 88px);
+  line-height: 1.0;
+  letter-spacing: -.02em;
+  font-weight: 300;
+  max-width: 15ch;
+  color: var(--fg);
 }
-.hero h2 em {
-  font-style: normal;
-  color: color-mix(in oklab, var(--forest) 72%, var(--cream));
-}
-.hero p {
-  margin: 0; max-width: 62ch;
-  font-size: 16.5px; color: var(--dim);
-}
+.hero h2 em { font-style: normal; color: var(--fg-muted); }
+.hero p { margin: 0; max-width: 60ch; font-size: 16px; color: var(--fg-muted); }
 
-/* Agama's stat row: a small label, a large figure under it. */
-.claims {
-  display: flex; flex-wrap: wrap; gap: 42px;
-  margin-top: 34px;
-}
+/* Hero.tsx: .stat-chip, rounded-full, 13px, muted. */
+.claims { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 36px; }
 .claim {
-  display: flex; flex-direction: column-reverse; gap: 2px;
-  font-size: 12px; color: var(--dim);
-  letter-spacing: .04em; text-transform: uppercase; font-weight: 500;
+  background: var(--tint-06);
+  border-radius: 999px; padding: 6px 16px;
+  font-size: 13px; color: var(--fg-muted);
+  display: inline-flex; align-items: baseline; gap: 7px;
 }
-.claim b {
-  font-size: 30px; font-weight: 600; color: var(--forest);
-  letter-spacing: -0.02em; text-transform: none;
-  font-family: var(--sans);
-}
+.claim b { color: var(--fg); font-weight: 500; }
 
-/* ------------------------------------------------------------ section --- */
-section { margin-top: 46px; }
+/* ------------------------------------------------------------ section ---
+ * SectionHeader.tsx: a hairline rule under the heading, 13px meta. */
+section { margin-top: 56px; }
 h2.section {
-  margin: 0 0 6px;
-  font-size: 25px; font-weight: 600;
-  letter-spacing: -0.025em; color: var(--forest);
+  margin: 0 0 4px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--tint-10);
+  font-size: 22px; font-weight: 400;
+  letter-spacing: -.02em; color: var(--fg);
   display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
 }
-.src {
-  font-family: var(--mono); font-size: 11.5px; color: var(--faint);
-  font-weight: 400; letter-spacing: 0;
-}
-.lede {
-  margin: 0 0 20px; max-width: 74ch;
-  font-size: 15px; color: var(--dim);
-}
+.src { font-family: var(--mono); font-size: 11px; color: var(--fg-muted); opacity: .8; }
+.lede { margin: 16px 0 22px; max-width: 76ch; font-size: 14.5px; color: var(--fg-muted); }
 
-/* ---------------------------------------------------------------- why ---
- * Three attempts at the same request, and how far each one gets. The rail is
- * the one loud element on the page: the whole argument is *where* the request
- * stops, so distance along a line is the argument rather than decoration. */
-.tracks {
-  display: grid; gap: 1px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  overflow: hidden;
-  background: var(--line);
-  margin-top: 20px;
+/* --------------------------------------------------------------- card ---
+ * MarketsTable.tsx: rounded-xl, 4% tint, 10% ring. Not a white card. */
+.panel, .agent, .mind, .scenario, .envelope, .track, .hold {
+  background: var(--tint-04);
+  box-shadow: 0 0 0 1px var(--tint-10);
+  border-radius: 12px;
 }
-.track { background: var(--card); padding: 22px 24px; }
-.track.is-vela {
-  background: var(--card-2);
-  box-shadow: inset 3px 0 0 var(--chip);
-}
-.track-h {
-  font-size: 15px; font-weight: 600; color: var(--forest);
-  letter-spacing: -0.01em; margin-bottom: 15px;
-}
-.rail {
-  display: flex; align-items: center; gap: 10px;
-  flex-wrap: wrap; margin-bottom: 13px;
-}
+.panel { padding: 20px 22px; }
+
+/* ---------------------------------------------------------------- why --- */
+.tracks { display: grid; gap: 8px; margin-top: 18px; }
+.track { padding: 22px 24px; }
+.track.is-vela { background: var(--tint-07); box-shadow: 0 0 0 1px var(--tint-15); }
+.track-h { font-size: 15px; font-weight: 500; color: var(--fg); margin-bottom: 16px; }
+.rail { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
 .node {
-  font-size: 12.5px; color: var(--dim);
-  border: 1px solid var(--line); background: var(--cream);
-  border-radius: var(--r-pill); padding: 5px 13px; white-space: nowrap;
+  font-size: 12.5px; color: var(--fg-muted);
+  background: #fff; box-shadow: 0 0 0 1px var(--tint-15);
+  border-radius: 999px; padding: 5px 13px; white-space: nowrap;
 }
-.node.host {
-  color: var(--host);
-  border-color: color-mix(in oklab, var(--host) 40%, var(--line));
-}
+.node.host { color: var(--host); box-shadow: 0 0 0 1px color-mix(in oklab, var(--host) 30%, transparent); }
 .run {
   flex: 1 1 40px; min-width: 28px; height: 1.5px;
   background: linear-gradient(90deg,
-              color-mix(in oklab, currentColor 15%, transparent) 0%,
-              currentColor 100%);
+              color-mix(in oklab, currentColor 12%, transparent) 0%, currentColor 100%);
 }
 .run.short { flex: 0 0 40px; }
-.run.ok   { color: var(--ok); }
-.run.host { color: var(--host); }
-.run.chip { color: var(--chip); }
+.run.ok { color: var(--ok); } .run.host { color: var(--host); } .run.chip { color: var(--chip); }
 .end {
-  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
-  padding: 5px 12px; border-radius: var(--r-pill); white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: .04em; text-transform: uppercase;
+  padding: 5px 12px; border-radius: 999px; white-space: nowrap;
 }
-.end.ok   { color: var(--ok);   background: color-mix(in oklab, var(--ok) 11%, transparent); }
-.end.chip { color: var(--chip); background: color-mix(in oklab, var(--chip) 11%, transparent); }
-.reason { font-size: 11.5px; color: var(--faint); }
-.track-note { margin: 0; font-size: 14px; color: var(--dim); max-width: 76ch; }
-.why-foot {
-  margin: 18px 0 0; font-size: 13px; color: var(--faint); max-width: 76ch;
-}
+.end.ok   { color: var(--ok);   background: color-mix(in oklab, var(--ok) 10%, transparent); }
+.end.chip { color: var(--chip); background: color-mix(in oklab, var(--chip) 10%, transparent); }
+.reason { font-size: 11.5px; color: var(--fg-muted); opacity: .75; }
+.track-note { margin: 0; font-size: 13.5px; color: var(--fg-muted); max-width: 78ch; }
+.why-foot { margin: 18px 0 0; font-size: 13px; color: var(--fg-muted); opacity: .85; max-width: 78ch; }
 .why-foot code {
-  color: var(--forest); background: var(--card);
-  border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px;
-  font-size: 12.5px;
+  color: var(--fg); background: var(--tint-06);
+  border-radius: 6px; padding: 2px 7px; font-size: 12.5px;
 }
 
-/* --------------------------------------------------------------- card --- */
-.panel, .agent, .mind, .scenario, .envelope {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
+/* --------------------------------------------------------------- held --- */
+.holds { align-items: start; }
+.hold { padding: 20px 22px; display: flex; flex-direction: column; }
+.hold-h {
+  font-size: 15px; font-weight: 500; color: var(--fg);
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;
 }
-.panel { padding: 21px 22px; }
+.inv {
+  margin: 0; padding: 14px 16px;
+  background: #fff; box-shadow: 0 0 0 1px var(--tint-10);
+  border-radius: 12px;
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 18px;
+  align-items: baseline; font-family: var(--mono); font-size: 12.5px;
+}
+.inv dt { color: var(--fg-muted); opacity: .7; white-space: nowrap; }
+.inv dd, .inv dd.none { margin: 0; color: var(--fg); }
+.hold-note { margin: 15px 0 0; font-size: 13.5px; color: var(--fg-muted); line-height: 1.6; }
+.hold-note b, .hold-note em { color: var(--fg); font-style: normal; font-weight: 500; }
+.hold-note .mono { font-size: 12.5px; }
 
-/* -------------------------------------------------------------- fleet --- */
-.fleet-grid {
-  display: grid; gap: var(--gap);
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-}
-.agent { padding: 20px 21px; }
-.agent .head { display: flex; align-items: baseline; gap: 9px; }
-.agent .name { font-size: 16px; font-weight: 600; color: var(--forest); }
+/* -------------------------------------------------------------- fleet ---
+ * Written against the DOM app.js actually produces, dumped from the page
+ * rather than assumed. Three earlier passes styled .head, .pair and .badge,
+ * none of which this markup contains — which is how "0.48HBAR" and
+ * "research-1slot 0" ended up welded together. */
+.fleet-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.agent { padding: 18px 20px; transition: background .15s ease; }
+.agent:hover { background: var(--tint-07); }
+
+.agent .row { display: flex; align-items: baseline; gap: 10px; }
+.agent .name { font-size: 15px; font-weight: 500; color: var(--fg); }
 .agent .slot {
-  font-family: var(--mono); font-size: 11px; color: var(--faint);
-  margin-left: auto;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--fg-muted); opacity: .7; margin-left: auto;
 }
 .agent .amount {
-  font-size: 31px; font-weight: 600; color: var(--forest);
-  letter-spacing: -0.025em; margin: 11px 0 2px;
+  font-size: 30px; font-weight: 300; color: var(--fg);
+  letter-spacing: -.02em; margin: 12px 0 3px; line-height: 1.1;
 }
-.agent .of { font-size: 12px; color: var(--faint); font-weight: 400; }
+.agent .amount > span {
+  font-size: 13px; font-weight: 400; color: var(--fg-muted);
+  margin-left: 7px; letter-spacing: 0;
+}
+.agent .of { font-size: 12px; color: var(--fg-muted); opacity: .85; }
 
-.meter {
-  height: 6px; border-radius: var(--r-pill);
-  background: var(--line-soft); overflow: hidden;
-  display: flex; margin: 12px 0 13px;
-}
-.meter .spent { background: var(--forest); }
+.meter { height: 5px; border-radius: 999px; background: var(--tint-10); overflow: hidden; display: flex; margin: 13px 0; }
+.meter .spent { background: var(--fg); }
 .meter .held  { background: var(--host); }
 
-.agent .grants, .agent .meta {
-  font-size: 12.5px; color: var(--dim);
-  display: flex; flex-wrap: wrap; gap: 7px;
+.agent .grants, .agent .meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.grant {
+  font-family: var(--mono); font-size: 10.5px;
+  background: var(--tint-06); border-radius: 999px;
+  padding: 3px 10px; color: var(--fg-muted);
 }
-.agent .grants { margin-bottom: 9px; }
-.badge {
-  font-family: var(--mono); font-size: 11px;
-  background: var(--card-2); border: 1px solid var(--line);
-  border-radius: var(--r-pill); padding: 3px 9px; color: var(--dim);
-}
-.agent.free { opacity: .55; }
-.agent .who { font-size: 12.5px; color: var(--faint); }
+.agent.free { opacity: .5; }
+.agent .who { font-size: 12px; color: var(--fg-muted); }
 
-/* ------------------------------------------------------------- minds --- */
-#minds {
-  display: grid; gap: var(--gap);
-  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
-  /* An agent that made two decisions should be a short card, not a tall one
-     padded out to match the agent that made nine. */
-  align-items: start;
+/* ------------------------------------------------------------- minds ---
+ * <div class="mind"><header><span class="who"><span class="meta">
+ *   <ol class="steps"><li><span class="call"><span class="out …"> */
+#minds { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); align-items: start; }
+.mind { padding: 18px 20px; }
+.mind > header {
+  display: flex; align-items: baseline; gap: 10px;
+  padding-bottom: 12px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--tint-10);
 }
-.mind { padding: 18px 19px; }
-.mind .head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 11px; }
-.mind .name { font-weight: 600; color: var(--forest); font-size: 15px; }
+.mind .who { font-weight: 500; color: var(--fg); font-size: 15px; }
 .mind .meta {
   margin-left: auto; font-family: var(--mono);
-  font-size: 11px; color: var(--faint);
+  font-size: 11px; color: var(--fg-muted); opacity: .7;
 }
-.mind .row {
-  padding: 9px 0; border-top: 1px solid var(--line-soft);
-  font-size: 13.5px; color: var(--dim);
+
+/* One agent in a retry loop should not set the height of the page. feed.js
+   already scrolls this box to the bottom on every append — it was written for
+   a container that scrolls, and the height was never given. */
+.mind .steps {
+  list-style: none; margin: 0; padding: 0 2px 0 0; counter-reset: step;
+  max-height: 420px; overflow-y: auto;
+  scrollbar-width: thin;
 }
-.mind .row:first-of-type { border-top: 0; }
-.mind .call { font-family: var(--mono); font-size: 12.5px; color: var(--forest); }
-.mind .thought { display: block; margin-top: 4px; color: var(--faint); font-size: 12.5px; }
-.mind .out {
-  display: block; margin-top: 5px;
-  font-family: var(--mono); font-size: 12px; color: var(--dim);
+.mind .steps > li {
+  padding: 10px 0 10px 26px; position: relative;
+  border-top: 1px solid var(--tint-10);
+  font-size: 13px; color: var(--fg-muted);
 }
-.mind .out.chip { color: var(--chip); }
-.mind .out.host { color: var(--host); }
-.mind .out.ok   { color: var(--ok); }
-.mind .out.flagged {
-  color: var(--host); font-family: var(--sans); font-style: italic;
+.mind .steps > li:first-child { border-top: 0; }
+/* The steps are a sequence, so they are numbered — and the number sits in the
+   margin rather than in the text, where it would compete with the call. */
+.mind .steps > li::before {
+  counter-increment: step; content: counter(step);
+  position: absolute; left: 0; top: 11px;
+  font-family: var(--mono); font-size: 10.5px;
+  color: var(--fg-muted); opacity: .5;
 }
+.mind .call { font-family: var(--mono); font-size: 12.5px; color: var(--fg); }
+.mind .thought { display: block; margin-top: 4px; opacity: .8; font-size: 12.5px; }
+
+.mind .out { display: block; margin-top: 5px; font-family: var(--mono); font-size: 12px; }
+.mind .out.refused { color: var(--chip); }
+.mind .out.error   { color: var(--host); }
+.mind .out.bought  { color: var(--ok); }
+.mind .out.flagged { color: var(--host); font-family: var(--sans); font-style: italic; }
+
 .mind .verdict {
-  margin-top: 11px; padding-top: 11px;
-  border-top: 1px solid var(--line-soft);
-  font-size: 13.5px; color: var(--dim);
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--tint-10);
+  font-size: 13px; color: var(--fg-muted);
 }
-.mind .steps { font-family: var(--mono); font-size: 11px; color: var(--faint); }
-.mind.live { box-shadow: inset 3px 0 0 var(--ok); }
-.empty, .none { color: var(--faint); font-size: 14px; }
+.mind.live { box-shadow: 0 0 0 1px var(--tint-10), inset 3px 0 0 var(--ok); }
+.empty, .none { color: var(--fg-muted); opacity: .75; font-size: 14px; }
 
 /* ---------------------------------------------------------- envelope --- */
-.split {
-  display: grid; gap: var(--gap); grid-template-columns: 1fr 1fr;
-  /* The right panel holds three buttons. It should not be stretched to the
-     height of the left one, which holds the whole mandate. */
-  align-items: start;
-}
-.envelope { padding: 21px 22px; }
-/* The markup here is <div><b>value</b><span>label</span></div> — no class on
-   either — so the rule has to reach them by shape. Styling a .pair that the
-   page does not contain is how the value and its label ended up welded
-   together as "0.48 HBARavailable". */
-.figures {
-  display: flex; flex-wrap: wrap; gap: 34px; margin-bottom: 4px;
-}
+.split { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; align-items: start; }
+.envelope { padding: 20px 22px; }
+.figures { display: flex; flex-wrap: wrap; gap: 34px; margin-bottom: 6px; }
 .figures > div { display: flex; flex-direction: column; gap: 1px; }
-.figures > div > b {
-  font-size: 25px; font-weight: 600; color: var(--forest);
-  letter-spacing: -0.02em; line-height: 1.15;
-}
-.figures > div > span {
-  font-size: 11.5px; color: var(--dim);
-  text-transform: uppercase; letter-spacing: .04em; font-weight: 500;
-}
+.figures > div > b { font-size: 26px; font-weight: 300; color: var(--fg); letter-spacing: -.02em; line-height: 1.15; }
+.figures > div > span { font-size: 11px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: .08em; }
 
-/* Panel headings, and the bounded lists under them. */
 h3.sub {
-  margin: 22px 0 8px; font-size: 14px; font-weight: 600;
-  color: var(--forest); letter-spacing: -0.01em;
+  margin: 22px 0 8px; font-size: 12px; font-weight: 400;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--fg-muted);
   display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
 }
 ul.bound {
-  list-style: none; margin: 0; padding: 11px 14px;
-  background: var(--cream); border: 1px solid var(--line-soft);
-  border-radius: 12px;
-  font-size: 13.5px; color: var(--forest);
+  list-style: none; margin: 0; padding: 12px 15px;
+  background: #fff; box-shadow: 0 0 0 1px var(--tint-10);
+  border-radius: 12px; font-size: 13.5px; color: var(--fg);
 }
-ul.bound li { padding: 2px 0; }
-ul.bound li + li { border-top: 1px solid var(--line-soft); margin-top: 4px; padding-top: 6px; }
-ul.bound li.none { color: var(--faint); }
-/* Each row is an account followed by a note, with no separator in the markup
-   — so the space has to come from here, or they read as one token:
-   "0.0.10388937anything else is refused in the chip". */
-ul.bound li > em,
-ul.bound li > i,
-ul.bound li > span { margin-left: 9px; }
-ul.bound em, ul.bound i {
-  color: var(--dim); font-style: normal; font-size: 12.5px;
-}
+ul.bound li { padding: 3px 0; }
+ul.bound li + li { border-top: 1px solid var(--tint-10); margin-top: 5px; padding-top: 7px; }
+ul.bound li.none { color: var(--fg-muted); opacity: .75; }
+ul.bound li > em, ul.bound li > i, ul.bound li > span { margin-left: 9px; }
+ul.bound em, ul.bound i { color: var(--fg-muted); font-style: normal; font-size: 12.5px; }
 ul.bound .mono, ul.bound code { font-family: var(--mono); font-size: 12.5px; }
 
-/* A price rides inside its button; it needs its own air. */
-.price {
-  font-family: var(--mono); font-size: 12px;
-  color: color-mix(in oklab, var(--cream) 74%, var(--forest));
-  margin-left: 8px;
-}
-.price.over { color: color-mix(in oklab, var(--host) 62%, var(--cream)); }
-.act.bad .price, .act.danger .price { color: var(--faint); }
-.tiers, .actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 13px; }
-
+/* btn-primary from globals.css */
 .act {
   font-family: var(--sans); font-size: 13.5px; font-weight: 500;
-  color: var(--cream); background: var(--forest);
-  border: 1px solid var(--forest);
-  border-radius: var(--r-pill); padding: 8px 17px;
-  cursor: pointer; transition: background .15s;
+  color: #fff; border: 0; border-radius: 999px; padding: 10px 18px;
+  background: linear-gradient(180deg, #2e5944 0%, #1f3d31 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 8px 30px rgba(20,50,35,.28);
+  cursor: pointer; transition: filter .15s ease;
 }
-.act:hover:not(:disabled) { background: var(--forest-4); }
-.act:disabled { opacity: .45; cursor: not-allowed; }
+.act:hover:not(:disabled) { filter: brightness(1.10); }
+.act:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
 .act.bad, .act.danger {
-  background: transparent; color: var(--chip);
-  border-color: color-mix(in oklab, var(--chip) 45%, var(--line));
+  background: #fff; color: var(--chip);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--chip) 30%, transparent);
 }
-.act.bad:hover:not(:disabled), .act.danger:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--chip) 9%, transparent);
-}
+.act.bad:hover:not(:disabled), .act.danger:hover:not(:disabled) { filter: none; background: color-mix(in oklab, var(--chip) 6%, #fff); }
+.price { font-family: var(--mono); font-size: 11.5px; color: rgba(255,255,255,.7); margin-left: 8px; }
+.price.over { color: #f5c99b; }
+.act.bad .price, .act.danger .price { color: var(--fg-muted); }
+.tiers, .actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 12px; }
 
-.hint { font-size: 12.5px; color: var(--faint); margin-top: 11px; }
-.hint.chip { color: var(--chip); }
-.hint.host { color: var(--host); }
-.hint.ok   { color: var(--ok); }
-.onefield {
-  display: flex; gap: 9px; align-items: center;
-  flex-wrap: wrap; margin-top: 12px;
-}
-.onefield input, input, select {
+.hint { font-size: 12.5px; color: var(--fg-muted); margin-top: 12px; }
+.hint.chip { color: var(--chip); } .hint.host { color: var(--host); } .hint.ok { color: var(--ok); }
+.onefield { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+input, select {
   font-family: var(--mono); font-size: 13px;
-  background: var(--cream); color: var(--forest);
-  border: 1px solid var(--line); border-radius: 10px;
-  padding: 8px 11px;
+  background: #fff; color: var(--fg);
+  border: 0; box-shadow: 0 0 0 1px var(--tint-15);
+  border-radius: 12px; padding: 9px 12px;
 }
+input:focus, select:focus { outline: 0; box-shadow: 0 0 0 1px rgba(37,72,57,.40); }
 
-/* ------------------------------------------------------------ scenario --- */
-.scenario { padding: 17px 19px; margin-top: var(--gap); }
-.scenario .detail { font-size: 13px; color: var(--dim); margin-top: 7px; }
+.scenario { padding: 16px 18px; margin-top: 8px; }
+.scenario .detail { font-size: 13px; color: var(--fg-muted); margin-top: 7px; }
 
 /* ---------------------------------------------------------------- log --- */
-#receipts { display: grid; gap: 9px; }
-.receipt, #receipts > li {
+#receipts { display: grid; gap: 6px; padding: 0; margin: 0; }
+#receipts > li {
   list-style: none;
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: 12px; padding: 12px 15px;
-  font-family: var(--mono); font-size: 12.5px; color: var(--dim);
+  background: var(--tint-04); box-shadow: 0 0 0 1px var(--tint-10);
+  border-radius: 12px; padding: 12px 16px;
+  font-family: var(--mono); font-size: 12.5px; color: var(--fg-muted);
   display: flex; flex-wrap: wrap; gap: 11px; align-items: baseline;
 }
-#receipts > li.none { border-style: dashed; font-family: var(--sans); }
+#receipts > li.none { font-family: var(--sans); }
 
 /* ------------------------------------------------------------- banner --- */
-/* [hidden] loses to a class that sets display, and this one claimed the page
-   was a recording while the device pill beside it said a Flex was answering.
-   Two opposite statements, one screen. */
 .banner[hidden] { display: none; }
 .banner {
   display: flex; gap: 11px; flex-wrap: wrap;
-  background: color-mix(in oklab, var(--host) 12%, var(--cream));
-  border: 1px solid color-mix(in oklab, var(--host) 34%, var(--line));
+  background: color-mix(in oklab, var(--host) 10%, var(--panel));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--host) 25%, transparent);
   border-radius: 12px; padding: 12px 16px;
-  font-size: 13.5px; color: var(--forest); margin-bottom: 26px;
+  font-size: 13.5px; color: var(--fg); margin-bottom: 28px;
 }
 .banner b { color: var(--host); }
 
-/* -------------------------------------------------------------- misc --- */
-.ok   { color: var(--ok); }
-.chip { color: var(--chip); }
-.host { color: var(--host); }
+.ok { color: var(--ok); } .chip { color: var(--chip); } .host { color: var(--host); }
 
-/* The header runs out of room long before the body does: seven links, a
-   tagline and the device pill. It reflows at 900 rather than 720, because
-   between those two the pill was pushed past the right edge — and that pill
-   is the only thing on the page that says whether a Flex is answering. The
-   nav scrolls sideways instead of wrapping so the pill stays on the first
-   line with the logo. */
 @media (max-width: 900px) {
-  .split { grid-template-columns: 1fr; }
-  header.top { flex-wrap: wrap; row-gap: 11px; }
-  header.top nav {
-    order: 3; width: 100%; margin-left: 0;
-    overflow-x: auto; scrollbar-width: none;
-  }
+  .split, .holds { grid-template-columns: 1fr; }
+  header.top { flex-wrap: wrap; row-gap: 10px; }
+  header.top nav { order: 3; width: 100%; margin-left: 0; overflow-x: auto; scrollbar-width: none; }
   header.top nav::-webkit-scrollbar { display: none; }
   header.top nav a { white-space: nowrap; flex: 0 0 auto; }
   header.top .device { margin-left: auto; }
@@ -484,64 +438,15 @@ ul.bound .mono, ul.bound code { font-family: var(--mono); font-size: 12.5px; }
 }
 
 @media (max-width: 720px) {
-  main { padding: 30px 18px 54px; border-radius: 20px 20px 0 0; }
-  header.top { padding: 13px 16px; }
-  .claims { gap: 26px; }
-  .claim b { font-size: 25px; }
+  main { margin: 0; border-radius: 20px 20px 0 0; padding: 34px 20px 56px; }
+  header.top { padding: 11px 16px; }
+  .hero { margin-bottom: 44px; }
   .rail { gap: 7px; }
   .run { flex-basis: 18px; min-width: 14px; }
-  .track { padding: 17px 16px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; animation: none !important; }
-}
-
-/* --------------------------------------------------------------- held ---
- * Two machines, each reciting its own inventory.
- *
- * The lines are quoted rather than written: agent/run.sh and the workflow
- * both print these before they start work, which is the only reason the
- * claim is worth anything. So they are set in mono — the page's rule is that
- * mono means a machine produced the words — and the values that say "none"
- * are the ones the eye should catch, because the argument is an absence.
- */
-.holds { align-items: start; }
-.hold { display: flex; flex-direction: column; }
-
-.hold-h {
-  font-size: 15px; font-weight: 600; color: var(--forest);
-  letter-spacing: -0.01em;
-  display: flex; align-items: baseline; gap: 10px;
-  flex-wrap: wrap; margin-bottom: 14px;
-}
-
-.inv {
-  margin: 0; padding: 13px 15px;
-  background: var(--cream); border: 1px solid var(--line-soft);
-  border-radius: 12px;
-  display: grid; grid-template-columns: auto 1fr;
-  gap: 5px 16px; align-items: baseline;
-  font-family: var(--mono); font-size: 12.5px;
-}
-/* No colour on the values. Green on this page means "it happened" and red
-   means the Secure Element refused; spending either on "this machine has no
-   API key" would buy a little emphasis here at the cost of the thing that
-   makes a refusal legible everywhere else. The keys recede instead, and the
-   word none repeating five times does the work. */
-.inv dt { color: var(--faint); white-space: nowrap; }
-.inv dd { margin: 0; color: var(--forest); }
-.inv dd.none { color: var(--forest); }
-
-.hold-note {
-  margin: 14px 0 0; font-size: 13.5px; color: var(--dim); line-height: 1.6;
-}
-.hold-note b { color: var(--forest); font-weight: 600; }
-.hold-note em { font-style: normal; color: var(--forest); font-weight: 500; }
-.hold-note .mono { font-size: 12.5px; }
-
-@media (max-width: 620px) {
+  .track, .hold, .panel, .envelope { padding: 17px 16px; }
   .inv { grid-template-columns: 1fr; gap: 1px 0; }
-  .inv dt { margin-top: 7px; }
+  .inv dt { margin-top: 8px; }
   .inv dt:first-child { margin-top: 0; }
 }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
