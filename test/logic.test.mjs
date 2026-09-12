@@ -478,3 +478,71 @@ test("a chain of nothing but releases restores at zero spent", () => {
   assert.equal(r.spent, 0n);
   assert.equal(r.seq, 2);
 });
+
+/* ------------------------------------------------- the same terms twice ---
+ * Revoking an envelope and granting the same terms again inside one instance
+ * writes a second chain under the same digest: the chip's statement names the
+ * slot, not the grant. Read as one chain it has two draws at seq 1, which the
+ * continuity check calls a gap.
+ *
+ * A judge saw the consequence — "3 of 4 envelope(s) verify" on a log where
+ * nothing had gone wrong — and recovery had the sharper version of it: a
+ * broken chain restores nothing, so re-granting an envelope quietly made it
+ * unrecoverable.
+ */
+const { splitGrants } = await import("../hedera/anchor.mjs");
+
+test("a chain that never restarts is one grant", () => {
+  const rs = [draw(D, 7, 1, 10_000_000, 40_000_000),
+              draw(D, 7, 2, 10_000_000, 30_000_000)];
+  assert.equal(splitGrants(rs).length, 1);
+  assert.deepEqual(splitGrants(rs)[0], rs);
+});
+
+test("the chip's counter going back to 1 splits the chain", () => {
+  const first = [draw(D, 7, 1, 10_000_000, 40_000_000),
+                 draw(D, 7, 2, 10_000_000, 30_000_000)];
+  const second = [draw(D, 7, 1, 10_000_000, 40_000_000)];
+  const parts = splitGrants([...first, ...second]);
+  assert.equal(parts.length, 2);
+  assert.deepEqual(parts[0], first);
+  assert.deepEqual(parts[1], second);
+});
+
+test("a gap is still a gap, not a restart", () => {
+  // The split is only ever at seq 1, because that is the only thing the chip
+  // cannot produce twice for one envelope. Anything else stays a hole.
+  const rs = [draw(D, 7, 1, 10_000_000, 40_000_000),
+              draw(D, 7, 4, 10_000_000, 30_000_000)];
+  assert.equal(splitGrants(rs).length, 1);
+});
+
+test("re-granting the same terms no longer breaks the chain", () => {
+  const seen = positions([
+    draw(D, 7, 1, 10_000_000, 40_000_000),
+    draw(D, 7, 2, 10_000_000, 30_000_000),
+    // revoked here, and granted again with identical terms
+    draw(D, 7, 1, 10_000_000, 40_000_000),
+  ]);
+  const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  assert.equal(r.refused, undefined, "a re-grant is not a broken chain");
+  // The chip holds the latest grant, so that is what a replacement device is
+  // put back to — not the sum of both, which would restore an agent to a
+  // position it never had.
+  assert.equal(r.seq, 1);
+  assert.equal(r.draws, 1);
+  assert.equal(r.spent, 10_000_000n, "50 - 40 = 10 spent on the current grant");
+  assert.equal(seen.get(`${D}/7`).grants, 2, "and the operator is told there were two");
+});
+
+test("a hole inside the latest grant is still refused", () => {
+  // Splitting must not become a way to launder a broken chain: the segment
+  // that gets restored is checked exactly as before.
+  const seen = positions([
+    draw(D, 7, 1, 10_000_000, 40_000_000),
+    draw(D, 7, 1, 10_000_000, 40_000_000),
+    draw(D, 7, 3, 10_000_000, 30_000_000),
+  ]);
+  const [r] = plan({ mandates: [env], instance: "7", seen, digestOf });
+  assert.equal(r.refused, "the chain for this envelope is broken");
+});

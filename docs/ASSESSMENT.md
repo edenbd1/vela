@@ -266,6 +266,28 @@ broker can misuse a secret it currently holds. What the ring buys is that
 nothing is at rest there and membership rotates away without touching the
 upstream key.
 
+### 7. Two identical envelopes are one envelope to the public log
+
+Found 2026-09-12, by granting `remote-1` a second time on the same terms after
+it had been revoked. `hedera/verify.mjs` printed *3 of 4 envelope(s) verify* on
+a log where nothing had gone wrong, and `hedera/recovery.mjs` — which runs the
+same continuity check — refused to restore that envelope at all.
+
+The cause is in what the chip signs: `mandate_id || seq || payee || amount ||
+remaining`, where `mandate_id` is the slot. Nothing there separates one grant
+from the next. Ed25519 is deterministic, so two identical draws on two
+identical envelopes are byte-identical records.
+
+Handled rather than fixed. Both readers now split a chain where the chip's
+counter returns to 1, which is the one thing a single envelope cannot produce
+twice, so an honest log verifies and recovery restores the grant the chip is
+actually holding. What remains open is the other direction: the log still
+cannot show that a second segment is a second grant rather than the first
+one's draws written down again. That needs a generation counter inside the
+chip's statement — a change to the app, its APDU format and every anchored
+record — and `verify.mjs` says so on any chain where it applies rather than
+leaving the reader to assume otherwise.
+
 ## Is the differentiator well served?
 
 *Rewritten 2026-09-10. The version below replaces one that said this project

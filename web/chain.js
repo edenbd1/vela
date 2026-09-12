@@ -172,14 +172,53 @@ export async function checkTransfer(record, mirror = MIRROR) {
     : [false, `draw ${record.seq}: no transfer of ${record.amount} to 0.0.${record.payee}`];
 }
 
-/** Group by envelope and by the grant that opened it. */
+/**
+ * Group by envelope, by the grant that opened it, and then by each grant of
+ * those terms.
+ *
+ * The last of those is not free. Two envelopes granted with identical terms
+ * inside one instance share a mandate digest — the chip's statement names the
+ * slot, not the grant — so merged they carry two draws at seq 1, and the
+ * continuity check calls that a gap. The chip's counter is what tells them
+ * apart: it goes back to zero on a grant, so one envelope can never use the
+ * same sequence number twice.
+ *
+ * The split is on the order the log has them in, not on the sequence number.
+ * Sorting first turns [1, 2, 1] into [1, 1, 2] and splits in the wrong place.
+ *
+ * Kept in step with splitGrants in hedera/anchor.mjs by
+ * test/chain-parity.test.mjs — a verifier that agrees with itself in a
+ * terminal and disagrees in a browser is the one failure the last shot of the
+ * demo would show a judge.
+ */
 export function byEnvelope(records) {
-  const groups = new Map();
+  const collected = new Map();
   for (const r of records) {
     const key = `${r.m}/${r.i}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(r);
+    if (!collected.has(key)) collected.set(key, []);
+    collected.get(key).push(r);
   }
-  for (const rs of groups.values()) rs.sort((a, b) => a.seq - b.seq);
+
+  const groups = new Map();
+  for (const [key, all] of collected) {
+    const grants = [];
+    let current = [];
+    let seen = new Set();
+    for (const r of all) {
+      // A repeat, not a restart at 1: a topic returned out of order is still
+      // one envelope, and [3, 1, 2] must not become two grants.
+      if (seen.has(r.seq)) { grants.push(current); current = []; seen = new Set(); }
+      current.push(r);
+      seen.add(r.seq);
+    }
+    if (current.length) grants.push(current);
+
+    grants.forEach((rs, n) => {
+      rs.sort((a, b) => a.seq - b.seq);
+      // "of" rather than "/": the key is already separated by slashes, so a
+      // "1/2" in it loses its second half to key.split("/").
+      groups.set(grants.length > 1 ? `${key}@${n + 1}of${grants.length}` : key, rs);
+    });
+  }
   return groups;
 }

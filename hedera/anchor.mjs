@@ -169,6 +169,43 @@ export function makeAnchor({ topicId, operatorId, operatorKey, network = "testne
  * Replay a mandate's history. Returns every check rather than the first
  * failure — a partial answer is worth more than an exception here.
  */
+/**
+ * One list of draws per grant.
+ *
+ * Two envelopes granted with identical terms inside one instance share a
+ * mandate digest: the chip's statement names the slot, not the grant. So they
+ * arrive here as one chain whose sequence restarts, and a restart read as a
+ * gap turns an honest log into "3 of 4 envelopes verify" — which is what a
+ * judge saw after remote-1 was granted, revoked, and granted again.
+ *
+ * The chip's counter is what makes the split sound: it goes back to zero on a
+ * grant and rises by one per draw, so a single envelope can never use the
+ * same sequence number twice. Nothing else here is inferred.
+ *
+ * What this cannot do is prove the second segment is a second grant rather
+ * than the first one's draws written down again. Ed25519 is deterministic and
+ * the chip signs slot, sequence, payee, amount and balance — nothing that
+ * separates one grant from the next — so two identical draws on two identical
+ * envelopes are byte-identical records. Telling them apart needs a generation
+ * counter inside the chip's statement. See docs/FINDINGS.md.
+ */
+export function splitGrants(records) {
+  const segments = [];
+  let current = [];
+  let seen = new Set();
+  for (const r of records) {
+    // A repeat, not a restart at 1. Both mean a second grant, but only the
+    // repeat also leaves a topic returned out of order alone: [3, 1, 2] is
+    // one envelope whose messages arrived shuffled, and splitting it at the
+    // 1 would invent a grant that never happened.
+    if (seen.has(r.seq)) { segments.push(current); current = []; seen = new Set(); }
+    current.push(r);
+    seen.add(r.seq);
+  }
+  if (current.length) segments.push(current);
+  return segments;
+}
+
 export function checkChain(records) {
   const out = [];
   let prevSeq = 0;
@@ -227,5 +264,7 @@ export const STATEMENT = `
                 in order, against one fixed envelope, and never past its
                 ceiling
   does not      that the service delivered anything, that the envelope was a
-  prove         sensible size, or that the agent did anything useful
+  prove         sensible size, or that the agent did anything useful, or —
+                where a note above says so — that two envelopes granted with
+                identical terms are two grants rather than one replayed
 `;

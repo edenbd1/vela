@@ -8,7 +8,7 @@
  *
  * Nothing here touches the network or the device.
  */
-import { checkChain } from "./anchor.mjs";
+import { checkChain, splitGrants } from "./anchor.mjs";
 
 /**
  * Where each envelope had got to, and whether that can be trusted.
@@ -28,8 +28,22 @@ export function positions(records) {
   }
 
   const out = new Map();
-  for (const [key, rs] of grouped) {
-    rs.sort((a, b) => a.seq - b.seq);
+  for (const [key, all] of grouped) {
+    // Revoking an envelope and granting the same terms again inside one
+    // instance writes a second chain under the same digest. Merged, it has
+    // two draws at seq 1, checkChain calls that a gap, and this refuses to
+    // restore the envelope at all — safe, and wrong.
+    //
+    // The chip holds the latest grant, so that is the one a replacement
+    // device has to be put back to. The earlier segments belong to envelopes
+    // that were revoked and are not being restored.
+    //
+    // Split on the order the log has them in, not on the sequence number:
+    // sorting first turns [1, 2, 1] into [1, 1, 2] and the split then keeps
+    // the *first* grant's tail as the current one. Consensus order is the
+    // order these happened, which is exactly what tells the grants apart.
+    const grants = splitGrants(all);
+    const rs = [...grants.at(-1)].sort((a, b) => a.seq - b.seq);
     // A gap is not cosmetic here. Every missing draw is spending this would
     // hand back: restore from a chain that lost four draws and the agent gets
     // those four draws' worth of budget again. So the continuity check the
@@ -50,7 +64,11 @@ export function positions(records) {
     // every time a chain happens to end on a release. hedera/refusals.mjs
     // ends every run that way.
     out.set(key, { last: rs.at(-1), lastPaid: rs.filter((r) => !r.r).at(-1),
-                   count: rs.length, failures });
+                   count: rs.length, failures,
+                   // Surfaced so an operator restoring a device is told the
+                   // log held more than one grant of these terms, and that
+                   // this took the last of them.
+                   grants: grants.length });
   }
   return out;
 }

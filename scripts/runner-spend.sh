@@ -101,7 +101,7 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
   [ -n "$GW" ] && echo "reusing the open tunnel"
 fi
 if [ -z "$GW" ]; then
-  ./scripts/remote-agent.sh || exit 1
+  VELA_TUNNEL_QUIET=1 ./scripts/remote-agent.sh || exit 1
   OURS=1
   GW=$(grep -oE 'url=https://[a-z0-9.-]+' "$LOG" 2>/dev/null | tail -1 | cut -d= -f2-)
 fi

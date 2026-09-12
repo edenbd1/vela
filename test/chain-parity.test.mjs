@@ -15,8 +15,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { checkChain as nodeCheck, drawRecord, releaseRecord, callRecord }
-  from "../hedera/anchor.mjs";
+import { checkChain as nodeCheck, drawRecord, releaseRecord, callRecord,
+         splitGrants } from "../hedera/anchor.mjs";
 import { checkChain as webCheck, byEnvelope } from "../web/chain.js";
 
 const draw = (seq, amount, remaining, extra = {}) =>
@@ -88,4 +88,56 @@ test("and sorts each envelope by sequence, whatever order the topic returned", (
     { ...draw(2, 1_000_000, 48_000_000), m: "d", i: "7" },
   ];
   assert.deepEqual(byEnvelope(rs).get("d/7").map((r) => r.seq), [1, 2, 3]);
+});
+
+/* ------------------------------------------------ grants, split the same ---
+ * The split that keeps a re-granted envelope from reading as a gap lives in
+ * two places — splitGrants in hedera/anchor.mjs and byEnvelope in
+ * web/chain.js — so it is two things that can drift. A browser that shows a
+ * judge "3 of 4 envelope(s) verify" while the terminal shows 5 of 5 is the
+ * exact failure this file exists to prevent, and it is the one a judge is
+ * more likely to see: the page is the thing linked from the README.
+ */
+const at = (seq, i = "7") => ({ ...draw(seq, 1_000_000, 40_000_000), i });
+
+/** Both implementations, reduced to the same shape: a list of seq lists. */
+const shapes = (rs) => ({
+  node: splitGrants(rs).map((g) => g.map((r) => r.seq)),
+  web: [...byEnvelope(rs).values()].map((g) => g.map((r) => r.seq)),
+});
+
+test("one grant is one group, in both", () => {
+  const { node, web } = shapes([at(1), at(2), at(3)]);
+  assert.deepEqual(node, [[1, 2, 3]]);
+  assert.deepEqual(web, node);
+});
+
+test("the same terms granted twice split the same way in both", () => {
+  const { node, web } = shapes([at(1), at(2), at(1)]);
+  assert.deepEqual(node, [[1, 2], [1]]);
+  assert.deepEqual(web, node);
+});
+
+test("a topic returned out of order is still one grant, in both", () => {
+  // The distinguisher is a repeated sequence number, not a 1. Shuffled
+  // arrival has no repeat, so it must not become two grants — which would
+  // turn a fine chain into two, each with a hole.
+  const { node, web } = shapes([at(3), at(1), at(2)]);
+  assert.deepEqual(node, [[3, 1, 2]]);
+  assert.deepEqual(web, [[1, 2, 3]], "the browser sorts within a grant");
+});
+
+test("a gap is a gap in both, not a grant boundary", () => {
+  const { node, web } = shapes([at(1), at(4)]);
+  assert.deepEqual(node, [[1, 4]]);
+  assert.deepEqual(web, node);
+  // And it still fails, which is the point of not splitting it.
+  assert.ok(nodeCheck([at(1), at(4)]).some(([ok, why]) => !ok && /no gap/.test(why)));
+});
+
+test("both name the grant when there is more than one", () => {
+  const keys = [...byEnvelope([at(1), at(2), at(1)]).keys()];
+  assert.deepEqual(keys, ["d/7@1of2", "d/7@2of2"]);
+  // One grant keeps the plain key, so nothing changes for every other chain.
+  assert.deepEqual([...byEnvelope([at(1), at(2)]).keys()], ["d/7"]);
 });

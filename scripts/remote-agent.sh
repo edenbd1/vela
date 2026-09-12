@@ -137,6 +137,11 @@ if [ "$(lsof -tiTCP:4040 -sTCP:LISTEN | wc -l | tr -d ' ')" != "1" ]; then
   echo "  screen_counterparty will get its 404 instead of the risk feed."
 fi
 
+# scripts/runner-spend.sh does every one of these steps itself, so printing
+# them there tells the reader to go and do by hand what the thing they just
+# ran is three seconds from doing for them.
+[ -n "${VELA_TUNNEL_QUIET:-}" ] && exit 0
+
 cat <<TXT
 
 Run the workflow against it — GitHub's hardware, not this laptop:

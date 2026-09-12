@@ -74,10 +74,12 @@ async function run() {
   let whole = 0;
 
   for (const [key, rs] of groups) {
-    const [digest, instance] = key.split("/");
+    const [digest, rest] = key.split("/");
+    const [instance, which] = rest.split("@");
     const { s, ol } = panel(
       `envelope ${digest.slice(0, 16)}…`,
-      `granted ${instance} · ${rs.length} draw(s)`);
+      `granted ${instance} · ` +
+      `${which ? `grant ${which.replace("of", " of ")} · ` : ""}${rs.length} draw(s)`);
     out.append(s);
 
     let failed = false;

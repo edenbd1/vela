@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { createPublicKey, verify as nodeVerify } from "node:crypto";
 
-import { checkAnchor, checkChain, SCHEMA, STATEMENT } from "./anchor.mjs";
+import { checkAnchor, checkChain, splitGrants, SCHEMA, STATEMENT } from "./anchor.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: join(ROOT, ".env") });
@@ -138,11 +138,24 @@ if (records.length === 0) {
 
 // Group by envelope *instance*: the same terms granted twice share a digest,
 // and each grant restarts the chip's sequence at 1.
-const byMandate = new Map();
+const collected = new Map();
 for (const r of records) {
   const key = `${r.m}#${r.i ?? "0"}`;
-  if (!byMandate.has(key)) byMandate.set(key, []);
-  byMandate.get(key).push(r);
+  if (!collected.has(key)) collected.set(key, []);
+  collected.get(key).push(r);
+}
+
+// And then by grant. Revoking an envelope and granting the same terms again
+// inside one instance produces a second chain under the same digest, whose
+// sequence starts over — which read as one chain is a gap, and a gap is a
+// FAIL on a log where nothing went wrong.
+const byMandate = new Map();
+for (const [key, rs] of collected) {
+  const grants = splitGrants(rs);
+  grants.forEach((draws, n) => {
+    byMandate.set(grants.length > 1 ? `${key}@${n + 1}/${grants.length}` : key,
+                  draws);
+  });
 }
 
 // A verdict per envelope, not one for the whole topic. Anyone may write to
@@ -151,11 +164,20 @@ const only = process.argv[3];
 const verdicts = [];
 
 for (const [key, draws] of byMandate) {
-  const [hash, instance] = key.split("#");
+  const [hash, rest] = key.split("#");
+  const [instance, which] = rest.split("@");
   if (only && instance !== only) continue;
 
   console.log(`mandate ${hash.slice(0, 16)}…  granted ${instance}  ` +
+              (which ? `grant ${which.replace("/", " of ")}  ` : "") +
               `${draws.length} draw(s)`);
+  if (which) {
+    // Said here rather than only in the source, because the reader is being
+    // shown a split this log did not record and inferred from the chip's
+    // counter.
+    console.log(`  note  same terms granted more than once in this instance; ` +
+                `split where the chip's counter restarts`);
+  }
 
   let ok = true;
   for (const [pass, why] of checkChain(draws)) {
