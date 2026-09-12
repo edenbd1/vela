@@ -552,7 +552,7 @@ Ledger Flex.
 |---|---|
 | Payment signed in the Secure Element | account [`0.0.10397072`](https://hashscan.io/testnet/account/0.0.10397072) — its private key exists on no disk here |
 | x402 settlement | Blocky402 facilitator, `CRYPTOTRANSFER`, `result: SUCCESS` |
-| Public audit log | topic [`0.0.10472746`](https://hashscan.io/testnet/topic/0.0.10472746) — a new one per grant, so this is the latest rather than the only |
+| Public audit log | topic [`0.0.10498583`](https://hashscan.io/testnet/topic/0.0.10498583) — a new one per grant, so this is the latest rather than the only |
 | On-chip refusals | `payee_not_allowed`, `over_per_call`, `over_budget` |
 | NVRAM persistence | *IDENTICAL — the envelope survived a full application restart* |
 
@@ -589,25 +589,23 @@ local state, no trust in this repo, no trust in the host that produced the log.
 ```console
 $ node hedera/verify.mjs            # or pass a topic id
 
-topic   0.0.10472746
+topic   0.0.10498583
 source  https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
 
-mandate 0f39b1086dbf4421…  granted 1789113006  8 draw(s)
+mandate 0f39b1086dbf4421…  granted 1789208452  7 draw(s)
   ok    seq 2 follows 1 with no gap
-  ok    remaining 41000000 = 49000000 - 8000000
   ok    seq 3 follows 2 with no gap
-  ok    draw 3 released within the envelope (31000000 <= 41000000)
+  ok    draw 3 released within the envelope (39000000 <= 49000000)
   …
   ok    seq 7 follows 6 with no gap
-  ok    remaining 33000000 = 41000000 - 8000000
-  ok    draw 1: contract call on 0.0.5000001, signed here and submitted elsewhere
-  ok    draw 2: 8000000 tinybars reached 0.0.10388937
+  ok    remaining 48000000 = 49000000 - 1000000
+  ok    draw 1: released, nothing paid
+  ok    draw 2: contract call on 0.0.5000001, signed here and submitted elsewhere
   ok    draw 3: released, nothing paid
   ok    draw 4: released, nothing paid
   ok    draw 5: released, nothing paid
   ok    draw 6: released, nothing paid
-  ok    draw 7: 8000000 tinybars reached 0.0.10388937
-  ok    draw 8: contract call on 0.0.5000001, signed here and submitted elsewhere
+  ok    draw 7: 1000000 tinybars reached 0.0.10388937
   key   the debited account is under b662cae30b34a322…
   ok    draw 1: signed by the device, and the numbers match
   …
@@ -617,7 +615,7 @@ mandate 0f39b1086dbf4421…  granted 1789113006  8 draw(s)
 ```
 
 Read the middle of that. Draws 3 to 6 reserved and released; draw 7 starts
-from 41000000 — where draw 2 left off, as if the releases had never happened.
+from 49000000 — where draw 2 left off, as if the releases had never happened.
 That is the invariant, and it is checked against a balance the chip signed
 rather than a number the host asserted. It is also the invariant
 `hedera/recovery.mjs` was reading wrong: a chain ending on a release restored
@@ -780,13 +778,13 @@ gets a fresh 0.5.
 
 ```console
 $ node hedera/recover.mjs
-topic    0.0.10472746
+topic    0.0.10498583
 source   https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
-backup   3 envelope(s), granted 1789113006
+backup   3 envelope(s), granted 1789208452
 
-  research-1     draw 8    0.2200 spent, 0.2800 left of 0.5000
+  research-1     draw 7    0.0200 spent, 0.4800 left of 0.5000
                  digest 0f39b1086dbf4421…  matches the chain
-                 8 draw(s), no gaps
+                 7 draw(s), no gaps
 ```
 
 The position comes from the public log. The terms come from a backup granting
@@ -815,8 +813,8 @@ the answer is markable:
 
 ```console
 $ node hedera/recover.mjs --check
-  research-1     chip agrees  chain 0.2200 spent, chip 0.2200 (0.1600 settled + 0.0600 reserved)
-  ops-nightly    chip agrees  chain 0.0100 spent, chip 0.0100 (0.0100 settled + 0.0000 reserved)
+  research-1     chip agrees  chain 0.0200 spent, chip 0.0200 (0.0100 settled + 0.0100 reserved)
+  ops-nightly    chip agrees  chain 0.0400 spent, chip 0.0400 (0.0400 settled + 0.0000 reserved)
   watcher        chip agrees  chain 0.0100 spent, chip 0.0100 (0.0100 settled + 0.0000 reserved)
 
   The log reconstructs what the Secure Element is holding, to the tinybar.
