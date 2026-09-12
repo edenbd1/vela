@@ -23,6 +23,31 @@
  */
 const minds = new Map();
 
+function labelSlot(el) {
+  const known = (window.__fleet ?? []).find((a) => a.label === el.dataset.agent);
+  // Composed from the two facts, not appended to whatever the text already
+  // said. Appending made the model tag something this could only add and
+  // never rewrite — so re-reading the slot wiped the model, and two `start`
+  // events in one run wrote the model twice.
+  el.textContent = [known ? `slot ${known.slot}` : "unclaimed slot",
+                    el.dataset.model].filter(Boolean).join(" · ");
+}
+
+/**
+ * Re-read every column's slot off the fleet.
+ *
+ * Called whenever the fleet is re-read, because "unclaimed slot" is a claim
+ * about the chip and it must not survive the chip answering. It is also the
+ * honest label for an agent the device has never heard of — an agent
+ * reporting under a name no mandate carries — and that case has to keep
+ * working, so this sets the text either way rather than only on a hit.
+ */
+function relabelSlots() {
+  for (const el of document.querySelectorAll("#minds .meta[data-agent]")) {
+    labelSlot(el);
+  }
+}
+
 function mindFor(agent) {
   if (minds.has(agent)) return minds.get(agent);
 
@@ -40,9 +65,15 @@ function mindFor(agent) {
   slot.className = "meta";
   // The slot is the chip's fact, not the agent's claim, so it is read from
   // the fleet the device reported rather than from the message.
-  const known = (window.__fleet ?? []).find((a) => a.label === agent);
-  slot.textContent = known ? `slot ${known.slot}` : "unclaimed slot";
+  //
+  // And re-read later, which is the part that was missing. The event stream
+  // replays on connect, so these columns are built in the same tick the page
+  // loads — while the fetch that fills window.__fleet is still in flight.
+  // Whoever lost that race got "unclaimed slot" permanently, printed directly
+  // above a fleet card showing the slot it was in.
+  slot.dataset.agent = agent;
   head.append(who, slot);
+  labelSlot(slot);
 
   const steps = document.createElement("ol");
   steps.className = "steps";
@@ -73,7 +104,7 @@ function onAgentEvent(e) {
     const m = mindFor(e.agent);
     if (e.model) {
       const meta = m.box.querySelector("header .meta");
-      if (meta) meta.textContent = `${meta.textContent} · ${e.model}`;
+      if (meta) { meta.dataset.model = e.model; labelSlot(meta); }
     }
     return;
   }

@@ -304,6 +304,13 @@ async function refresh() {
   $("sel-slot").textContent = row ? `slot ${row.slot}` : "";
   $("try-as").textContent = row ? `as ${row.label}` : "as —";
 
+  // The thinking columns label each agent with the slot the *device* put it
+  // in, and they are built from an event stream that replays the moment the
+  // page connects — before this fetch has answered. Re-label them now that it
+  // has, or a column says "unclaimed slot" directly above a fleet card
+  // showing the slot.
+  relabelSlots?.();
+
   // The operations buttons act on the selected agent, so they say which one.
   // "Run one here" ran research-1 whatever the page had highlighted, which is
   // the kind of thing nobody notices until the wrong agent spends.
@@ -885,6 +892,14 @@ function paintDevice(d) {
     facts.append(dt, dd);
   }
 
+  // The other way in, when there is one. Separate from "To fix", because a
+  // working bridge is not a fault and putting it under that heading would
+  // read as one.
+  const note = $("device-note"), cmd = $("device-note-cmd");
+  note.hidden = cmd.hidden = !d.note;
+  if (d.note) { note.textContent = d.note; cmd.textContent = d.noteCmd ?? ""; }
+  cmd.hidden = !d.noteCmd;
+
   const btn = $("device-connect");
   btn.hidden = d.state === "ready" || !d.canConnect;
   // Only offered when this tab is the one holding the device. Disconnecting
@@ -934,9 +949,20 @@ async function probeDevice() {
 
   const canConnect = (await hidModule()).supported();
   if (d.state === "ready") {
-    return paintDevice({ ...d, via: "host/bridge.py",
-                         label: d.buyer ?? "connected",
-                         why: "host/bridge.py is holding the device" });
+    return paintDevice({
+      ...d, via: d.via ?? "host/bridge.py",
+      label: d.buyer ?? "connected",
+      why: `${d.via ?? "host/bridge.py"} is holding the device`,
+      // Only worth saying when this browser could actually take over, and
+      // only when it is not already the thing holding it.
+      note: canConnect && !/WebHID/.test(d.via ?? "")
+        ? "This tab can hold the Flex itself, with no bridge process. " +
+          "Stop the bridge first — one process gets the USB interface — " +
+          "then press Connect Ledger."
+        : null,
+      noteCmd: canConnect && !/WebHID/.test(d.via ?? "")
+        ? "pkill -f host/bridge.py" : null,
+    });
   }
   if (d.state === "wrong-app") {
     return paintDevice({ ...d, via: "host/bridge.py", canConnect,

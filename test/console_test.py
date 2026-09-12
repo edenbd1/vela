@@ -129,6 +129,46 @@ def main():
         check("the verdict lands when the run ends",
               "flagged, not followed" in text)
 
+        # Which slot the *device* put an agent in.
+        #
+        # The columns are built from an event stream that replays the instant
+        # the page connects, and the fleet they read the slot from arrives on
+        # a fetch that has not returned yet. Whoever lost that race got
+        # "unclaimed slot" written into the header once and never re-read —
+        # printed directly above a fleet card showing the slot it was in.
+        labels = page.eval_on_selector_all(
+            "#minds .meta[data-agent]",
+            "els => Object.fromEntries(els.map(e => [e.dataset.agent, e.textContent]))")
+        check("a column carries the slot the chip reported",
+              any(l.startswith("slot ") for l in labels.values()),
+              f"{labels}")
+        # The model tag lives in the same element. It used to be appended to
+        # whatever the text already said, so re-reading the slot erased it and
+        # two start events wrote it twice.
+        check("and the model beside it, once",
+              all(l.count("hermes3") <= 1 and l.count("llama3") <= 1
+                  for l in labels.values()), f"{labels}")
+
+        relabelled = page.evaluate("""() => {
+          const el = document.querySelector('#minds .meta[data-agent]');
+          const was = window.__fleet;
+          window.__fleet = [];
+          relabelSlots();
+          const empty = el.textContent;
+          window.__fleet = [{ label: el.dataset.agent, slot: 6 }];
+          relabelSlots();
+          const found = el.textContent;
+          window.__fleet = was; relabelSlots();
+          return { empty, found };
+        }""")
+        # Both directions: an agent the device has never heard of is a real
+        # case and has to keep saying so, and a fleet arriving late has to
+        # overwrite it rather than being ignored.
+        check("a fleet the device has not answered for says so",
+              relabelled["empty"].startswith("unclaimed slot"), relabelled)
+        check("and the answer overwrites it when it arrives",
+              relabelled["found"].startswith("slot 6"), relabelled)
+
         # The banner claims no device is attached. Showing it against a live
         # gateway would be the page lying about its own provenance — and it
         # did, because a `display` rule silently outranks the hidden attribute.

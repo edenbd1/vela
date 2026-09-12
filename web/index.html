@@ -50,6 +50,10 @@
             <code class="device-fix-code" id="device-fix-text"></code>
           </div>
           <dl class="inv mt-4" id="device-facts"></dl>
+          <!-- Not a fault, so not in the "To fix" block: the other way to
+               reach the device, offered when this browser could do it. -->
+          <p class="mt-3 text-[13px] text-fg-muted" id="device-note" hidden></p>
+          <code class="device-fix-code mt-2" id="device-note-cmd" hidden></code>
           <div class="mt-4 flex flex-wrap gap-2">
             <button class="act" id="device-connect" hidden>Connect Ledger</button>
             <!-- Only while this tab is the one holding the Flex. -->
