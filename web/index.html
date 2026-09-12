@@ -18,6 +18,7 @@
   <span class="tag">a spending limit your agent cannot argue with</span>
   <nav>
     <a href="#why">Why</a>
+    <a href="#held">Holds</a>
     <a href="#fleet">Fleet</a>
     <a href="#thinking">Agents</a>
     <a href="#envelope">Envelope</a>
@@ -122,6 +123,73 @@
       <code>./scripts/experiment.sh</code> runs the same attack against a
       software policy and against the chip, with root on this machine in both
       cases.
+    </p>
+  </section>
+
+  <!-- ============================================================= held -->
+  <section id="held">
+    <h2 class="section">What the agent holds
+      <span class="src">each machine, describing itself</span>
+    </h2>
+    <p class="lede">
+      A limit on spending is half of it. The other half is the credential —
+      the API key you would normally copy onto the same machine. Neither of
+      these hosts has one, and neither is taking our word for it: these are
+      the lines they print about themselves before they start work.
+    </p>
+
+    <div class="split holds">
+      <div class="panel hold">
+        <div class="hold-h">
+          A container on this laptop
+          <span class="src">agent/run.sh</span>
+        </div>
+        <dl class="inv">
+          <dt>api keys</dt>        <dd class="none">none</dd>
+          <dt>private keys</dt>    <dd class="none">none</dd>
+          <dt>recovery phrase</dt> <dd class="none">none</dd>
+          <dt>usb devices</dt>     <dd class="none">none — this is a container</dd>
+          <dt>broker token</dt>    <dd>one — scoped to this agent, revocable, useless elsewhere</dd>
+        </dl>
+        <p class="hold-note">
+          The one thing it holds arrives sealed. This host is a member of the
+          Ledger Key Ring, so it <em>derives</em> the key that opens its token
+          rather than being handed one — and the upstream API keys never reach
+          it at all. It asks the broker to screen an account and gets a score
+          back; the credential is decrypted under the Key Ring for that one
+          request and dropped. Evict the host and the ring rotates: what it
+          kept opens nothing.
+        </p>
+      </div>
+
+      <div class="panel hold">
+        <div class="hold-h">
+          A GitHub runner on Azure
+          <span class="src">.github/workflows/remote-spend.yml</span>
+        </div>
+        <dl class="inv">
+          <dt>host</dt>     <dd>Linux 6.17.0-1022-azure x86_64</dd>
+          <dt>usb</dt>      <dd class="none">no usb bus</dd>
+          <dt>ledger</dt>   <dd class="none">no ledger tooling</dd>
+          <dt>seed</dt>     <dd class="none">none</dd>
+          <dt>envelope</dt> <dd class="none">none — it is in NVRAM on a device this job cannot address</dd>
+        </dl>
+        <p class="hold-note">
+          Then it spends. Hardware neither of us owns bought an inference for
+          <b>0.01 HBAR</b>, asked for eight times the ceiling, and was refused
+          <span class="mono chip">over_per_call</span> — by a chip in a flat in
+          Paris that the job has no address for. The refusal did not happen on
+          the runner, in the gateway, or in a policy file. The whole log is
+          public.
+        </p>
+      </div>
+    </div>
+
+    <p class="why-foot">
+      The container needs no VPS and there isn't one. An agent reaches the
+      gateway over HTTP and does not care where it is, so "a machine you do
+      not control" turned out to be a routing question wearing a hosting
+      question's clothes.
     </p>
   </section>
 

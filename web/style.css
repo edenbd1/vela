@@ -496,3 +496,52 @@ ul.bound .mono, ul.bound code { font-family: var(--mono); font-size: 12.5px; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* --------------------------------------------------------------- held ---
+ * Two machines, each reciting its own inventory.
+ *
+ * The lines are quoted rather than written: agent/run.sh and the workflow
+ * both print these before they start work, which is the only reason the
+ * claim is worth anything. So they are set in mono — the page's rule is that
+ * mono means a machine produced the words — and the values that say "none"
+ * are the ones the eye should catch, because the argument is an absence.
+ */
+.holds { align-items: start; }
+.hold { display: flex; flex-direction: column; }
+
+.hold-h {
+  font-size: 15px; font-weight: 600; color: var(--forest);
+  letter-spacing: -0.01em;
+  display: flex; align-items: baseline; gap: 10px;
+  flex-wrap: wrap; margin-bottom: 14px;
+}
+
+.inv {
+  margin: 0; padding: 13px 15px;
+  background: var(--cream); border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  display: grid; grid-template-columns: auto 1fr;
+  gap: 5px 16px; align-items: baseline;
+  font-family: var(--mono); font-size: 12.5px;
+}
+/* No colour on the values. Green on this page means "it happened" and red
+   means the Secure Element refused; spending either on "this machine has no
+   API key" would buy a little emphasis here at the cost of the thing that
+   makes a refusal legible everywhere else. The keys recede instead, and the
+   word none repeating five times does the work. */
+.inv dt { color: var(--faint); white-space: nowrap; }
+.inv dd { margin: 0; color: var(--forest); }
+.inv dd.none { color: var(--forest); }
+
+.hold-note {
+  margin: 14px 0 0; font-size: 13.5px; color: var(--dim); line-height: 1.6;
+}
+.hold-note b { color: var(--forest); font-weight: 600; }
+.hold-note em { font-style: normal; color: var(--forest); font-weight: 500; }
+.hold-note .mono { font-size: 12.5px; }
+
+@media (max-width: 620px) {
+  .inv { grid-template-columns: 1fr; gap: 1px 0; }
+  .inv dt { margin-top: 7px; }
+  .inv dt:first-child { margin-top: 0; }
+}
