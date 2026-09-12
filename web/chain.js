@@ -113,21 +113,36 @@ export function checkChain(records) {
  * 29 bytes: slot, sequence, payee, amount, remaining. Without this the log is
  * the host's account of what the chip decided. With it, the host is only the
  * courier.
+ *
+ * readStatement is split out because the console shows those same 29 bytes
+ * under a payment — the one thing on that page that is the chip's word rather
+ * than the host's — and two decoders of one wire format is one decoder that
+ * can quietly drift from the thing it is supposed to be checking.
  */
+export function readStatement(hex) {
+  if (typeof hex !== "string") return null;
+  const a = unhex(hex);
+  if (a.length !== 29) return null;
+  const v = new DataView(a.buffer, a.byteOffset, a.byteLength);
+  return {
+    slot: a[0],
+    seq: v.getUint32(1),
+    payee: v.getBigUint64(5),
+    amount: v.getBigUint64(13),
+    remaining: v.getBigUint64(21),
+  };
+}
+
 export async function checkAnchor(record, publicKey) {
   if (!record.a || !record.s) return [false, `draw ${record.seq}: not signed by a device`];
 
   const a = unhex(record.a);
-  if (a.length !== 29) return [false, `draw ${record.seq}: malformed statement`];
+  const said = readStatement(record.a);
+  if (!said) return [false, `draw ${record.seq}: malformed statement`];
 
-  const v = new DataView(a.buffer, a.byteOffset, a.byteLength);
-  const seq = v.getUint32(1);
-  const payee = v.getBigUint64(5);
-  const amount = v.getBigUint64(13);
-  const remaining = v.getBigUint64(21);
-
-  if (seq !== record.seq || String(payee) !== record.payee ||
-      String(amount) !== record.amount || String(remaining) !== record.remaining) {
+  if (said.seq !== record.seq || String(said.payee) !== record.payee ||
+      String(said.amount) !== record.amount ||
+      String(said.remaining) !== record.remaining) {
     return [false, `draw ${record.seq}: the log disagrees with the chip's statement`];
   }
   if (!publicKey) return [false, `draw ${record.seq}: no device key to check against`];

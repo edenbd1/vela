@@ -63,6 +63,19 @@
 
   <div class="frame-panel md:rounded-[20px] flex-1 md:mx-[10.5px] md:mb-[10.5px] overflow-hidden">
     <div class="h-full overflow-y-auto overflow-x-hidden no-scrollbar">
+
+      <!-- What the Flex wants, right now.
+           A direct child of the scrolling panel, not of the hero: sticky is
+           bounded by its parent, so inside the hero it scrolled away with it
+           and pressing Grant — which is most of a page down — put the banner
+           off screen. Which is the exact thing it exists to prevent. -->
+      <div class="devbar-wrap" id="devbar" hidden>
+        <div class="devbar">
+          <span class="devbar-spin"></span>
+          <span id="devbar-msg"></span>
+        </div>
+      </div>
+
       <main>
 
         <section class="px-6 md:px-24 pt-10 md:pt-14 pb-8">

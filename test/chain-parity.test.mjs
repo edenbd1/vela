@@ -17,7 +17,8 @@ import assert from "node:assert/strict";
 
 import { checkChain as nodeCheck, drawRecord, releaseRecord, callRecord,
          splitGrants } from "../hedera/anchor.mjs";
-import { checkChain as webCheck, byEnvelope } from "../web/chain.js";
+import { checkChain as webCheck, byEnvelope, readStatement }
+  from "../web/chain.js";
 
 const draw = (seq, amount, remaining, extra = {}) =>
   drawRecord({ mandateHash: "d", instance: "7", seq, payee: 10n,
@@ -140,4 +141,44 @@ test("both name the grant when there is more than one", () => {
   assert.deepEqual(keys, ["d/7@1of2", "d/7@2of2"]);
   // One grant keeps the plain key, so nothing changes for every other chain.
   assert.deepEqual([...byEnvelope([at(1), at(2)]).keys()], ["d/7"]);
+});
+
+/* ------------------------------------------- the chip's own 29 bytes ------
+ * The console shows these under every payment, because they are the one thing
+ * on that page that is the chip's word rather than the host's account of it.
+ * It used to decode them itself, in web/app.js, next to a verifier that
+ * decodes the same bytes to check the signature over them — two readers of
+ * one wire format, and the one that drifts is the one nobody checks against a
+ * device.
+ *
+ * The statement below came off a Ledger Flex.
+ */
+const REAL = "000000000900000000009e85c900000000000f42400000000002bde780";
+
+test("a statement off the device reads back field for field", () => {
+  const said = readStatement(REAL);
+  assert.equal(said.slot, 0);
+  assert.equal(said.seq, 9);
+  assert.equal(said.payee, 10388937n);        // 0.0.10388937, the seller
+  assert.equal(said.amount, 1_000_000n);      // 0.01 HBAR
+  assert.equal(said.remaining, 46_000_000n);
+});
+
+test("the numbers are the ones the log carries", () => {
+  // What checkAnchor compares. If these stopped lining up, a record could
+  // claim one amount while the signature covered another.
+  const said = readStatement(REAL);
+  const record = { seq: 9, payee: "10388937", amount: "1000000",
+                   remaining: "46000000" };
+  assert.equal(String(said.payee), record.payee);
+  assert.equal(String(said.amount), record.amount);
+  assert.equal(String(said.remaining), record.remaining);
+});
+
+test("anything that is not 29 bytes is null, not a guess", () => {
+  // The console renders whatever comes back. A short read that still produced
+  // an object would print four plausible numbers off the wrong offsets.
+  for (const bad of [REAL.slice(0, 56), REAL + "00", "", "zz", null, undefined, 7]) {
+    assert.equal(readStatement(bad), null, JSON.stringify(bad));
+  }
 });

@@ -177,6 +177,31 @@ def main():
         check("no link falls back to the browser's default colour",
               default_blue == [], f"unstyled: {default_blue}")
 
+        # The banner that says what the Flex wants.
+        #
+        # It lived in the hero section first, where `position: sticky` is
+        # bounded by the hero — so pressing Grant, which is most of a page
+        # down, put the banner off screen. That is the exact thing it exists
+        # to prevent, and it looked fine in every screenshot taken from the
+        # top of the page.
+        check("the device banner is out of the way when nothing is asking",
+              page.query_selector("#devbar").get_attribute("hidden") is not None)
+
+        page.evaluate("""() => {
+          const w = document.getElementById('devbar');
+          w.querySelector('#devbar-msg').textContent = 'approve this on the Flex';
+          w.hidden = false;
+        }""")
+        page.eval_on_selector("#ops", "el => el.scrollIntoView()")
+        time.sleep(0.6)
+        pinned = page.evaluate("""() => {
+          const b = document.querySelector('#devbar .devbar');
+          const r = b.getBoundingClientRect();
+          return r.top >= 0 && r.bottom <= innerHeight && r.height > 0;
+        }""")
+        check("and stays on screen once something is", pinned)
+        page.evaluate("() => { document.getElementById('devbar').hidden = true; }")
+
         # The one interactive path worth asserting, and only with a device
         # attached: pressing a tier the mandate forbids. It costs nothing —
         # the chip refuses before anything is signed — and it is the moment
@@ -197,6 +222,10 @@ def main():
                 check("and pressing it is refused by the chip, with a reason",
                       "over_per_call" in events and "cheaper tier" in events,
                       events[:160])
+                check("the banner reports the refusal, not an approval",
+                      "refused" in page.inner_text("#devbar").lower() or
+                      page.query_selector("#devbar").get_attribute("hidden") is not None,
+                      page.inner_text("#devbar")[:120])
                 check("nothing is published for a refusal",
                       "nothing to publish" in events, events[:160])
 

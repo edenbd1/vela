@@ -190,6 +190,13 @@ export function lend(ledger, { expect = "Vela", on = () => {} } = {}) {
    * ask too, or lending the device would quietly drop a safety check.
    */
   async function serve({ id, apdu }) {
+    const ins = parseInt(apdu.slice(2, 4), 16);
+    // Which command is on the wire, while it is on the wire. The page draws a
+    // banner from this: three of the app's instructions put a screen up and
+    // wait for a finger, and the tab holding the device is the only thing
+    // that knows one is in flight. Guessing from how long a call is taking
+    // would call a slow USB write an approval.
+    on({ working: true, ins });
     try {
       const bytes = Uint8Array.from(apdu.match(/../g).map((h) => parseInt(h, 16)));
       if (!(bytes[0] === 0xb0 && bytes[1] === 0x01)) {
@@ -207,6 +214,8 @@ export function lend(ledger, { expect = "Vela", on = () => {} } = {}) {
       await answer({ id, data, sw });
     } catch (e) {
       await answer({ id, error: String(e.message ?? e) });
+    } finally {
+      on({ working: false, ins });
     }
   }
 

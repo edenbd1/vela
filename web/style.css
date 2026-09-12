@@ -243,3 +243,77 @@ ol.log > li.none { font-family: inherit; }
 }
 /* The device asking for a finger is the one line that must not be skimmed. */
 .op-out pre b { color: var(--fg); font-weight: 600; }
+
+/* ------------------------------------------------------------- devbar ----
+ * What the Flex is asking for, at the top of the page.
+ *
+ * The console could already make the device put a screen up — Grant, Revoke —
+ * and the only sign of it was a line in a subprocess transcript four cards
+ * down. Someone who had just pressed a button had no reason to look at the
+ * device in their hand, and the 180-second approval window ran out in silence.
+ *
+ * Amber while the device is waiting on a person, green for the moment after
+ * it decides. Both are the palette's existing meanings: amber is the host
+ * asking, green is that it happened.
+ */
+.devbar-wrap {
+  position: sticky; top: 0; z-index: 30;
+  padding: 14px 24px 0;
+  /* The panel scrolls under it, so it needs its own backdrop or the text of
+     whatever is passing behind shows through the gap on either side. */
+  background: linear-gradient(#fdf8ed 78%, rgba(253, 248, 237, 0));
+  padding-bottom: 14px;
+}
+@media (min-width: 768px) { .devbar-wrap { padding-left: 96px; padding-right: 96px; } }
+
+.devbar {
+  display: flex; align-items: center; gap: 11px;
+  padding: 13px 16px;
+  border-radius: 12px; font-size: 14px; font-weight: 500;
+  background: #fdf4e8; border: 1px solid rgba(168, 90, 44, .32); color: var(--host);
+  box-shadow: 0 6px 20px rgba(37, 72, 57, .10);
+}
+.devbar b { color: #7d3f18; font-weight: 600; }
+.devbar.done {
+  background: #eef6f1; border-color: rgba(31, 111, 74, .28); color: var(--ok);
+}
+.devbar.done b { color: #14512f; }
+
+.devbar-spin {
+  flex: 0 0 auto; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(168, 90, 44, .25); border-top-color: var(--host);
+  animation: devbar-spin .8s linear infinite;
+}
+.devbar.done .devbar-spin { display: none; }
+@keyframes devbar-spin { to { transform: rotate(360deg); } }
+/* The bar is the point, not the spinning. */
+@media (prefers-reduced-motion: reduce) { .devbar-spin { animation: none; } }
+
+/* The bytes the chip signed, under the event that produced them. */
+.signed {
+  margin-top: 7px; padding: 8px 10px; border-radius: 9px;
+  background: var(--tint); border: 1px solid var(--line);
+  font-family: var(--mono); font-size: 11px; color: var(--fg-muted);
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 12px;
+  overflow-wrap: anywhere;
+}
+.signed dt { color: var(--fg-faint); }
+.signed dd { margin: 0; color: var(--fg); }
+
+/* Who decided, then what they decided.
+ *
+ * event() has been building a div.head with a span.who inside it since the
+ * first version of this page, and neither class had a rule anywhere — so two
+ * spans sat flush against each other and the log read "chipsigned 0.01 HBAR".
+ * The same welding as "0.48HBARavailable", from the same cause: styling a
+ * class the DOM does not have while the one it does have goes unstyled.
+ */
+ol.log .head { display: flex; flex-wrap: wrap; gap: 9px; align-items: baseline; }
+ol.log .head .who {
+  flex: 0 0 auto; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--line2); font-size: 11px; color: var(--fg-faint);
+}
+ol.log > li > .detail { flex: 1 1 auto; color: var(--fg-faint); }
+/* The chip's own statement gets a row to itself rather than being squeezed
+   beside the sentence that introduced it. */
+ol.log > li > .signed { flex: 1 0 100%; }

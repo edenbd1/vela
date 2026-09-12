@@ -718,6 +718,15 @@ const routes = {
       response: result.body ?? (await paid.json().catch(() => null)),
       remaining: after ? String(after.available) : null,
       anchored_as_message: anchored,
+      // The bytes the Secure Element signed, and its signature over them.
+      // Returned because this is the product and the console had no way to
+      // show it: "signed in a chip" was a sentence under a number rather
+      // than something a reader could see and check. Same 29 bytes that go
+      // on the public topic — slot, sequence, payee, amount, remaining.
+      signed: lastDraw?.anchor
+        ? { statement: Buffer.from(lastDraw.anchor).toString("hex"),
+            signature: Buffer.from(lastDraw.anchorSig).toString("hex") }
+        : null,
       note: "signed inside the Secure Element after the chip checked this " +
             "payee and this amount against the mandate",
     });

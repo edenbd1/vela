@@ -59,6 +59,11 @@ let busy = false;
  */
 let selected = null;
 let FLEET = null;
+// Set while the chip is mid-operation. Declared up here with the rest of the
+// page's state rather than beside lockActions: paintTiers reads it, and
+// paintTiers runs during the first refresh, which is well before the bottom
+// of this file has executed.
+let DEVICE_BUSY = false;
 
 async function api(path, opts) {
   const r = await fetch(`/api/${path}`, opts);
@@ -67,7 +72,31 @@ async function api(path, opts) {
 
 /* ---------------------------------------------------------------- feed -- */
 
-function event({ kind, who, text, detail, link }) {
+/**
+ * The chip's statement, read with the verifier's own parser.
+ *
+ * web/chain.js decodes these 29 bytes to check the signature over them, and
+ * this page shows them under the payment that produced them. Two decoders of
+ * one wire format is one decoder that can drift from the thing it is meant to
+ * be checking, so there is one, and test/chain-parity.test.mjs holds it.
+ */
+let chainMod = null;
+async function statementOf(hex) {
+  if (!hex) return null;
+  if (!chainMod) chainMod = await import("/chain.js");
+  const said = chainMod.readStatement(hex);
+  if (!said) return null;
+  const hbar8 = (n) => `${(Number(n) / 1e8).toFixed(4)} HBAR`;
+  return {
+    slot: String(said.slot),
+    draw: String(said.seq),
+    payee: `0.0.${said.payee}`,
+    amount: hbar8(said.amount),
+    left: hbar8(said.remaining),
+  };
+}
+
+function event({ kind, who, text, detail, link, signed }) {
   const list = $("events");
   list.querySelector("li.none")?.remove();
 
@@ -90,6 +119,19 @@ function event({ kind, who, text, detail, link }) {
     d.textContent = detail;
     li.append(d);
   }
+  if (signed?.said) {
+    const dl = document.createElement("dl");
+    dl.className = "signed";
+    const rows = [...Object.entries(signed.said),
+                  ["signature", signed.signature ?? "—"]];
+    for (const [k, val] of rows) {
+      const dt = document.createElement("dt"); dt.textContent = k;
+      const dd = document.createElement("dd"); dd.textContent = val;
+      dl.append(dt, dd);
+    }
+    li.append(dl);
+  }
+
   if (link) {
     const d = document.createElement("div");
     d.className = "detail";
@@ -421,7 +463,10 @@ function paintTiers(m) {
 
     const b = document.createElement("button");
     b.className = "act";
-    b.disabled = busy || DEMO;
+    // DEVICE_BUSY as well as busy: this row is rebuilt on every refresh, and
+    // a refresh during a grant put the Buy buttons back while the chip was
+    // still holding a screen up.
+    b.disabled = busy || DEMO || DEVICE_BUSY;
     b.append(document.createTextNode(`Buy ${tier.label}`));
 
     const price = document.createElement("span");
@@ -438,6 +483,10 @@ function paintTiers(m) {
 
 async function buy(tier) {
   busy = true;
+  lockActions(true);
+  // Not "approve on your device". The difference between this and Grant is
+  // the product, and the banner is where someone actually reads it.
+  deviceSigns(`${tier.price} HBAR to the ${tier.label} tier — no tap needed.`);
   $("hint").textContent = "asking the chip…";
   paintTiers(await api("envelope").then((d) => d.mandate));
 
@@ -450,14 +499,17 @@ async function buy(tier) {
     });
   } catch (e) {
     busy = false;
+    lockActions(false);
+    deviceIdle();
     $("hint").textContent = `request failed: ${e.message}`;
-  
 
-  await refresh();
+    await refresh();
     return;
   }
 
   if (d.paid) {
+    deviceDone(`Signed ${hbar(d.spent)} in the chip, without a tap.`);
+    const said = await statementOf(d.signed?.statement);
     event({
       kind: "paid",
       who: "chip",
@@ -469,6 +521,10 @@ async function buy(tier) {
         ? { href: `https://hashscan.io/testnet/transaction/${d.tx}`,
             text: `settled on Hedera — ${d.tx}` }
         : undefined,
+      // The bytes the Secure Element put its name to. Everything else on this
+      // page is the host's account of what the chip decided; this is the
+      // chip's own, and the same 29 bytes go on the public topic.
+      signed: said && { said, signature: d.signed?.signature },
     });
   } else if (d.reason === "advisor_denied") {
     event({
@@ -479,6 +535,7 @@ async function buy(tier) {
               `Not terminal: the next enclave run may clear it.`,
     });
   } else if (d.refused) {
+    deviceDone(`The chip refused — ${d.reason}. Nothing was signed.`, 7000);
     event({
       kind: "refused",
       who: "chip",
@@ -492,6 +549,7 @@ async function buy(tier) {
   }
 
   busy = false;
+  lockActions(false);
   const m = await refresh();
   $("hint").textContent = m
     ? `${hbar(m.available)} left in the envelope`
@@ -571,11 +629,12 @@ async function revoke() {
   if (!row) return;
 
   const btn = $("revoke");
-  btn.disabled = true;
+  lockActions(true);
   btn.classList.add("waiting");
   btn.textContent = `waiting for a finger on the device…`;
   $("hint").textContent =
     `the device is asking whether to forget ${row.label}. Nothing has changed yet.`;
+  deviceAsks(`confirm forgetting ${row.label}. Nothing has changed yet.`);
 
   let d;
   try {
@@ -588,9 +647,15 @@ async function revoke() {
     d = { revoked: false, reason: String(e.message) };
   }
 
-  btn.disabled = false;
+  lockActions(false);
   btn.classList.remove("waiting");
   btn.textContent = "Revoke this agent";
+
+  if (d.revoked) {
+    deviceDone(`${d.was} is gone from the chip.`);
+  } else {
+    deviceIdle();
+  }
 
   if (d.revoked) {
     event({
@@ -903,6 +968,15 @@ async function connectLedger() {
       LENDING = m.lend(LEDGER, {
         expect: "Vela",
         on: (state) => {
+          // An instruction on the wire, reported by the tab that is carrying
+          // it. Three of the app's commands put a screen up; the rest answer
+          // in milliseconds and must not raise a banner.
+          if (state.working !== undefined) {
+            const asks = ASKS_FOR[state.ins];
+            if (state.working && asks) deviceAsks(asks);
+            else if (!state.working && asks) deviceIdle();
+            return;
+          }
           LENT = state;
           if (!settled) { settled = true; clearTimeout(t); return resolve(state); }
           // After the fact: the console restarted, or another tab got there
@@ -998,6 +1072,86 @@ if ($("device").addEventListener) {
   setInterval(probeDevice, 8000);
 }
 
+/* --------------------------------------------------------- device bar ----
+ * What the Flex is asking for, at the top of the page.
+ *
+ * The console could already make the device put a screen up — Grant, Revoke,
+ * Restore — and the only sign of it was one line in a subprocess transcript
+ * four cards down, inside a pane that only opens once an operation starts.
+ * Someone who had just pressed a button had no reason to look at the device
+ * in their hand, and the chip's 180-second approval window ran out in silence.
+ *
+ * Two states, and the difference between them is the product:
+ *
+ *   asks     a screen is up and a person has to answer it. Granting an
+ *            envelope, revoking one, restoring one.
+ *   signs    the chip is deciding on its own, inside a mandate a person
+ *            already approved. Every payment. No tap, and saying so each
+ *            time is the clearest way to show what the envelope buys.
+ */
+const ASKS_FOR = {
+  0x11: "approve the new envelope",
+  0x14: "confirm revoking this agent",
+  0x1a: "confirm restoring this envelope",
+};
+
+let devbarHold = null;      // a timer holding the "done" state on screen
+
+function devbar(cls, lead, strong) {
+  clearTimeout(devbarHold);
+  devbarHold = null;
+  const msg = $("devbar-msg");
+  // Built as nodes, not markup. Some of this text comes back through a
+  // subprocess, and this page asserts elsewhere that nothing it is handed
+  // becomes markup.
+  msg.replaceChildren(document.createTextNode(lead));
+  if (strong) {
+    const b = document.createElement("b");
+    b.textContent = strong;
+    msg.append(b);
+  }
+  // The state class goes on the bar; the wrapper is what sticks and what
+  // gets hidden.
+  const wrap = $("devbar");
+  wrap.querySelector(".devbar").className = `devbar${cls ? ` ${cls}` : ""}`;
+  wrap.hidden = false;
+}
+
+/** A screen is up on the Flex and it is waiting for a person. */
+const deviceAsks = (what) => devbar("", "Look at your Flex — ", what);
+
+/** The chip is deciding inside a mandate. Nothing to press. */
+const deviceSigns = (what) =>
+  devbar("", "Signing in the Secure Element — ", what);
+
+/** It decided. Held briefly, then gone: a banner that never clears is noise. */
+function deviceDone(what, ms = 5000) {
+  devbar("done", "", what);
+  devbarHold = setTimeout(() => { $("devbar").hidden = true; }, ms);
+}
+
+function deviceIdle() {
+  clearTimeout(devbarHold);
+  devbarHold = null;
+  $("devbar").hidden = true;
+}
+
+/**
+ * One device, one operation at a time.
+ *
+ * The chip answers one APDU at a time and a grant holds it for as long as a
+ * person takes to read four screens. Two buttons pressed in that window do
+ * not queue, they collide — and the second one's failure looks like the chip
+ * refusing. Inputs stay editable: it is the device that is busy, not the page.
+ */
+function lockActions(locked) {
+  DEVICE_BUSY = locked;
+  for (const b of document.querySelectorAll(
+      "#tiers .act, #ops .act[data-op], #revoke, button.scenario")) {
+    b.disabled = locked;
+  }
+}
+
 /* --------------------------------------------------------- operations ----
  * Buttons that start something, and a pane that shows it happening.
  *
@@ -1011,6 +1165,13 @@ let opRunning = null;
 
 function opLine(text) {
   const log = $("ops-log");
+  // A device prompt is also the one line here that someone has to act on, and
+  // this pane is four cards down inside a section that only opens once an
+  // operation starts. So it goes to the banner as well as the transcript.
+  const ask = text.match(/>>>\s*(.*?)\s*<<</);
+  // "on the device" is what the terminal has to say and the banner does not:
+  // it is already telling someone to look at the Flex.
+  if (ask) deviceAsks(ask[1].replace(/\s+on the device\b/, ""));
   // The device's asks are the only thing here that needs a person, so they
   // are the only thing given weight. Everything else is a transcript.
   const bold = /^\s*>>>/.test(text);
@@ -1024,6 +1185,7 @@ async function runOp(op, params = {}) {
   if (opRunning) return;
   opRunning = op;
 
+  lockActions(true);
   const buttons = document.querySelectorAll("#ops .act");
   buttons.forEach((b) => (b.disabled = true));
   const pressed = document.querySelector(`#ops .act[data-op="${op}"]`);
@@ -1057,8 +1219,13 @@ async function runOp(op, params = {}) {
     opLine(`\n${e.message ?? e}\n`);
   } finally {
     opRunning = null;
+    lockActions(false);
     buttons.forEach((b) => (b.disabled = false));
     if (pressed) pressed.textContent = was;
+    // The banner outlives the operation only if it has something to say. A
+    // prompt left on screen after the thing it was asking about has finished
+    // is worse than none: it sends someone to a device that is asking nothing.
+    deviceIdle();
     // Anything here can change what the chip holds, so re-read rather than
     // let the page keep showing what was true before the button.
     refresh?.();
