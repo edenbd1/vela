@@ -188,11 +188,27 @@ if (process.argv.includes("--check")) {
       continue;
     }
     const chip = BigInt(s.spent) + BigInt(s.reserved);
-    const ok = chip === r.spent;
+    const money = chip === r.spent;
+
+    // The position, not only the money. A draw the chip authorised and nobody
+    // anchored leaves these level in HBAR — settle it to zero and the spend
+    // comes back — while the counter has moved on. That is exactly the state
+    // that breaks the next anchor: the log ends at 10, the chip is at 12, and
+    // draw 13 lands as `FAIL seq 13 follows 10`. verify.mjs cannot see it
+    // either, because a hole at the end of a chain has nothing after it to be
+    // discontinuous with. This check is the only place it shows.
+    const behind = Number(s.draws_so_far) - Number(r.seq);
+    const ok = money && behind === 0;
     if (!ok) disagreed++;
+
     console.log(`  ${r.label.padEnd(14)} ${ok ? "chip agrees" : "DISAGREES"}  ` +
                 `chain ${hbar(r.spent)} spent, chip ${hbar(chip)} ` +
                 `(${hbar(s.spent)} settled + ${hbar(s.reserved)} reserved)`);
+    if (behind !== 0) {
+      console.log(`  ${"".padEnd(14)} the chip is at draw ${s.draws_so_far} and the log ` +
+                  `ends at ${r.seq} — ${Math.abs(behind)} draw(s) ` +
+                  `${behind > 0 ? "nobody published" : "the chip has never made"}`);
+    }
   }
   console.log();
   console.log(disagreed === 0

@@ -641,6 +641,26 @@ What it does not prove: that the service delivered anything, that the envelope
 was a sensible size, or that the agent did anything useful. It is stated that
 way in the output too. A verifier that overclaims is worse than none.
 
+And one limit that is structural rather than a choice: **it cannot see a hole
+at the end of a chain.** A gap is detected by the record that follows it, so a
+draw the chip authorised and nobody published is invisible until a later draw
+*is* published — at which point it surfaces as `FAIL seq 13 follows 10`, long
+after the run that caused it. The chain reads *complete and consistent* the
+whole time.
+
+What sees it is `node hedera/recover.mjs --check`, which compares the log
+against the device rather than against itself, and compares the position as
+well as the money:
+
+```console
+  research-1     DISAGREES  chain 0.3800 spent, chip 0.3800 (0.3800 settled + 0.0000 reserved)
+                 the chip is at draw 12 and the log ends at 10 — 2 draw(s) nobody published
+```
+
+Settling an unwanted draw to zero gives the budget back and leaves those level
+in HBAR, which is why the money comparison alone said *chip agrees*. Only the
+counter tells you.
+
 ## The pieces
 
 ```

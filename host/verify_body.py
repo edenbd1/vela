@@ -14,7 +14,9 @@ was asked to authorise, which is the one bug this project cannot survive.
 """
 import struct
 import os
+import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -24,7 +26,7 @@ from transport import open_device
 from ledgerblue.commException import CommException
 
 CLA = 0xE0
-INS_AUTHORIZE, INS_PUBKEY = 0x12, 0x16
+INS_AUTHORIZE, INS_PUBKEY, INS_SETTLE = 0x12, 0x16, 0x13
 
 
 # --- a protobuf reader, only as much as we need ----------------------------
@@ -98,9 +100,14 @@ def main():
     signal.signal(signal.SIGALRM, lambda *a: (print("TIMEOUT"), sys.exit(2)))
     signal.alarm(60)
 
-    payer, payee, node = 10365982, 10365984, 3
+    # From the environment, like every other tool here. These were hardcoded
+    # to accounts from an early testnet run, so this check verified that the
+    # chip signed a transfer between two accounts nobody uses.
+    payer = int(os.environ.get("HEDERA_BUYER_ID", "0.0.10397072").split(".")[-1])
+    payee = int(os.environ.get("HEDERA_TREASURY_ID", "0.0.10388937").split(".")[-1])
+    fee_payer, node = 7_162_784, 3          # the Blocky402 facilitator
     amount = 1_000_000  # 0.01 HBAR in tinybars
-    slot = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    slot = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
     d = open_device()
 
@@ -110,8 +117,15 @@ def main():
     pk = bytes(d.exchange(bytes([CLA, INS_PUBKEY, 0, 0, 0])))
     print(f"device key   : {pk.hex()}")
 
+    # Seven u64 and three u32. The fee payer at the front arrived with x402 —
+    # the facilitator pays the Hedera fee, the buyer pays the seller — and
+    # this file never grew it, so every request it made came back 0xb108
+    # bad_request. Nothing referenced it and no suite ran it, so the one check
+    # that asks whether the chip signs what it was asked to sign had been
+    # broken for as long as the field has existed.
+    now = int(time.time())
     req = bytes([slot]) + struct.pack(
-        ">QQQQQQIII", payer, payee, node, amount, 100_000_000, 1788539653, 0, 120, 1788539653
+        ">QQQQQQQIII", fee_payer, payer, payee, node, amount, 100_000_000, now, 0, 120, now
     )
     try:
         r = bytes(d.exchange(bytes([CLA, INS_AUTHORIZE, 0, 0, len(req)]) + req))
@@ -125,6 +139,12 @@ def main():
     body_len = r[12]
     body = r[13:13 + body_len]
     sig = r[13 + body_len:13 + body_len + 64]
+
+    # The chip's own statement about this draw, and its signature over it.
+    # Needed below to give the sequence number back to the log.
+    at = 13 + body_len + 64
+    chip_anchor = r[at:at + 29]
+    chip_anchor_sig = r[at + 29:at + 93]
 
     print(f"draw #{seq}, {available/1e8:g} HBAR left on chip")
     print(f"body         : {body_len} bytes  {body.hex()}")
@@ -141,10 +161,20 @@ def main():
     else:
         print("  legs match the request, and sum to zero")
 
+    # The transaction id names the *fee payer*, not the buyer. Under x402 the
+    # facilitator pays Hedera's fee while the buyer pays the seller, so those
+    # are two different accounts and the id carries the first. This asserted
+    # the buyer and reported a mismatch against a device that was correct —
+    # a check wrong in the direction that accuses the chip is worse than no
+    # check, because it is the chip nobody can inspect.
     txid = get(body, 1)
-    if account_num(get(txid, 2)) != payer:
-        print("  MISMATCH — transaction id names a different payer")
+    named = account_num(get(txid, 2))
+    if named != fee_payer:
+        print(f"  MISMATCH — transaction id names {named}, not the fee payer")
         ok = False
+    else:
+        print(f"  the transaction id names the fee payer 0.0.{named}, "
+              f"and the buyer is debited in the legs")
     if account_num(get(body, 2)) != node:
         print("  MISMATCH — wrong node account")
         ok = False
@@ -155,6 +185,32 @@ def main():
     except InvalidSignature:
         print("  SIGNATURE DOES NOT VERIFY")
         ok = False
+
+    # Give it back — the money and the number.
+    #
+    # This asks the chip to authorise a real draw, which burns a sequence
+    # number whether or not anything is paid. Settling to zero returns the
+    # budget; only publishing a release returns the position. Skip the second
+    # half and this check leaves the log ending before the chip does, which
+    # verify.mjs cannot see — a hole at the end of a chain has nothing after
+    # it to be discontinuous with — and which breaks the next draw that is
+    # published. It did exactly that twice before this was written.
+    release = bytes([slot]) + struct.pack(">QQ", amount, 0)
+    d2 = open_device()
+    try:
+        d2.exchange(bytes([CLA, INS_SETTLE, 0, 0, len(release)]) + release)
+        print("  reservation settled to zero — the budget is back")
+    finally:
+        d2.close()
+
+    published = subprocess.run(
+        ["node", os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "hedera", "publish-release.mjs"),
+         str(slot), str(seq), str(payee), str(amount), str(available),
+         chip_anchor.hex(), chip_anchor_sig.hex()],
+        capture_output=True, text=True)
+    line = (published.stdout or published.stderr).strip().splitlines()
+    print(f"  {line[-1]}" if line else "  the release was not published")
 
     print()
     print("The chip built these bytes and signed them. The host never held a"
