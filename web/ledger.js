@@ -139,3 +139,105 @@ export class WebHidLedger {
     return { app: name, version };
   }
 }
+
+/**
+ * Lend the device to the rest of the console.
+ *
+ * Opening the Flex here takes it away from host/bridge.py, and everything on
+ * this page that is not the device panel reads the chip through that bridge.
+ * The first version of this button therefore connected the Ledger and broke
+ * the page it was on: every fleet slot went to `ECONNREFUSED`.
+ *
+ * So the tab does not keep what it opened. It subscribes here, and answers
+ * APDUs on the bridge's behalf — the server binds the bridge's port and
+ * forwards. The gateway, the grant script and the agents carry on talking to
+ * :8099 and never learn that a browser is at the other end.
+ *
+ * Returns a handle with `stop()`. Call it before `close()`, or the console
+ * will offer a device that is no longer open.
+ */
+export function lend(ledger, { expect = "Vela", on = () => {} } = {}) {
+  let stream = null;
+  let stopped = false;
+  let queue = Promise.resolve();
+
+  const answer = (body) =>
+    fetch("/api/hid/reply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => { /* the console went away; the tab is about to hear so */ });
+
+  /**
+   * One exchange, with host/bridge.py's guard in front of it.
+   *
+   * The dashboard answers app APDUs with plausible bytes and a success
+   * status, so an app closed mid-session does not surface as "the app is
+   * closed" — it surfaces as a wrong number nobody questions. The bridge asks
+   * who is listening before every command for that reason, and this has to
+   * ask too, or lending the device would quietly drop a safety check.
+   */
+  async function serve({ id, apdu }) {
+    try {
+      const bytes = Uint8Array.from(apdu.match(/../g).map((h) => parseInt(h, 16)));
+      if (!(bytes[0] === 0xb0 && bytes[1] === 0x01)) {
+        const { app } = await ledger.appInfo();
+        if (app !== expect) {
+          return answer({ id, error:
+            `the device is on '${app}', not ${expect} — open the app and stay on it` });
+        }
+      }
+      // Long enough for four pages and a held button, as the bridge allows.
+      const r = await ledger.exchange(bytes, 180000);
+      const sw = (r[r.length - 2] << 8) | r[r.length - 1];
+      const data = [...r.subarray(0, r.length - 2)]
+        .map((b) => b.toString(16).padStart(2, "0")).join("");
+      await answer({ id, data, sw });
+    } catch (e) {
+      await answer({ id, error: String(e.message ?? e) });
+    }
+  }
+
+  const start = async () => {
+    // The console wants to show which app it is lending, and asking now
+    // means a wrong app is reported before anything downstream trips on it.
+    let about = { app: "", version: "" };
+    try { about = await ledger.appInfo(); } catch { /* said below */ }
+    if (stopped) return;
+
+    stream = new EventSource(
+      `/api/hid/stream?app=${encodeURIComponent(about.app)}` +
+      `&version=${encodeURIComponent(about.version)}`);
+
+    stream.addEventListener("holding", (e) => on({ lending: true, ...JSON.parse(e.data) }));
+    stream.addEventListener("refused", (e) => {
+      on({ lending: false, ...JSON.parse(e.data) });
+      stream.close();
+    });
+    stream.addEventListener("apdu", (e) => {
+      const job = JSON.parse(e.data);
+      // Serialised: two APDUs interleaved on the wire corrupt both, and
+      // EventSource will happily deliver the second before the first is done.
+      queue = queue.then(() => serve(job)).catch(() => {});
+    });
+    stream.onerror = () => {
+      // EventSource retries on its own, which is what we want: a restarted
+      // console should get the device back without anyone pressing anything.
+      // So this is reported as a blip, not as the end of the lend — the tab
+      // must not drop the device every time the console is reloaded.
+      if (!stopped) {
+        on({ lending: false, transient: true,
+             why: "the console is not answering — retrying" });
+      }
+    };
+  };
+  start();
+
+  return {
+    stop() {
+      stopped = true;
+      if (stream) stream.close();
+      stream = null;
+    },
+  };
+}

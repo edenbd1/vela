@@ -746,11 +746,19 @@ async function enterDemo(reason) {
  * the button does. Where WebHID is missing — Safari, Firefox — it falls back
  * to asking the console, which asks host/bridge.py.
  *
- * They cannot both hold it. macOS gives the HID interface to one process, so
- * a running bridge means the browser's open() fails; that is said plainly
- * rather than reported as a broken button.
+ * They cannot both hold it: macOS gives the HID interface to one process. The
+ * first version of this button treated that as something to explain, and the
+ * result was a Connect that worked and took the rest of the page down with
+ * it — fleet, envelope and every figure on screen read the chip through the
+ * bridge the browser had just displaced.
+ *
+ * So connecting does not mean keeping. A tab that opens the Flex lends it
+ * back through /api/hid/stream, the console binds the bridge's port, and the
+ * gateway never notices the swap. See web/relay.mjs.
  */
 let LEDGER = null;         // a WebHidLedger once connected
+let LENDING = null;        // the handle that gives it back, while connected
+let LENT = null;           // what the console last said about the lend
 let hid = null;            // the module, loaded lazily
 
 async function hidModule() {
@@ -782,7 +790,11 @@ function paintDevice(d) {
   const facts = $("device-facts");
   facts.replaceChildren();
   for (const [k, v] of [["via", d.via], ["app", d.app],
-                        ["version", d.version], ["account", d.buyer]]) {
+                        ["version", d.version], ["account", d.buyer],
+                        // Named because it is the answer to "why does the
+                        // rest of the page still work?", which is the
+                        // question this whole arrangement exists to settle.
+                        ["serving", d.lending ? "the console, on :8099" : null]]) {
     if (!v) continue;
     const dt = document.createElement("dt"); dt.textContent = k;
     const dd = document.createElement("dd"); dd.textContent = v;
@@ -791,6 +803,9 @@ function paintDevice(d) {
 
   const btn = $("device-connect");
   btn.hidden = d.state === "ready" || !d.canConnect;
+  // Only offered when this tab is the one holding the device. Disconnecting
+  // a bridge we did not start is not ours to do.
+  $("device-disconnect").hidden = !d.lending;
   $("device-retry").textContent = "Check again";
 }
 
@@ -801,11 +816,17 @@ async function readOverHid() {
   return {
     state: ok ? "ready" : "wrong-app",
     label: ok ? (CONFIG?.buyer ?? "connected") : `open Vela on the Flex`,
-    why: ok ? "this page is holding the device over WebHID"
-            : `the Flex is on '${info.app}', not Vela`,
+    why: ok
+      ? (LENT?.lending
+          ? "this tab holds the Flex and is answering for the bridge, so the " +
+            "rest of the console reads the chip through it"
+          : "this tab holds the Flex, but the console is not reading it — " +
+            (LENT?.why ?? "the lend stopped"))
+      : `the Flex is on '${info.app}', not Vela`,
     fix: ok ? null : "open Vela on the device and stay on it",
-    via: "WebHID", app: info.app, version: info.version,
+    via: "WebHID (this tab)", app: info.app, version: info.version,
     buyer: ok ? CONFIG?.buyer : null,
+    lending: Boolean(LENT?.lending),
   };
 }
 
@@ -849,6 +870,13 @@ async function probeDevice() {
   });
 }
 
+/**
+ * Open the Flex from this tab, then give it back to the console.
+ *
+ * The lend is not a nicety on the end: if it is refused, this tab is holding
+ * a device nothing else can reach, which is the broken state the relay exists
+ * to prevent. So a refusal closes the device again rather than keeping it.
+ */
 async function connectLedger() {
   const m = await hidModule();
   if (!m.supported()) return;
@@ -856,10 +884,53 @@ async function connectLedger() {
   btn.disabled = true; btn.textContent = "Waiting for the picker…";
   try {
     LEDGER = (await m.WebHidLedger.existing()) ?? (await m.WebHidLedger.request());
-    if (!LEDGER) return;                       // dismissed
+    if (!LEDGER) return;                       // the picker was dismissed
     await LEDGER.open();
+
+    btn.textContent = "Connecting…";
+    let settled = false;
+    const lent = await new Promise((resolve) => {
+      const t = setTimeout(
+        () => resolve({ lending: false, why: "the console did not answer" }), 8000);
+      LENDING = m.lend(LEDGER, {
+        expect: "Vela",
+        on: (state) => {
+          LENT = state;
+          if (!settled) { settled = true; clearTimeout(t); return resolve(state); }
+          // After the fact: the console restarted, or another tab got there
+          // first on reconnect. Sitting on a device the rest of the stack
+          // cannot reach is the state this whole arrangement exists to
+          // prevent, so give it back rather than keep it quietly.
+          // A blip is not a refusal: EventSource reconnects on its own and
+          // dropping the device on every console reload would make a page
+          // refresh feel like a disconnection.
+          if (!state.lending && !state.transient) disconnectLedger();
+          else probeDevice();
+        },
+      });
+    });
+    settled = true;
+
+    if (!lent.lending) {
+      // Hand it straight back. A tab that cannot share the device should not
+      // be the one holding it.
+      LENDING?.stop(); LENDING = null; LENT = null;
+      await LEDGER.close().catch(() => {});
+      LEDGER = null;
+      return paintDevice({
+        state: "no-device", label: "connect Ledger", canConnect: true,
+        why: lent.why ?? "this console could not take the device",
+        fix: "stop host/bridge.py, then connect again",
+      });
+    }
+
     await probeDevice();
+    // The fleet and the envelope have been failing against a bridge that was
+    // not there. They work now, and waiting five seconds for the next tick to
+    // prove it makes a working Connect look broken.
+    refresh().catch(() => {});
   } catch (e) {
+    LENDING?.stop(); LENDING = null; LENT = null;
     LEDGER = null;
     paintDevice({
       state: "no-device", label: "connect Ledger", canConnect: true,
@@ -868,6 +939,15 @@ async function connectLedger() {
   } finally {
     btn.disabled = false; btn.textContent = "Connect Ledger";
   }
+}
+
+/** Give the Flex back to the operating system, and say so. */
+async function disconnectLedger() {
+  LENDING?.stop(); LENDING = null; LENT = null;
+  if (LEDGER) await LEDGER.close().catch(() => {});
+  LEDGER = null;
+  await probeDevice();
+  refresh().catch(() => {});
 }
 
 if ($("device").addEventListener) {
@@ -879,6 +959,9 @@ if ($("device").addEventListener) {
     if (open) probeDevice();
   });
   $("device-connect").addEventListener("click", (e) => { e.stopPropagation(); connectLedger(); });
+  $("device-disconnect").addEventListener("click", (e) => {
+    e.stopPropagation(); disconnectLedger();
+  });
   $("device-retry").addEventListener("click", (e) => {
     e.stopPropagation();
     $("device-retry").textContent = "Checking…";
@@ -894,15 +977,17 @@ if ($("device").addEventListener) {
     if (e.key === "Escape") $("device-panel").hidden = true;
   });
 
-  // A device granted in an earlier visit can be re-opened without a click.
-  hidModule().then(async (m) => {
-    if (m.supported()) {
-      const prior = await m.WebHidLedger.existing();
-      if (prior) { try { await prior.open(); LEDGER = prior; } catch { /* the bridge has it */ } }
-    }
-    probeDevice();
-    setInterval(probeDevice, 8000);
-  });
+  // Deliberately not re-opened on load. A device granted in an earlier visit
+  // can be opened again without a click, and doing so took the Flex away from
+  // a running bridge the moment the page was refreshed — no button pressed,
+  // no way to tell from the screen. Taking the device is a decision, so it
+  // waits for someone to make it.
+  //
+  // The tab does release it on the way out, so a reload does not leave the
+  // console holding a port with nothing behind it.
+  window.addEventListener("pagehide", () => { LENDING?.stop(); });
+  probeDevice();
+  setInterval(probeDevice, 8000);
 }
 
 /* --------------------------------------------------------- operations ----

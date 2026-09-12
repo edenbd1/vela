@@ -63,6 +63,18 @@ host_suites() {
   fi
   node --test test/chain-parity.test.mjs >/dev/null 2>&1 || exit 1
 
+  # The console lending the Flex back to the stack. Connecting the Ledger
+  # from the page used to take the device away from host/bridge.py and leave
+  # every other figure on the screen reading ECONNREFUSED, and no suite here
+  # could see it. The property that matters is that the relay lets go: a port
+  # left bound to a closed tab is a bridge that will not start.
+  echo "the browser as bridge"
+  if ! node --test test/relay.test.mjs 2>&1 | grep -E "^# (pass|fail)" | sed 's/^# /  /'; then
+    echo "  relay tests failed" >&2
+    exit 1
+  fi
+  node --test test/relay.test.mjs >/dev/null 2>&1 || exit 1
+
   # Refusal-handling is a property of the loop, not of the model's mood on the
   # day, so it runs against a fake gateway, a fake broker and a scripted model
   # on ephemeral ports — with the real agent/reason.mjs as a child process.

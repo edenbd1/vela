@@ -13,6 +13,7 @@
  */
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
+import { createRelay } from "./relay.mjs";
 import { readFile, readFileSync } from "node:fs";
 import { readFile as read } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
@@ -52,6 +53,17 @@ const GATEWAY = `http://127.0.0.1:${env.GATEWAY_PORT ?? 4030}`;
 const BRIDGE  = `http://127.0.0.1:${env.VELA_BRIDGE_PORT ?? 8099}`;
 const EXPECT_APP = env.VELA_BRIDGE_APP ?? "Vela";
 const BROKER = `http://127.0.0.1:${env.BROKER_PORT ?? 4060}`;
+
+/**
+ * The seat the bridge normally occupies, kept warm for a browser.
+ *
+ * Nothing binds until a tab says it has the device, so this changes nothing
+ * for anyone running host/bridge.py as usual.
+ */
+const relay = createRelay({
+  port: Number(env.VELA_BRIDGE_PORT ?? 8099),
+  journal: env.VELA_JOURNAL ?? join(ROOT, ".vela-journal.jsonl"),
+});
 
 /**
  * The operator credential, read fresh each time.
@@ -277,7 +289,7 @@ const server = createServer(async (req, res) => {
       return reply({
         state: "no-bridge",
         why: "nothing is listening on the APDU bridge",
-        fix: "python3 host/bridge.py",
+        fix: "connect the Flex from this page, or run python3 host/bridge.py",
       });
     }
 
@@ -309,8 +321,51 @@ const server = createServer(async (req, res) => {
     }
     return reply({
       state: "ready", app, version,
+      // Which of the two things behind :8099 answered. A console that said
+      // "bridge" while a tab was doing the work would be lying about where
+      // the device is, which is the one fact this panel exists to report.
+      via: relay.held() ? "WebHID (a tab on this console)" : "host/bridge.py",
       buyer: env.HEDERA_BUYER_ID ?? null,
     });
+  }
+
+  /* ------------------------------------------------- the tab as bridge ----
+   * A page that has opened the Flex over WebHID offers it to the rest of the
+   * stack here, rather than keeping it to itself. See web/relay.mjs.
+   */
+  if (path === "/api/hid/stream") {
+    res.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    });
+    const held = await relay.hold(res, {
+      app: url.searchParams.get("app"),
+      version: url.searchParams.get("version"),
+    });
+    // The refusal goes down the same stream rather than as a status code:
+    // EventSource does not hand the page a failed response body, and "why
+    // not" is the whole value of the message.
+    res.write(`event: ${held.ok ? "holding" : "refused"}\ndata: ${JSON.stringify(held)}\n\n`);
+    if (!held.ok) return res.end();
+    // A tab that navigates away or crashes releases the device. Without this
+    // the port stays bound to nothing and the bridge cannot be restarted.
+    req.on("close", () => relay.release());
+    return;
+  }
+
+  if (path === "/api/hid/reply" && req.method === "POST") {
+    let body = "";
+    for await (const c of req) {
+      body += c;
+      if (body.length > 1 << 20) { req.destroy(); return; }
+    }
+    try {
+      const ok = relay.reply(JSON.parse(body));
+      return send(res, 200, "application/json", JSON.stringify({ ok }));
+    } catch (e) {
+      return send(res, 400, "application/json", JSON.stringify({ error: e.message }));
+    }
   }
 
   /**
