@@ -815,6 +815,13 @@ const routes = {
         body_len: bodyLen,
         body: encoded.toString("hex"),
         anchored_as_message: anchored,
+        // As /pay does: the chip's own statement and its signature over it,
+        // so the console can show the 29 bytes rather than the sentence
+        // "signed on the chip". A swap is the harder case to take on faith.
+        statement: {
+          statement: decided.anchor.toString("hex"),
+          signature: decided.anchorSig.toString("hex"),
+        },
         note: "the chip built this body from fields it checked, and signed " +
               "bytes it constructed rather than bytes it was handed",
       });

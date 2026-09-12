@@ -595,7 +595,12 @@ async function runScenario(name) {
     return;
   }
 
+
   const s = scenario(name, m);
+  lockActions(true);
+  // A swap is a signature too, and one the chip builds itself rather than
+  // being handed. Same banner as a payment, and the same point: nobody taps.
+  deviceSigns(`a call to ${s.contract} — built and signed on-chip, no tap.`);
   $("defi-hint").textContent = "asking the chip…";
   const d = await api("call", {
     method: "POST",
@@ -604,18 +609,24 @@ async function runScenario(name) {
   });
 
   if (d.signed) {
+    deviceDone(`The chip built and signed the call itself.`);
+    const said = await statementOf(d.statement?.statement);
     event({ kind: "paid", who: "chip",
             text: `signed a call to ${s.contract}`,
             detail: `${s.sig} — ${d.body_len}-byte body built and signed on-chip, ` +
-                    `draw #${d.seq}` });
+                    `draw #${d.seq}`,
+            signed: said && { said, signature: d.statement?.signature } });
   } else if (d.refused) {
+    deviceDone(`The chip refused — ${d.reason}. Nothing was signed.`, 7000);
     event({ kind: "refused", who: "chip",
             text: `refused — ${d.reason}`,
             detail: d.advice });
   } else {
+    deviceIdle();
     event({ kind: "refused", who: "gateway",
             text: d.error ?? "no answer", detail: JSON.stringify(d).slice(0, 200) });
   }
+  lockActions(false);
   $("defi-hint").textContent = "";
 
 
