@@ -985,10 +985,12 @@ two on the console, loaded in a real browser — including one that posts
 
 Before any of it, `scripts/docs-check.sh` reads this file and the ones in
 `docs/`: every command they tell you to run exists and has the flags they pass
-it, every link resolves, and every Hedera topic id named is the one the
-gateway is anchoring to right now. Four bugs in one day were things written
-down that had stopped being true, including this script being described as
-running a suite it never ran.
+it, every link resolves, every Hedera topic id named is the one the gateway is
+anchoring to right now, and every stated count of findings matches the ledger
+that holds them. Four bugs in one day were things written down that had
+stopped being true, including this script being described as running a suite
+it never ran — and the count check went in after "fourteen findings" survived
+in two documents while there were eighteen.
 
 Then forty-five against the chip: every refusal in order, the contract-call
 bindings, settlement arithmetic, the velocity window, mandate recovery, label

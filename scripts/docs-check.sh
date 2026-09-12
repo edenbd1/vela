@@ -123,6 +123,61 @@ print(f"  \033[32m✓\033[0m every topic id named is {live}" if not stale else "
 sys.exit(1 if stale else 0)
 PY
 
+# A count a document states, against the file that decides it.
+#
+# The same bug landed three times in a week: the README and the submission
+# both said fourteen findings when there were eighteen. Nothing above would
+# catch it — a wrong number is a valid link. Both spellings are checked,
+# because prose writes "eighteen" and tables write "18".
+#
+# Only findings. "eight slots" is the chip's capacity and "three agents" is
+# the demo fleet: two different numbers, both correct, and a noun is not
+# enough to tell them apart. A check that cries wolf gets switched off, which
+# is worse than not having it.
+echo
+echo "counts a file decides"
+python3 - <<'ENDOFPY' || fail=1
+import re, sys, pathlib
+
+root = pathlib.Path(".")
+WORDS = {n: i for i, n in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve "
+    "thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty "
+    "twentyone twentytwo twentythree twentyfour twentyfive".split())}
+NUM = "|".join(WORDS)
+
+ledger = root / "docs/FEEDBACK-LEDGER.md"
+if not ledger.exists():
+    print("  no feedback ledger — nothing to count against")
+    sys.exit(0)
+truth = len(re.findall(r"^## \d+\.", ledger.read_text(), re.M))
+spoken = next((w for w, v in WORDS.items() if v == truth), str(truth))
+
+# Plural only. A count of findings is always plural, and "One finding was
+# drafted and then dropped" is a sentence about a particular one.
+# Both nouns this repository uses for the same fact. The phrase that went
+# stale was "fourteen concrete developer-experience problems", which the
+# word "findings" would not have matched.
+NOUN = r"(?:findings|developer-experience problems)"
+pat = re.compile(rf"\b({NUM}|\d+)\s+(?:concrete\s+)?{NOUN}\b", re.I)
+bad, checked = [], 0
+for d in sorted(list(root.glob("*.md")) + list((root / "docs").glob("*.md"))):
+    if d.resolve() == ledger.resolve():
+        continue
+    for m in pat.finditer(d.read_text()):
+        raw = m.group(1).lower()
+        got = WORDS[raw] if raw in WORDS else int(raw)
+        checked += 1
+        if got != truth:
+            bad.append(f'{d}: "{m.group(0)}" — the ledger has {truth} ({spoken})')
+
+for b in sorted(set(bad)):
+    print(f"  \033[31m✗\033[0m {b}")
+print(f"  \033[32m✓\033[0m {checked} stated count(s) match the ledger"
+      if not bad else f"  {len(set(bad))} stated count(s) do not")
+sys.exit(1 if bad else 0)
+ENDOFPY
+
 echo
 [ "$fail" = 0 ] && echo "the documentation describes this repository." \
                || echo "the documentation describes a previous one."
