@@ -266,8 +266,6 @@ async function refresh() {
   try {
     d = await api(`envelope?slot=${selected ?? 0}`);
   } catch {
-    $("dot").className = "dot off";
-    $("device-text").textContent = "gateway unreachable";
     return null;
   }
 
@@ -275,8 +273,6 @@ async function refresh() {
   // Flex is merely on the dashboard describes a revoked fleet — which is the
   // one picture this console must never draw by accident.
   if (d.unknown) {
-    $("dot").className = "dot off";
-    $("device-text").textContent = "device not answering";
     $("available").textContent = "—";
     // textContent, not innerHTML: `why` is a string the device handed us, and
     // this page asserts elsewhere that nothing it is handed becomes markup.
@@ -288,15 +284,11 @@ async function refresh() {
   }
 
   if (!d.mandate) {
-    $("dot").className = "dot off";
-    $("device-text").textContent = "no mandate in the chip";
     $("available").textContent = "—";
     $("payees").innerHTML = '<li class="none">a human must grant an envelope on the device</li>';
     return null;
   }
 
-  $("dot").className = "dot on";
-  $("device-text").textContent = CONFIG?.buyer ?? "device";
   paintEnvelopeFrom(d, fleet);
   return d;
 }
@@ -743,3 +735,94 @@ async function enterDemo(reason) {
   // draws on it, or a human revokes it on the device.
   setInterval(() => { if (!busy) refresh(); }, 5000);
 })();
+
+
+/* ------------------------------------------------------------- device ----
+ * The pill in the corner, and the only part of this page that talks about a
+ * Ledger as hardware rather than as a source of numbers.
+ *
+ * It reports one of four things, because the fix differs for each and
+ * "not connected" leaves the operator guessing which of them to go and do:
+ * the bridge is not running, the Flex is locked or unplugged, the Flex is
+ * awake on another app, or it is ready. The envelope panel no longer writes
+ * here — a slot with no mandate is not a hardware fault, and it was saying so.
+ */
+const DEVICE_LABEL = {
+  ready:      (d) => d.buyer ?? "connected",
+  // Which app to open comes from the response. The console can be pointed at
+  // another one — the Key Ring work runs against Ledger Sync — and a pill
+  // that always says "Vela" would send someone to the wrong screen.
+  "wrong-app": (d) => `open ${d.expected ?? "Vela"} on the Flex`,
+  "no-device": () => "no device",
+  "no-bridge": () => "bridge not running",
+  busy:       () => "device busy",
+  unknown:    () => "checking…",
+};
+
+const DEVICE_TITLE = {
+  ready: "Connected",
+  "wrong-app": "Another app is open",
+  "no-device": "Not answering",
+  "no-bridge": "Bridge not running",
+  busy: "Waiting on a screen",
+  unknown: "Checking",
+};
+
+let deviceState = "unknown";
+
+async function probeDevice() {
+  let d;
+  try {
+    d = await (await fetch("/api/device")).json();
+  } catch {
+    d = { state: "no-bridge", why: "the console could not reach its own API" };
+  }
+  deviceState = d.state ?? "unknown";
+
+  $("dot").className = `dot ${d.state === "ready" ? "on" : "off"}`;
+  $("device-text").textContent = (DEVICE_LABEL[d.state] ?? DEVICE_LABEL.unknown)(d);
+  $("device-state").textContent = DEVICE_TITLE[d.state] ?? "Unknown";
+  $("device-why").textContent = d.why ?? "the device answered and Vela is open";
+
+  const fix = $("device-fix");
+  if (d.fix) { fix.hidden = false; $("device-fix-text").textContent = d.fix; }
+  else fix.hidden = true;
+
+  // Facts, in the device's own words rather than ours.
+  const facts = $("device-facts");
+  facts.replaceChildren();
+  for (const [k, v] of [["app", d.app], ["version", d.version], ["account", d.buyer]]) {
+    if (!v) continue;
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    facts.append(dt, dd);
+  }
+  return d;
+}
+
+if ($("device").addEventListener) {
+  $("device").addEventListener("click", () => {
+    const panel = $("device-panel");
+    const open = panel.hidden;
+    panel.hidden = !open;
+    $("device").setAttribute("aria-expanded", String(open));
+    if (open) probeDevice();
+  });
+  $("device-retry").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("device-retry").textContent = "Checking…";
+    probeDevice().finally(() => { $("device-retry").textContent = "Check again"; });
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#device-panel") && !e.target.closest("#device")) {
+      $("device-panel").hidden = true;
+      $("device").setAttribute("aria-expanded", "false");
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") $("device-panel").hidden = true;
+  });
+
+  probeDevice();
+  setInterval(probeDevice, 8000);
+}

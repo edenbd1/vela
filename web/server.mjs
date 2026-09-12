@@ -48,6 +48,8 @@ function liveEnv(key) {
 
 const PORT = Number(env.WEB_PORT ?? 4050);
 const GATEWAY = `http://127.0.0.1:${env.GATEWAY_PORT ?? 4030}`;
+const BRIDGE  = `http://127.0.0.1:${env.VELA_BRIDGE_PORT ?? 8099}`;
+const EXPECT_APP = env.VELA_BRIDGE_APP ?? "Vela";
 const BROKER = `http://127.0.0.1:${env.BROKER_PORT ?? 4060}`;
 
 /**
@@ -147,6 +149,69 @@ const server = createServer(async (req, res) => {
         otherRouter: "0.0.5000002",
       },
     }));
+  }
+
+  /**
+   * Is there a device, and can it be used?
+   *
+   * Three different answers, and the page has to tell them apart because the
+   * fix differs for each: the bridge is not running, the bridge is running
+   * and the Flex is locked or unplugged, or the Flex is awake on the wrong
+   * app. Collapsing them into "not connected" leaves the operator guessing
+   * which of three things to go and do.
+   *
+   * `b001` is BOLOS's get-app-name, and it is the only call that answers
+   * while an app other than ours is open — which is exactly the case worth
+   * naming.
+   */
+  if (path === "/api/device") {
+    const reply = (o) => send(res, 200, "application/json", JSON.stringify(o));
+    let r;
+    try {
+      r = await fetch(`${BRIDGE}/apdu`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ apdu: "b001000000" }),
+        signal: AbortSignal.timeout(6000),
+      });
+    } catch {
+      return reply({
+        state: "no-bridge",
+        why: "nothing is listening on the APDU bridge",
+        fix: "python3 host/bridge.py",
+      });
+    }
+
+    const body = await r.json().catch(() => ({}));
+    if (body.error) {
+      return reply({ state: "busy", why: body.error, fix: "answer or dismiss the screen on the Flex" });
+    }
+    if (!body.data) {
+      return reply({
+        state: "no-device",
+        why: `the bridge is up but the device did not answer (sw 0x${(body.sw ?? 0).toString(16)})`,
+        fix: "unlock the Flex and check the cable",
+      });
+    }
+
+    // b001 replies: format, len, name…, len, version…
+    const raw = Buffer.from(body.data, "hex");
+    const nameLen = raw[1];
+    const app = raw.subarray(2, 2 + nameLen).toString("latin1");
+    const verLen = raw[2 + nameLen];
+    const version = raw.subarray(3 + nameLen, 3 + nameLen + verLen).toString("latin1");
+
+    if (app !== EXPECT_APP) {
+      return reply({
+        state: "wrong-app", app, version, expected: EXPECT_APP,
+        why: `the Flex is on '${app}', not ${EXPECT_APP}`,
+        fix: `open ${EXPECT_APP} on the device and stay on it`,
+      });
+    }
+    return reply({
+      state: "ready", app, version,
+      buyer: env.HEDERA_BUYER_ID ?? null,
+    });
   }
 
   /**

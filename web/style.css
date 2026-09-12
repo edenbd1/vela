@@ -172,3 +172,32 @@ ol.log > li.none { font-family: inherit; }
 
 @media (max-width: 900px) { .pair { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* -------------------------------------------------------- device panel ---
+ * Anchored under the pill, in the frame rather than on the sheet, so it
+ * reads as chrome: it is about the hardware, not about the numbers.
+ */
+.device-panel {
+  position: absolute; right: 0; top: calc(100% + 8px);
+  z-index: 60; width: 320px; max-width: calc(100vw - 32px);
+  text-align: left;
+}
+.device-fix-code {
+  display: block; margin-top: 5px;
+  font-family: var(--mono); font-size: 12px; color: var(--fg);
+  background: rgba(37,72,57,.06); border-radius: 8px; padding: 8px 10px;
+  word-break: break-word;
+}
+.inv {
+  margin: 0; padding: 11px 13px;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  display: grid; grid-template-columns: auto 1fr; gap: 5px 16px;
+  align-items: baseline; font-family: var(--mono); font-size: 12px;
+}
+.inv:empty { display: none; }
+.inv dt { color: var(--fg-faint); }
+.inv dd { margin: 0; color: var(--fg); }
+
+/* The pill carries the state before the panel is ever opened. */
+#device { border: 0; font-family: inherit; }
+#device[data-state="ready"] { }
