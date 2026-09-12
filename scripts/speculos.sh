@@ -11,7 +11,14 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-exec docker run --rm -it \
+# -it only when there is a terminal to attach. Hardcoding it makes this
+# unusable from anything that is not a person at a prompt — a script, a CI
+# step, a background run — and docker's refusal is "cannot attach stdin to a
+# TTY-enabled container", which names the flag but not the fix.
+TTY=""
+[ -t 0 ] && TTY="-it"
+
+exec docker run --rm $TTY \
   -v "$ROOT/app":/app \
   -p 5001:5000 -p 9999:9999 \
   ghcr.io/ledgerhq/speculos:latest \

@@ -997,14 +997,22 @@ node hedera/demo.mjs              # grant, draw three times, anchor each — one
 python3 host/verify_body.py       # ask for a draw and check what the chip actually signed
 python3 host/probe.py read        # the mandates, in one bounded APDU round trip
 python3 host/vela.py list         # the same, through the host CLI that predates the gateway
+VELA_SPECULOS=1 python3 host/e2e.py   # grant, draw and check the signature, on the emulator
 ```
 
-`verify_body.py` is the one worth knowing about. It decodes the body the
-device returned as Hedera protobuf and checks that the transfer credits the
-account that was asked for, that the amount is the one the mandate cleared,
-and that the signature verifies under the key the device derived. It settles
-its own draw to zero and publishes the release before it exits, because a draw
-burns a sequence number whether or not anything is paid.
+`verify_body.py` is the one worth knowing about, and `e2e.py` is the same
+check against the emulator. They decode the body the device returned as Hedera
+protobuf and confirm that the transfer credits the account that was asked for,
+that the amount is the one the mandate cleared, and that the signature
+verifies under the key the device derived. `verify_body.py` settles its own
+draw to zero and publishes the release before it exits, because a draw burns a
+sequence number whether or not anything is paid.
+
+Four host paths build that APDU body by hand. Three of them had not followed
+the device when x402 added a fee payer to the front of it, and all three were
+files nothing referenced and no document mentioned — they answered
+`0xb108 bad_request` for as long as the field had existed, while every suite
+stayed green. That is why they are listed here.
 
 `./scripts/test.sh` runs everything that does not need a device, then the chip
 suite on Speculos.
@@ -1195,6 +1203,14 @@ version is [`docs/ASSESSMENT.md`](docs/ASSESSMENT.md); the short one:
 - **It spends on testnet, and it spends HBAR.** A ceiling denominated in
   tinybars says nothing about what the same envelope would mean against a
   token whose decimals the chip would have to learn.
+- **"The device runs this source" rests on behaviour, not on a hash.** The app
+  compiles clean from `./scripts/build.sh`, the source has not moved since the
+  build that was loaded, and the Flex satisfies forty-five assertions that only
+  the current source satisfies — RESTORE, velocity, eight slots. But
+  `ledgerctl list` reports a BOLOS code/data hash and the build emits the
+  SDK's own image hash, which are different quantities, so they cannot be
+  compared. The only way to close that gap is to reload, and reloading wipes
+  every mandate on the device.
 - **The agent is a local 8B model** and behaves like one. That is the point of
   the benchmark rather than a caveat to it — the mandate holds at whatever
   rate the model misbehaves — but nobody should read the transcripts as a

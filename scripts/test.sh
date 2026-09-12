@@ -86,7 +86,19 @@ host_suites() {
   # index.html did not have, dying on load, while the fleet list still painted.
   echo "the console"
   if curl -s -m 3 http://127.0.0.1:4050/api/config >/dev/null 2>&1; then
-    python3 test/console_test.py $on_device | tail -1 | sed 's/^/  /'
+    # The exit code, not just the last line. `suite | tail -1` reports the
+    # pipeline's tail, which succeeds whatever the suite did — so this step
+    # printed "15/22 passed" and the run still exited 0. Every other step here
+    # was already guarded; this one had been quietly advisory since it was
+    # added, which is the worst kind of test: one that is watched and cannot
+    # fail the thing watching it.
+    local out
+    out=$(python3 test/console_test.py $on_device) || {
+      echo "$out" | grep -E "FAIL|passed" | sed 's/^/  /'
+      echo "  console tests failed" >&2
+      exit 1
+    }
+    echo "$out" | tail -1 | sed 's/^/  /'
   else
     echo "  not running on :4050 — skipped"
   fi

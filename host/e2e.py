@@ -32,7 +32,12 @@ from verify_body import decode_transfer, account_num, get
 CLA = 0xE0
 INS_CREATE, INS_AUTHORIZE, INS_PUBKEY, INS_GET = 0x11, 0x12, 0x16, 0x10
 
-PAYER, PAYEE, NODE = 10365982, 10365984, 3
+# From the environment, like every other tool here. These were two accounts
+# from an early testnet spike, so a draw asked the chip to sign a transfer
+# between accounts nobody uses.
+PAYER = int(os.environ.get("HEDERA_BUYER_ID", "0.0.10397072").split(".")[-1])
+PAYEE = int(os.environ.get("HEDERA_TREASURY_ID", "0.0.10388937").split(".")[-1])
+FEE_PAYER, NODE = 7_162_784, 3          # the Blocky402 facilitator
 TINYBAR = 100_000_000
 
 
@@ -80,9 +85,14 @@ def main():
     print(f"2. The device's own key: {pk.hex()}\n")
 
     amount = TINYBAR // 10
-    now = 1788539653
+    # Seven u64 and three u32. The fee payer at the front arrived with x402 —
+    # the facilitator pays Hedera's fee, the buyer pays the seller. This file
+    # was the third of four host paths that build this body by hand and had
+    # not followed; the other two answered 0xb108 for as long as the field has
+    # existed, and nobody noticed because nothing ran them.
+    now = int(time.time())
     req = bytes([slot]) + struct.pack(
-        ">QQQQQQIII", PAYER, PAYEE, NODE, amount, TINYBAR, now, 0, 120, now)
+        ">QQQQQQQIII", FEE_PAYER, PAYER, PAYEE, NODE, amount, TINYBAR, now, 0, 120, now)
     r = bytes(d.exchange(bytes([CLA, INS_AUTHORIZE, 0, 0, len(req)]) + req))
     d.close()
 
