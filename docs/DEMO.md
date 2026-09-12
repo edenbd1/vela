@@ -98,9 +98,17 @@ not.
 
 Hold the Flex. Three names on the screen.
 
-> "These are three agents. One is on a VPS, one in a CI runner, one in a
-> container on this laptop. None of those machines has a Ledger plugged into
-> it, and none of them holds an API key or a private key."
+> "These are three agents. They run in containers with no device, no volume
+> and no key — and a fourth runs on a GitHub runner, on hardware neither of us
+> owns. None of those machines has a Ledger plugged into it, and none of them
+> holds an API key or a private key."
+
+Say that and nothing more. **There is no VPS** — an earlier version of this
+line claimed one, and the project deliberately does not have one: putting an
+agent somewhere else turned out to be a routing problem wearing a hosting
+problem's clothes, and a GitHub runner answers it for nothing. Claiming a VPS
+on camera is a sentence the repository would contradict, which is the cheapest
+possible way to lose a judge.
 
 Then the line that sets up everything else:
 
@@ -149,6 +157,65 @@ answer is: normally by a key sealed under the Key Ring, and optionally by a
 tap. `docs/RING-ENROLL.md` has both, with the table of what the device path
 costs.
 
+## 1:20 — the console takes the device
+
+Twenty seconds, and it is the cheapest credibility in the video: everything
+after this is a browser reading a chip in your hand, with no terminal between
+them.
+
+It needs the bridge **stopped**, because macOS gives the USB interface to one
+process:
+
+```bash
+pkill -f host/bridge.py
+```
+
+Now press **Connect Ledger**, top right. Chrome asks which device; pick the
+Flex. The panel fills in:
+
+```
+  Connected
+  this tab holds the Flex and is answering for the bridge, so the rest of
+  the console reads the chip through it
+
+  via        WebHID (this tab)
+  app        Vela
+  serving    the console, on :8099
+```
+
+> "No terminal, no bridge process, no extension. The page opened the device
+> itself — and then handed it back, so everything else on this console still
+> reads the same chip."
+
+The thing worth pointing at is **the fleet below, still full**. A tab that
+takes the device and keeps it blinds everything else; this one answers for the
+bridge instead of replacing it.
+
+Then press **Buy triage** and let the banner do the talking:
+
+```
+  Signing in the Secure Element — 0.01 HBAR to the triage tier — no tap needed.
+```
+
+and under the event, the chip's own 29 bytes:
+
+```
+  slot 0 · draw 12 · payee 0.0.10388937 · amount 0.0100 HBAR · left 0.4300 HBAR
+  signature 580653f6…
+```
+
+> "That is not the console's account of what happened. It is the statement the
+> Secure Element signed, and the same bytes are on the public topic."
+
+**If Connect does not appear**, the bridge is still running — the button is
+only offered when nothing else holds the device. If the picker opens and then
+fails, something else has the Flex: Ledger Live, or another tab.
+
+**Fallback, and it costs nothing:** run `python3 host/bridge.py` and shoot the
+rest of the video exactly as written. Every later beat works either way, and
+`/api/device` will say `via host/bridge.py` instead. Do not spend take time
+here.
+
 ## 1:30 — three agents, one chip
 
 Console open at `http://127.0.0.1:4050`, scrolled to **The fleet, thinking**.
@@ -186,6 +253,53 @@ Then the device.
 If a model does not reach for the expensive tier on the take, run it again —
 they are models, not scripts. `./agent/run.sh agent.mjs` hits the same refusal
 every time if the recording has to be certain.
+
+## 2:00 — hardware we do not own, in one button
+
+Forty seconds, and it is the beat that pays off the opening line. Optional
+only in the sense that everything except the revoke, the swarm and the
+exfiltration is optional.
+
+In the console, **Operations → Send it to GitHub**. One button: it checks what
+fails slowly, opens a tunnel, dispatches the workflow against that URL, follows
+the run, prints what the chip decided, and closes the tunnel behind it.
+
+```
+  remote-1 is in slot 3, on the chip and in the broker
+  opening a tunnel — this makes the gateway reachable from the internet
+  run 34715877653 · https://github.com/edenbd1/vela/actions/runs/…
+
+  ✓ the envelope, read from the chip
+  ✓ buy one triage — inside the ceiling
+  ✓ ask for eight times the ceiling — and be refused by the chip
+
+    "paid": true,  "refused": null
+    "paid": false, "refused": true, "reason": "over_per_call"
+
+  the runner paid inside the ceiling and was refused above it.
+  neither decision was made on this machine.
+```
+
+> "That job has no USB bus, no Ledger tooling, no seed and no envelope. It was
+> refused for exceeding a per-draw ceiling it cannot read, cannot raise and
+> cannot route around. The refusal did not happen on the runner, and it did
+> not happen here — it happened in a chip with no address."
+
+**It needs `remote-1` granted**, which `fleet.mjs` does not do. One tap, before
+the camera is on:
+
+```bash
+node hedera/grant-one.mjs remote-1 0.05 0.01
+```
+
+If the preflight stops with *'remote-1' has no envelope on the chip*, that is
+what it is telling you. It stops in two seconds and opens no tunnel, so it
+costs nothing to find out.
+
+**The whole thing takes about ninety seconds of wall clock**, most of it
+GitHub queueing. Either dispatch it before the take and cut to the finished
+run, or let it run under the 2:10 beat and come back to it. Do not watch a
+spinner on camera.
 
 ## 2:10 — an agent talked into stealing from itself
 
@@ -359,16 +473,26 @@ C  the enclave allows an account the chip never knew
 
 ## 4:40 — the gesture
 
-Back to the console. Press **Revoke this agent**. Then hold up the Flex:
+Back to the console. Press **Revoke this agent**. A banner pins itself to the
+top of the page:
+
+```
+  Look at your Flex — confirm forgetting ops-nightly. Nothing has changed yet.
+```
+
+Every other button on the page goes grey while that screen is up: the chip
+answers one thing at a time. Then hold up the Flex:
 
 > **Revoke ops-nightly?**
 > *It loses every remaining draw immediately. Nothing on any host has to be
 > rotated.*
 
-Tap it. The agent disappears from the console.
+Tap it. The banner turns green — *ops-nightly is gone from the chip* — and the
+agent disappears from the console.
 
 **Say nothing while this happens.** If the gesture needs narration the idea is
-not good enough.
+not good enough. The banner is there so the camera has somewhere to look while
+you are silent, not so you can read it out.
 
 Then, once:
 
@@ -384,13 +508,22 @@ node hedera/verify.mjs <topic>
 > "This reads the Hedera mirror node and nothing else. Every draw carries a
 > statement the chip signed. You do not have to believe the host, or us."
 
-End on:
+End on its last lines — the count is however many envelopes your topic holds,
+so read yours rather than the one written here:
 
 ```
-2 of 2 envelope(s) verify.
+N of N envelope(s) verify.
   does not prove   that the service delivered anything, that the envelope
-                   was a sensible size, or that the agent did anything useful
+                   was a sensible size, or that the agent did anything useful,
+                   or — where a note above says so — that two envelopes granted
+                   with identical terms are two grants rather than one replayed
 ```
+
+If a mandate shows up twice with `grant 1 of 2`, that is the same terms
+granted, revoked and granted again; the verifier splits them where the chip's
+counter restarts and says so. Nothing is wrong, but do not read that line out
+unless a judge asks — it needs a sentence of explanation the video does not
+have room for.
 
 > "It also says what it does not prove. A verifier that overclaims is worse
 > than none."
@@ -404,6 +537,12 @@ exfiltration beat has already made that argument on a live agent — then the
 benchmark table at 2:50, keeping only its last three lines. Cut the velocity
 beat at 3:10 last of the four: it is thirty seconds and it is the only rate
 limit enforced in hardware that we know of.
+
+The Connect beat at 1:20 was added after the rest of this was timed, so it is
+twenty seconds this plan does not have. Take them from the enclave. If you
+would rather keep the enclave, drop the **Buy triage** half of 1:20 and keep
+only the connection — the signature is visible again at 1:30 in the swarm
+columns, and the connection is not visible anywhere else.
 
 **Never cut the revoke, the swarm at 1:30, or the exfiltration at 2:10.**
 

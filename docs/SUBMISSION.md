@@ -52,6 +52,7 @@ chip refuses, the refusal comes back as a reason it can act on, and it adapts.
 | A trustchain whose owner is the Secure Element | `enroll.cjs grant --device` — every admission a tap, two members admitted |
 | Losing the device and getting the envelopes back | the fleet revoked and restored from the public log, positions intact to the tinybar |
 | A rate limit, not just a budget | four draws paid, the fifth refused `too_fast` with 0.14 HBAR still available |
+| A browser talking to the Flex with nothing of ours installed | press **Connect Ledger**: WebHID, no bridge process, no extension |
 
 ## The one measurement worth reading
 
@@ -128,6 +129,13 @@ the device enforcing terms **between** taps.
   and makes the Secure Element itself the trustchain owner, so every admission
   is a screen — which took four status words to reach, none of which names
   what is wrong.
+- The console opens the device itself. Press **Connect Ledger** and the page
+  talks to the Flex over WebHID — no bridge process, no extension, nothing of
+  ours installed. macOS gives that interface to one process, so the tab then
+  *lends* the device back: it answers APDUs on the bridge's port, and the
+  gateway, the grant script and the agents never learn there is a browser at
+  the other end. A console that took the device and kept it would be a console
+  that blanks itself the moment you connect.
 - 18 findings from building on the platform, written up as
   `docs/FEEDBACK-LEDGER.md` — including one that factory-reset the device
   three times and is still not fully understood.
@@ -136,7 +144,10 @@ the device enforcing terms **between** taps.
 
 - Real payments over x402, signed on-device, settled on testnet.
 - An HCS audit topic where every draw carries a 29-byte statement **the chip
-  signed** — so the log is the device's own account, not the host's.
+  signed** — so the log is the device's own account, not the host's. The
+  console shows those bytes decoded under each payment: slot, draw, payee,
+  amount, remaining, and the signature. It is the same parser the verifier
+  checks signatures with, so the two cannot drift.
 - A verifier that runs in the reader's browser against the public mirror node
   and nothing else. Contract calls are anchored too, which was a bug twice:
   the gateway had it, and `hedera/defi.mjs` went straight to the chip and
@@ -172,6 +183,17 @@ the device enforcing terms **between** taps.
 - **The demonstration spends on testnet**, and a mandate denominated in HBAR
   says nothing about what the same envelope would mean against a token whose
   decimals the chip would have to learn.
+- **Two envelopes granted on identical terms are one envelope to the public
+  log.** The chip signs `slot || seq || payee || amount || remaining`, and
+  nothing in there separates one grant from the next; Ed25519 is
+  deterministic, so identical draws on identical envelopes are byte-identical
+  records. Both verifiers now split a chain where the chip's counter restarts,
+  which is the one thing a single envelope cannot produce twice, so an honest
+  log verifies and recovery restores the grant the chip is holding. What is
+  still open is the other direction: the log cannot show that the second
+  segment is a second grant rather than the first one replayed. That needs a
+  generation counter inside the chip's statement, and `hedera/verify.mjs` says
+  so on any chain where it applies rather than leaving a reader to assume.
 
 Three things that were on this list yesterday are not any more, which is worth
 saying because the list is meant to be read as current:
