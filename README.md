@@ -250,6 +250,19 @@ internet, bounded by token auth, a URL that dies with the process, and — the
 part that is the whole argument — an envelope that caps what a fully
 compromised token is worth.
 
+Doing all of that by hand was four moves with an ngrok URL copied between two
+of them, and the URL changes every time — which is why the most interesting
+thing here was the hardest thing in it to show.
+
+```console
+$ ./scripts/runner-spend.sh
+```
+
+checks what fails slowly if it is wrong, opens the tunnel, dispatches the
+workflow against that URL, follows the run, prints what the chip decided, and
+closes the tunnel on the way out however it leaves. The console has it as a
+button — *Send it to GitHub*.
+
 ## An agent that actually decides
 
 For most of this project the word *agent* was doing no work: `agent/agent.mjs`

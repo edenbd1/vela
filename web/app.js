@@ -262,6 +262,14 @@ async function refresh() {
   $("sel-slot").textContent = row ? `slot ${row.slot}` : "";
   $("try-as").textContent = row ? `as ${row.label}` : "as —";
 
+  // The operations buttons act on the selected agent, so they say which one.
+  // "Run one here" ran research-1 whatever the page had highlighted, which is
+  // the kind of thing nobody notices until the wrong agent spends.
+  $("ops-subject").textContent = row?.label ?? "none";
+  const here = $("op-agent-here");
+  here.textContent = row ? `Run ${row.label} here` : "Run it here";
+  here.disabled = !row;
+
   let d;
   try {
     d = await api(`envelope?slot=${selected ?? 0}`);
@@ -1065,6 +1073,10 @@ document.querySelectorAll("#ops .act[data-op]").forEach((b) => {
       ? { label: $("grant-label").value.trim(),
           budget: $("grant-budget").value.trim(),
           ceiling: $("grant-ceiling").value.trim() }
+      // The selected agent, by the label the chip gave it — not the one the
+      // broker thinks it has. The device is the one that cannot be edited.
+      : op === "agent-here"
+      ? { agent: FLEET?.agents?.find((a) => a.slot === selected)?.label }
       : {};
     runOp(op, params);
   });

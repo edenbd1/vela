@@ -180,6 +180,7 @@
                 <span class="text-[12px] text-fg-muted">the page asks; the device and the chip decide</span>
               </div>
 
+
               <div class="ops-grid mt-5">
                 <div class="op">
                   <div class="text-[12px] uppercase tracking-wider text-fg-muted">Grant an envelope</div>
@@ -195,13 +196,16 @@
                 <div class="op">
                   <div class="text-[12px] uppercase tracking-wider text-fg-muted">Run an agent</div>
                   <p class="op-note">A container with no device, no volume and no key. It takes its token from the Key Ring and pays through the gateway.</p>
-                  <button class="act mt-3" data-op="agent-here">Run one here</button>
-                  <button class="act mt-3" data-op="swarm">Run the fleet</button>
+                  <p class="op-note mt-2">Runs whichever agent is selected in the fleet below — currently <b class="text-fg" id="ops-subject">none</b>.</p>
+                  <button class="act mt-3" data-op="agent-here" id="op-agent-here">Run it here</button>
+                  <button class="act mt-3" data-op="swarm">Run all three</button>
                 </div>
 
                 <div class="op">
                   <div class="text-[12px] uppercase tracking-wider text-fg-muted">Hardware we do not own</div>
-                  <p class="op-note">Put the gateway on a public URL so a GitHub runner can spend against it, then take it down. While it is open, anyone with the URL can burn an envelope to its allowlisted payee.</p>
+                  <p class="op-note">Runs <code>remote-1</code> on a GitHub runner: no USB bus, no Ledger tooling, no seed, no envelope. It buys one inference, then asks for eight times the ceiling and the chip refuses it. Opens a tunnel for the duration and closes it after.</p>
+                  <button class="act mt-3" data-op="runner">Send it to GitHub</button>
+                  <p class="op-note mt-3">Or hold the tunnel open by itself. While it is up, anyone with the URL can burn that envelope down to its allowlisted payee.</p>
                   <button class="act mt-3" data-op="tunnel-open">Open the tunnel</button>
                   <button class="act danger mt-3" data-op="tunnel-close">Close it</button>
                 </div>

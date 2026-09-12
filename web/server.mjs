@@ -202,8 +202,12 @@ const server = createServer(async (req, res) => {
       "agent-here": {
         title: "Run an agent in a container",
         build: (a) => {
-          if (a.agent && !LABEL.test(a.agent)) throw new Error("unknown agent");
-          return ["./agent/run.sh", [], { AGENT_NAME: a.agent ?? "research-1" }];
+          // Named, not defaulted. This used to fall back to research-1 when
+          // the caller said nothing, so the button ran an agent the page was
+          // not pointing at — and the only sign was the wrong envelope going
+          // down.
+          if (!LABEL.test(a.agent ?? "")) throw new Error("name an agent to run");
+          return ["./agent/run.sh", [], { AGENT_NAME: a.agent }];
         },
       },
       "swarm": {
@@ -218,6 +222,13 @@ const server = createServer(async (req, res) => {
       "tunnel-close": {
         title: "Take it down",
         build: () => ["./scripts/remote-agent.sh", ["--stop"]],
+      },
+      // The tunnel, the dispatch and the run in one step. It used to be four
+      // moves with an ngrok URL copied between two of them, which is a demo
+      // that breaks on stage.
+      "runner": {
+        title: "Send an agent to GitHub's hardware",
+        build: () => ["./scripts/runner-spend.sh", []],
       },
       "verify": {
         title: "Check the public log",
