@@ -1101,7 +1101,7 @@ afternoon.
 
 ## Notes for Ledger
 
-Building this surfaced fourteen concrete developer-experience problems,
+Building this surfaced eighteen concrete developer-experience problems,
 written up with reproductions in
 [`docs/FEEDBACK-LEDGER.md`](docs/FEEDBACK-LEDGER.md).
 
@@ -1132,10 +1132,34 @@ real bugs:
   succeeds in silence, and the app dies at runtime with no status word when a
   response exceeds the size it thought it had raised.
 
-A twelfth finding was drafted and then dropped: a crash we first blamed on our
-own 64px glyph turned out to be the buffer overrun above. The correlation was
-real and the conclusion was wrong, so the write-up records that rather than
+One finding was drafted and then dropped: a crash we first blamed on our own
+64px glyph turned out to be the buffer overrun above. The correlation was real
+and the conclusion was wrong, so the write-up records that rather than
 shipping a false report.
+
+## What this does not do
+
+A project whose whole argument is about where enforcement lives should be
+exact about where its own stops. The long and deliberately unflattering
+version is [`docs/ASSESSMENT.md`](docs/ASSESSMENT.md); the short one:
+
+- **The broker can decrypt while it runs.** Nothing sits at rest in it, and
+  membership rotates away without touching the upstream key — but a broker
+  compromised while running can misuse a secret it holds at that moment. This
+  is the real remaining gap. The chip is not in that path: a compromised
+  broker still cannot spend.
+- **Ejecting a member from the *device-rooted* trustchain is written and not
+  proven.** Admission works and is signed on the chip; `revoke --device`
+  reaches the last APDU and waits on a screen we could not get answered.
+  [Finding 18](docs/FEEDBACK-LEDGER.md) has the trace. The sealed-key path has
+  both halves.
+- **It spends on testnet, and it spends HBAR.** A ceiling denominated in
+  tinybars says nothing about what the same envelope would mean against a
+  token whose decimals the chip would have to learn.
+- **The agent is a local 8B model** and behaves like one. That is the point of
+  the benchmark rather than a caveat to it — the mandate holds at whatever
+  rate the model misbehaves — but nobody should read the transcripts as a
+  claim about reasoning quality.
 
 ## Built on
 
