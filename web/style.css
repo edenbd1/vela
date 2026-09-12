@@ -36,6 +36,13 @@
 body { font-family: "Inter", system-ui, -apple-system, sans-serif; font-feature-settings: 'ss01','cv11'; }
 
 code, .mono { font-family: var(--mono); }
+
+/* [hidden] loses to any class that sets display, and this page has three of
+   them — the replay banner, the connect button, the empty-state line. It has
+   caught us three times: a "recorded run" notice on a live page, and a
+   Connect button offered while the device was already connected. One rule
+   rather than one fix per element. */
+[hidden] { display: none !important; }
 a { text-decoration: none; }
 .vela-mark-ghost { opacity: .07; }
 
@@ -158,7 +165,6 @@ ol.log > li {
 }
 ol.log > li.none { font-family: inherit; }
 
-.banner[hidden] { display: none; }
 .banner {
   display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;
   background: rgba(168,90,44,.08); border: 1px solid rgba(168,90,44,.24);
@@ -201,3 +207,39 @@ ol.log > li.none { font-family: inherit; }
 /* The pill carries the state before the panel is ever opened. */
 #device { border: 0; font-family: inherit; }
 #device[data-state="ready"] { }
+
+/* --------------------------------------------------------- operations ---
+ * Each tile is one thing a person would otherwise type in a terminal, with
+ * what it costs said before the button rather than after: a tap, a public
+ * URL, real HBAR.
+ */
+.ops-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.op {
+  padding: 16px 18px; background: var(--tint);
+  border: 1px solid var(--line); border-radius: 12px;
+  display: flex; flex-direction: column;
+}
+.op-note { margin: 6px 0 0; font-size: 12.5px; color: var(--fg-muted); flex: 1; }
+.op-fields { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.op-fields input {
+  min-width: 0; flex: 1 1 70px;
+  font-family: var(--mono); font-size: 12.5px;
+  background: #fff; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
+}
+.op-fields input:focus { outline: 0; border-color: rgba(37,72,57,.45); }
+.op .act { align-self: flex-start; }
+.op .act + .act { margin-left: 6px; }
+
+.op-out {
+  background: #fff; border: 1px solid var(--line);
+  border-radius: 12px; padding: 14px 16px;
+  max-height: 320px; overflow: auto;
+}
+.op-out pre {
+  margin: 0; font-family: var(--mono); font-size: 12px;
+  line-height: 1.6; color: var(--fg-muted);
+  white-space: pre-wrap; word-break: break-word;
+}
+/* The device asking for a finger is the one line that must not be skimmed. */
+.op-out pre b { color: var(--fg); font-weight: 600; }

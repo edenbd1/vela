@@ -12,6 +12,7 @@
  * through untouched, so what the page sees is exactly what an agent sees.
  */
 import { createServer } from "node:http";
+import { spawn } from "node:child_process";
 import { readFile, readFileSync } from "node:fs";
 import { readFile as read } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
@@ -149,6 +150,104 @@ const server = createServer(async (req, res) => {
         otherRouter: "0.0.5000002",
       },
     }));
+  }
+
+  /**
+   * The operations the console may start.
+   *
+   * A fixed list, and the page names one of these keys rather than a command.
+   * That is the same rule the broker enforces on capabilities and for the
+   * same reason: a server that takes an argv from a client and runs it is a
+   * confused deputy with a shell. Parameters are validated here, one pattern
+   * each, and nothing else reaches the process.
+   *
+   * Everything here is something a person would otherwise type into a
+   * terminal in the next room. None of it can move money on its own — the
+   * grant needs a finger on the device, and every draw is checked in the chip
+   * whatever this host thinks.
+   */
+  if (path === "/api/ops" && req.method === "POST") {
+    const body = await new Promise((r) => {
+      let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => r(b));
+    });
+    let ask;
+    try { ask = JSON.parse(body || "{}"); } catch { ask = {}; }
+
+    const LABEL = /^[a-z][a-z0-9-]{1,23}$/;
+    const AMOUNT = /^\d{1,3}(\.\d{1,4})?$/;
+
+    const OPS = {
+      "grant": {
+        title: "Grant an envelope",
+        taps: 1,
+        build: (a) => {
+          if (!LABEL.test(a.label ?? "")) throw new Error("label: lowercase letters, digits and dashes");
+          if (!AMOUNT.test(a.budget ?? "")) throw new Error("budget: a number of HBAR");
+          if (!AMOUNT.test(a.ceiling ?? "")) throw new Error("ceiling: a number of HBAR");
+          return ["node", ["hedera/grant-one.mjs", a.label, a.budget, a.ceiling]];
+        },
+      },
+      "agent-here": {
+        title: "Run an agent in a container",
+        build: (a) => {
+          if (a.agent && !LABEL.test(a.agent)) throw new Error("unknown agent");
+          return ["./agent/run.sh", [], { AGENT_NAME: a.agent ?? "research-1" }];
+        },
+      },
+      "swarm": {
+        title: "Run the whole fleet",
+        build: () => ["node", ["agent/swarm.mjs"],
+                      { VELA_EVENTS: `http://127.0.0.1:${PORT}/api/events` }],
+      },
+      "tunnel-open": {
+        title: "Put the gateway on a public URL",
+        build: () => ["./scripts/remote-agent.sh", []],
+      },
+      "tunnel-close": {
+        title: "Take it down",
+        build: () => ["./scripts/remote-agent.sh", ["--stop"]],
+      },
+      "verify": {
+        title: "Check the public log",
+        build: () => ["node", ["hedera/verify.mjs"]],
+      },
+      "reconcile": {
+        title: "Check the log against the chip",
+        build: () => ["node", ["hedera/recover.mjs", "--check"]],
+      },
+    };
+
+    const op = OPS[ask.op];
+    if (!op) {
+      return send(res, 400, "application/json",
+        JSON.stringify({ error: `no operation named '${ask.op}'`,
+                         operations: Object.keys(OPS) }));
+    }
+
+    let cmd, args, extra;
+    try { [cmd, args, extra] = op.build(ask); }
+    catch (e) { return send(res, 400, "application/json", JSON.stringify({ error: e.message })); }
+
+    // Streamed, because these take between two seconds and five minutes and a
+    // spinner that says nothing for five minutes is indistinguishable from a
+    // hang. The device prompts arrive on this channel too.
+    res.writeHead(200, {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "x-accel-buffering": "no",
+    });
+    res.write(`$ ${cmd} ${args.join(" ")}\n`);
+
+    const child = spawn(cmd, args, {
+      cwd: ROOT,
+      env: { ...process.env, ...(extra ?? {}) },
+    });
+    child.stdout.on("data", (d) => res.write(d));
+    child.stderr.on("data", (d) => res.write(d));
+    child.on("error", (e) => { res.write(`\ncould not start: ${e.message}\n`); res.end(); });
+    child.on("close", (code) => { res.write(`\n[exit ${code}]\n`); res.end(); });
+    req.on("close", () => child.kill());
+    return;
   }
 
   /**

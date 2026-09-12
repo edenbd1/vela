@@ -741,26 +741,26 @@ async function enterDemo(reason) {
  * The pill in the corner, and the only part of this page that talks about a
  * Ledger as hardware rather than as a source of numbers.
  *
- * It reports one of four things, because the fix differs for each and
- * "not connected" leaves the operator guessing which of them to go and do:
- * the bridge is not running, the Flex is locked or unplugged, the Flex is
- * awake on another app, or it is ready. The envelope panel no longer writes
- * here — a slot with no mandate is not a hardware fault, and it was saying so.
+ * Two ways to reach the device, and the page prefers the one that needs no
+ * terminal. WebHID lets it open the Flex itself after a click, which is what
+ * the button does. Where WebHID is missing — Safari, Firefox — it falls back
+ * to asking the console, which asks host/bridge.py.
+ *
+ * They cannot both hold it. macOS gives the HID interface to one process, so
+ * a running bridge means the browser's open() fails; that is said plainly
+ * rather than reported as a broken button.
  */
-const DEVICE_LABEL = {
-  ready:      (d) => d.buyer ?? "connected",
-  // Which app to open comes from the response. The console can be pointed at
-  // another one — the Key Ring work runs against Ledger Sync — and a pill
-  // that always says "Vela" would send someone to the wrong screen.
-  "wrong-app": (d) => `open ${d.expected ?? "Vela"} on the Flex`,
-  "no-device": () => "no device",
-  "no-bridge": () => "bridge not running",
-  busy:       () => "device busy",
-  unknown:    () => "checking…",
-};
+let LEDGER = null;         // a WebHidLedger once connected
+let hid = null;            // the module, loaded lazily
+
+async function hidModule() {
+  if (!hid) hid = await import("/ledger.js");
+  return hid;
+}
 
 const DEVICE_TITLE = {
   ready: "Connected",
+  connect: "Not connected",
   "wrong-app": "Another app is open",
   "no-device": "Not answering",
   "no-bridge": "Bridge not running",
@@ -768,36 +768,106 @@ const DEVICE_TITLE = {
   unknown: "Checking",
 };
 
-let deviceState = "unknown";
-
-async function probeDevice() {
-  let d;
-  try {
-    d = await (await fetch("/api/device")).json();
-  } catch {
-    d = { state: "no-bridge", why: "the console could not reach its own API" };
-  }
-  deviceState = d.state ?? "unknown";
-
+function paintDevice(d) {
   $("dot").className = `dot ${d.state === "ready" ? "on" : "off"}`;
-  $("device-text").textContent = (DEVICE_LABEL[d.state] ?? DEVICE_LABEL.unknown)(d);
+  $("device-text").textContent = d.label;
   $("device-state").textContent = DEVICE_TITLE[d.state] ?? "Unknown";
-  $("device-why").textContent = d.why ?? "the device answered and Vela is open";
+  $("device-why").textContent = d.why ?? "";
+  $("device").dataset.state = d.state;
 
   const fix = $("device-fix");
   if (d.fix) { fix.hidden = false; $("device-fix-text").textContent = d.fix; }
   else fix.hidden = true;
 
-  // Facts, in the device's own words rather than ours.
   const facts = $("device-facts");
   facts.replaceChildren();
-  for (const [k, v] of [["app", d.app], ["version", d.version], ["account", d.buyer]]) {
+  for (const [k, v] of [["via", d.via], ["app", d.app],
+                        ["version", d.version], ["account", d.buyer]]) {
     if (!v) continue;
     const dt = document.createElement("dt"); dt.textContent = k;
     const dd = document.createElement("dd"); dd.textContent = v;
     facts.append(dt, dd);
   }
-  return d;
+
+  const btn = $("device-connect");
+  btn.hidden = d.state === "ready" || !d.canConnect;
+  $("device-retry").textContent = "Check again";
+}
+
+/** Read the device the page is holding, if it is holding one. */
+async function readOverHid() {
+  const info = await LEDGER.appInfo();
+  const ok = info.app === "Vela";
+  return {
+    state: ok ? "ready" : "wrong-app",
+    label: ok ? (CONFIG?.buyer ?? "connected") : `open Vela on the Flex`,
+    why: ok ? "this page is holding the device over WebHID"
+            : `the Flex is on '${info.app}', not Vela`,
+    fix: ok ? null : "open Vela on the device and stay on it",
+    via: "WebHID", app: info.app, version: info.version,
+    buyer: ok ? CONFIG?.buyer : null,
+  };
+}
+
+async function probeDevice() {
+  // 1. the page's own connection, if it has one
+  if (LEDGER) {
+    try { return paintDevice(await readOverHid()); }
+    catch (e) {
+      LEDGER = null;
+      return paintDevice({
+        state: "no-device", label: "connect Ledger", canConnect: true,
+        why: String(e.message ?? e),
+      });
+    }
+  }
+
+  // 2. otherwise the bridge, which may be holding it for the rest of the stack
+  let d;
+  try { d = await (await fetch("/api/device")).json(); }
+  catch { d = { state: "no-bridge", why: "the console could not reach its own API" }; }
+
+  const canConnect = (await hidModule()).supported();
+  if (d.state === "ready") {
+    return paintDevice({ ...d, via: "host/bridge.py",
+                         label: d.buyer ?? "connected",
+                         why: "host/bridge.py is holding the device" });
+  }
+  if (d.state === "wrong-app") {
+    return paintDevice({ ...d, via: "host/bridge.py", canConnect,
+                         label: `open ${d.expected ?? "Vela"} on the Flex` });
+  }
+  return paintDevice({
+    ...d, canConnect,
+    label: canConnect ? "connect Ledger" : (d.state === "no-bridge" ? "bridge not running" : "no device"),
+    // With WebHID available the terminal command is no longer the only way
+    // out, so it stops being the headline advice.
+    fix: canConnect ? null : d.fix,
+    why: canConnect
+      ? (d.why ? `${d.why} — or connect this page to the Flex directly` : null)
+      : d.why,
+  });
+}
+
+async function connectLedger() {
+  const m = await hidModule();
+  if (!m.supported()) return;
+  const btn = $("device-connect");
+  btn.disabled = true; btn.textContent = "Waiting for the picker…";
+  try {
+    LEDGER = (await m.WebHidLedger.existing()) ?? (await m.WebHidLedger.request());
+    if (!LEDGER) return;                       // dismissed
+    await LEDGER.open();
+    await probeDevice();
+  } catch (e) {
+    LEDGER = null;
+    paintDevice({
+      state: "no-device", label: "connect Ledger", canConnect: true,
+      why: String(e.message ?? e),
+    });
+  } finally {
+    btn.disabled = false; btn.textContent = "Connect Ledger";
+  }
 }
 
 if ($("device").addEventListener) {
@@ -808,10 +878,11 @@ if ($("device").addEventListener) {
     $("device").setAttribute("aria-expanded", String(open));
     if (open) probeDevice();
   });
+  $("device-connect").addEventListener("click", (e) => { e.stopPropagation(); connectLedger(); });
   $("device-retry").addEventListener("click", (e) => {
     e.stopPropagation();
     $("device-retry").textContent = "Checking…";
-    probeDevice().finally(() => { $("device-retry").textContent = "Check again"; });
+    probeDevice();
   });
   document.addEventListener("click", (e) => {
     if (!e.target.closest("#device-panel") && !e.target.closest("#device")) {
@@ -823,6 +894,93 @@ if ($("device").addEventListener) {
     if (e.key === "Escape") $("device-panel").hidden = true;
   });
 
-  probeDevice();
-  setInterval(probeDevice, 8000);
+  // A device granted in an earlier visit can be re-opened without a click.
+  hidModule().then(async (m) => {
+    if (m.supported()) {
+      const prior = await m.WebHidLedger.existing();
+      if (prior) { try { await prior.open(); LEDGER = prior; } catch { /* the bridge has it */ } }
+    }
+    probeDevice();
+    setInterval(probeDevice, 8000);
+  });
 }
+
+/* --------------------------------------------------------- operations ----
+ * Buttons that start something, and a pane that shows it happening.
+ *
+ * The page names an operation by key; the server holds the list and builds
+ * the argv. Output is streamed because these take between two seconds and
+ * five minutes, and because the device's own prompts arrive on that channel —
+ * ">>> approve 'remote-1' on the device <<<" is the point of pressing Grant,
+ * and it has to be readable the moment it appears rather than at the end.
+ */
+let opRunning = null;
+
+function opLine(text) {
+  const log = $("ops-log");
+  // The device's asks are the only thing here that needs a person, so they
+  // are the only thing given weight. Everything else is a transcript.
+  const bold = /^\s*>>>/.test(text);
+  const node = bold ? document.createElement("b") : document.createTextNode(text);
+  if (bold) node.textContent = text;
+  log.append(node);
+  $("ops-out").scrollTop = $("ops-out").scrollHeight;
+}
+
+async function runOp(op, params = {}) {
+  if (opRunning) return;
+  opRunning = op;
+
+  const buttons = document.querySelectorAll("#ops .act");
+  buttons.forEach((b) => (b.disabled = true));
+  const pressed = document.querySelector(`#ops .act[data-op="${op}"]`);
+  const was = pressed ? pressed.textContent : "";
+  if (pressed) pressed.textContent = "Running…";
+
+  $("ops-out").hidden = false;
+  $("ops-log").replaceChildren();
+
+  try {
+    const r = await fetch("/api/ops", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ op, ...params }),
+    });
+
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      opLine(e.error ?? `the console refused: ${r.status}\n`);
+      return;
+    }
+
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      opLine(dec.decode(value, { stream: true }));
+    }
+  } catch (e) {
+    opLine(`\n${e.message ?? e}\n`);
+  } finally {
+    opRunning = null;
+    buttons.forEach((b) => (b.disabled = false));
+    if (pressed) pressed.textContent = was;
+    // Anything here can change what the chip holds, so re-read rather than
+    // let the page keep showing what was true before the button.
+    refresh?.();
+    probeDevice?.();
+  }
+}
+
+document.querySelectorAll("#ops .act[data-op]").forEach((b) => {
+  b.addEventListener("click", () => {
+    const op = b.dataset.op;
+    const params = op === "grant"
+      ? { label: $("grant-label").value.trim(),
+          budget: $("grant-budget").value.trim(),
+          ceiling: $("grant-ceiling").value.trim() }
+      : {};
+    runOp(op, params);
+  });
+});

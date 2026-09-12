@@ -50,7 +50,10 @@
             <code class="device-fix-code" id="device-fix-text"></code>
           </div>
           <dl class="inv mt-4" id="device-facts"></dl>
-          <button class="act mt-4" id="device-retry">Check again</button>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button class="act" id="device-connect" hidden>Connect Ledger</button>
+            <button class="act danger" id="device-retry">Check again</button>
+          </div>
         </div>
       </div>
     </div>
@@ -166,6 +169,50 @@
                   with a finger — and nothing on any host has to be rotated.
                 </p>
               </div>
+            </div>
+
+            <!-- =================================================== operations -->
+            <div id="ops" class="rounded-2xl bg-[#fdfaf1] p-6 shadow-[0_1px_3px_rgba(20,50,35,0.06),0_10px_30px_rgba(20,50,35,0.09)]">
+              <div class="flex items-center justify-between gap-3">
+                <span class="rounded-full bg-[#254839]/[0.06] px-3 py-1.5 text-[13px] font-medium text-fg">Operations</span>
+                <span class="text-[12px] text-fg-muted">the page asks; the device and the chip decide</span>
+              </div>
+
+              <div class="ops-grid mt-5">
+                <div class="op">
+                  <div class="text-[12px] uppercase tracking-wider text-fg-muted">Grant an envelope</div>
+                  <p class="op-note">One tap on the Flex. The screen names the agent, the budget and the ceiling before it asks.</p>
+                  <div class="op-fields">
+                    <input id="grant-label" value="remote-1" spellcheck="false" aria-label="agent name">
+                    <input id="grant-budget" value="0.05" spellcheck="false" aria-label="budget in HBAR">
+                    <input id="grant-ceiling" value="0.01" spellcheck="false" aria-label="ceiling per draw">
+                  </div>
+                  <button class="act mt-3" data-op="grant">Grant — 1 tap</button>
+                </div>
+
+                <div class="op">
+                  <div class="text-[12px] uppercase tracking-wider text-fg-muted">Run an agent</div>
+                  <p class="op-note">A container with no device, no volume and no key. It takes its token from the Key Ring and pays through the gateway.</p>
+                  <button class="act mt-3" data-op="agent-here">Run one here</button>
+                  <button class="act mt-3" data-op="swarm">Run the fleet</button>
+                </div>
+
+                <div class="op">
+                  <div class="text-[12px] uppercase tracking-wider text-fg-muted">Hardware we do not own</div>
+                  <p class="op-note">Put the gateway on a public URL so a GitHub runner can spend against it, then take it down. While it is open, anyone with the URL can burn an envelope to its allowlisted payee.</p>
+                  <button class="act mt-3" data-op="tunnel-open">Open the tunnel</button>
+                  <button class="act danger mt-3" data-op="tunnel-close">Close it</button>
+                </div>
+
+                <div class="op">
+                  <div class="text-[12px] uppercase tracking-wider text-fg-muted">Check the log</div>
+                  <p class="op-note">The chain against itself, and the chain against the chip. Neither reads anything this host holds.</p>
+                  <button class="act mt-3" data-op="verify">Verify the chain</button>
+                  <button class="act mt-3" data-op="reconcile">Log vs chip</button>
+                </div>
+              </div>
+
+              <div class="op-out mt-5" id="ops-out" hidden><pre id="ops-log"></pre></div>
             </div>
 
             <!-- ======================================================== fleet -->
