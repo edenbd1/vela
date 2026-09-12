@@ -268,9 +268,13 @@ def main():
                                           "e => e.map(x => x.textContent)")
         check("the fleet is painted from the recording's snapshot",
               len(cards) >= 2, f"{cards}")
-        claims = demo.eval_on_selector_all(".claim b", "e => e.map(x => x.textContent)")
+        # By id rather than by class. The page was rebuilt on Agama's own
+        # markup and .claim went with it; these three are what app.js writes,
+        # and they are the thing the assertion is actually about.
+        claims = demo.eval_on_selector_all(
+            "#c-agents, #c-left, #c-draws", "e => e.map(x => x.textContent)")
         check("and the headline figures are not zero",
-              claims and claims[0] not in ("0", "—"), f"{claims}")
+              len(claims) == 3 and claims[0] not in ("0", "—"), f"{claims}")
         check("nothing pulses once the recording ends",
               demo.eval_on_selector_all(".mind.live", "e => e.length") == 0)
         check("a static page contacts no origin but itself",
