@@ -12,6 +12,19 @@
 #   - the push is a force push, which cannot be undone from the remote
 #   - a clone made before it still has the file
 #
+# And the one that surprised us, checked after running this for real:
+#
+#   - **GitHub still serves the old objects.** A fresh clone is clean, and
+#     `git log --all` finds nothing, but the API answers on the old SHA:
+#
+#         gh api repos/<owner>/<repo>/contents/docs/PLAN.md?ref=<old sha>
+#         → "size": 72935
+#
+#     Unreachable objects are not garbage-collected on push. The only
+#     reliable fixes are asking GitHub Support to run gc on the repository,
+#     or deleting the repository and pushing the rewritten history to a new
+#     one. Rewriting locally is necessary and it is not sufficient.
+#
 # Read the output of --check first. Then run it, then force-push, then tell
 # anyone with a clone to re-clone.
 #
@@ -75,3 +88,11 @@ echo "      git push --force --all"
 echo "      git push --force --tags"
 echo
 echo "  Then tell anyone holding a clone to re-clone. Theirs still has the file."
+echo
+echo "  And check the remote rather than trusting the push. A fresh clone will"
+echo "  be clean while the API still answers on the old SHA:"
+echo
+echo "      gh api repos/<owner>/<repo>/contents/$TARGET?ref=<old sha>"
+echo
+echo "  If that returns a size, the objects are still there. Ask GitHub Support"
+echo "  to gc the repository, or push this history to a new one."

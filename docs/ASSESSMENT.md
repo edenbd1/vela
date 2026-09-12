@@ -317,12 +317,34 @@ device rather than the emulator. What is left, in order:
    rather than the contract-call one. `./scripts/record.sh` warns when a
    recording has no refusal in it.
 
-3. **Purge `docs/PLAN.md` from git history** before the repo goes public. It
-   is out of the working tree and still in two commits, and a public
-   repository publishes its history too. `./scripts/purge-plan.sh --check`
-   shows which; `--run` rewrites, after taking a mirror backup. Deliberately
-   not automatic: every hash changes, the push is a force push, and a clone
-   made beforehand still has the file.
+3. **Decide what to do about `docs/PLAN.md` in the history** before the repo
+   goes public. It is out of the working tree and still in two commits, and a
+   public repository publishes its history too.
+
+   `./scripts/purge-plan.sh --run` rewrites it out, and it was run once and
+   then undone, which is why this entry is longer than it was. Two things are
+   worth having learned from that:
+
+   **A rewrite is not a deletion.** GitHub does not garbage-collect
+   unreachable objects on a force push. After the rewrite, a fresh clone was
+   clean and `git log --all` found nothing — and the API still served the file
+   on the old SHA:
+
+   ```console
+   $ gh api repos/edenbd1/vela/contents/docs/PLAN.md?ref=e945332
+   "size": 72935
+   ```
+
+   So the rewrite buys almost nothing on its own. What actually removes it is
+   GitHub Support running gc, or pushing the history to a new repository and
+   deleting this one.
+
+   **And the cost is real.** Every one of 190 commit hashes changes, the push
+   cannot be undone from the remote, and every clone anyone holds becomes
+   unrelated history. Weighed against a competitive-analysis file in a private
+   repository with no forks and two collaborators, that is the expensive side
+   of the trade. The history is intact; the script and this entry are the
+   record of what running it would and would not do.
 
 Off this list as of 2026-09-10, both on the same day:
 
