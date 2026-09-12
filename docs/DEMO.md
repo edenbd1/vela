@@ -87,10 +87,21 @@ node agent/swarm.mjs
 ./scripts/record.sh          # warns if there is no refusal in it
 ```
 
-The one committed was made on a nearly-empty envelope, so its refusals are
-`over_per_call` and the broker's rather than the contract-call one. A freshly
-granted fleet gives the better recording, and the script tells you if it did
-not.
+The one committed on 2026-09-12 has three columns and five refusals across
+three authorities — `over_per_call` and `recipient_not_self` from the chip,
+`not_granted` from the broker — and research-1's full arc: it asks for the
+expensive tier, is refused, says in its own words that it needs a cheaper one,
+and buys it. It does not contain `too_fast`; the velocity beat at 3:10 shows
+that live.
+
+Re-record only if you want your own numbers in it. Two things to know if you
+do. The swarm is three models on one runtime, so it takes between forty
+seconds and four minutes depending on what else is loaded — wait for the
+summary block, not for the first agent to finish, or you will capture a run
+with two empty columns. And research-1's recovery after the refusal is the
+strongest thing in the replay and it is a model, not a script: it took three
+runs to get it. `record.sh` tells you how many refusals it captured; it cannot
+tell you whether the good one is in there, so read the columns.
 
 ---
 
@@ -251,8 +262,15 @@ Then the device.
 > them and cannot correct them."
 
 If a model does not reach for the expensive tier on the take, run it again —
-they are models, not scripts. `./agent/run.sh agent.mjs` hits the same refusal
-every time if the recording has to be certain.
+they are models, not scripts. Nor is the *recovery* reliable: across three
+runs on 2026-09-12 research-1 asked for the expensive tier every time and was
+refused every time, and only one of the three came back with the cheaper one.
+The refusal is the claim and it is deterministic; the adaptation is the
+flourish and it is not. If the take has the refusal and not the recovery, say
+what happened rather than the line written here.
+
+`./agent/run.sh agent.mjs` is the scripted walk-through and hits the same
+refusal every time, if a take has to be certain.
 
 ## 2:00 — hardware we do not own, in one button
 
