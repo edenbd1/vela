@@ -128,6 +128,34 @@ function publish(event) {
   for (const w of watchers) { try { w.write(line); } catch { watchers.delete(w); } }
 }
 
+/**
+ * Is this account controlled by this key, according to Hedera?
+ *
+ * Cached for the life of the process: an account's key does not change under
+ * a running console, and the device panel re-probes every eight seconds.
+ * Returns null rather than false when the mirror node cannot be reached —
+ * "we could not check" and "it does not match" are different answers and the
+ * panel says so.
+ */
+const MIRROR = env.HEDERA_MIRROR ?? "https://testnet.mirrornode.hedera.com/api/v1";
+const keyCache = new Map();
+async function accountIsUnder(account, keyHex) {
+  const at = `${account}/${keyHex}`;
+  if (keyCache.has(at)) return keyCache.get(at);
+  try {
+    const r = await fetch(`${MIRROR}/accounts/${account}`,
+                          { signal: AbortSignal.timeout(8000) });
+    const k = (await r.json())?.key?.key;
+    const out = typeof k === "string"
+      ? k.toLowerCase().endsWith(keyHex.toLowerCase())
+      : null;
+    keyCache.set(at, out);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 const send = (res, code, type, body) => {
   res.writeHead(code, { "content-type": type });
   res.end(body);
@@ -341,8 +369,28 @@ const server = createServer(async (req, res) => {
         fix: `open ${EXPECT_APP} on the device and stay on it`,
       });
     }
+    // The key the chip holds, and whether the account this page names is
+    // actually under it.
+    //
+    // `buyer` came out of .env — the host's claim about which account the
+    // device controls, which is the one thing on this panel a host could just
+    // be wrong about. The chip answers e016 with its own public key, and the
+    // mirror node says which key each account is under, so the two can be put
+    // side by side against a source that is neither of them.
+    let key = null, keyMatches = null;
+    try {
+      const k = await fetch(`${BRIDGE}/apdu`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ apdu: "e016000000" }),
+        signal: AbortSignal.timeout(6000),
+      }).then((x) => x.json());
+      key = k.data || null;
+      if (key && env.HEDERA_BUYER_ID) keyMatches = await accountIsUnder(env.HEDERA_BUYER_ID, key);
+    } catch { /* the panel says what it knows; a missing key is not a failure */ }
+
     return reply({
-      state: "ready", app, version,
+      state: "ready", app, version, key, keyMatches,
       // Which of the two things behind :8099 answered. A console that said
       // "bridge" while a tab was doing the work would be lying about where
       // the device is, which is the one fact this panel exists to report.

@@ -850,6 +850,11 @@ async function enterDemo(reason) {
 let LEDGER = null;         // a WebHidLedger once connected
 let LENDING = null;        // the handle that gives it back, while connected
 let LENT = null;           // what the console last said about the lend
+// Whether somebody has pressed Connect in this session. The page reads the
+// chip whether or not they have — it is a console, not a wallet — but
+// "connected" should mean a person asked for it and got an answer out of the
+// device, rather than a poll that happened to succeed.
+let CONNECTED = false;
 let hid = null;            // the module, loaded lazily
 
 async function hidModule() {
@@ -880,8 +885,16 @@ function paintDevice(d) {
 
   const facts = $("device-facts");
   facts.replaceChildren();
+  const under = d.keyMatches === true ? "under this device's key"
+              : d.keyMatches === false ? "NOT under this device's key"
+              : d.key ? "could not check against Hedera" : null;
   for (const [k, v] of [["via", d.via], ["app", d.app],
-                        ["version", d.version], ["account", d.buyer],
+                        ["version", d.version],
+                        // The account and the key side by side, because the
+                        // account came out of .env and the key came out of
+                        // the chip. Hedera says which one owns the other.
+                        ["account", d.buyer], ["", under],
+                        ["device key", d.key ? `${d.key.slice(0, 16)}…` : null],
                         // Named because it is the answer to "why does the
                         // rest of the page still work?", which is the
                         // question this whole arrangement exists to settle.
@@ -889,6 +902,10 @@ function paintDevice(d) {
     if (!v) continue;
     const dt = document.createElement("dt"); dt.textContent = k;
     const dd = document.createElement("dd"); dd.textContent = v;
+    // The one line here that is a verdict rather than a reading. Green for
+    // the account being under the chip's key, the chip's own red for not —
+    // the palette's existing meanings, so it needs no legend.
+    if (v === under) dd.className = d.keyMatches === true ? "ok" : d.keyMatches === false ? "chip" : "";
     facts.append(dt, dd);
   }
 
@@ -901,7 +918,7 @@ function paintDevice(d) {
   cmd.hidden = !d.noteCmd;
 
   const btn = $("device-connect");
-  btn.hidden = d.state === "ready" || !d.canConnect;
+  btn.hidden = !d.canConnect;
   // Only offered when this tab is the one holding the device. Disconnecting
   // a bridge we did not start is not ours to do.
   $("device-disconnect").hidden = !d.lending;
@@ -952,7 +969,13 @@ async function probeDevice() {
     return paintDevice({
       ...d, via: d.via ?? "host/bridge.py",
       label: d.buyer ?? "connected",
-      why: `${d.via ?? "host/bridge.py"} is holding the device`,
+      // Connecting through a bridge that is already up is not a no-op: it is
+      // what reads the key out of the chip and checks the account against
+      // Hedera. Until someone asks, this panel is repeating .env.
+      canConnect: !CONNECTED,
+      why: CONNECTED
+        ? `read from the device, through ${d.via ?? "host/bridge.py"}`
+        : `${d.via ?? "host/bridge.py"} is holding the device`,
       // Only worth saying when this browser could actually take over, and
       // only when it is not already the thing holding it.
       note: canConnect && !/WebHID/.test(d.via ?? "")
@@ -988,9 +1011,35 @@ async function probeDevice() {
  * to prevent. So a refusal closes the device again rather than keeping it.
  */
 async function connectLedger() {
-  const m = await hidModule();
-  if (!m.supported()) return;
   const btn = $("device-connect");
+
+  // Route one: something is already holding the device for this console. Then
+  // connecting means asking the chip who it is and checking that against
+  // Hedera — no picker, no permission prompt, and it works in every browser.
+  btn.disabled = true; btn.textContent = "Reading the device…";
+  try {
+    const d = await (await fetch("/api/device")).json();
+    if (d.state === "ready") {
+      CONNECTED = true;
+      await probeDevice();
+      deviceDone(d.keyMatches === true
+        ? `Connected. ${d.buyer} is under the key in this device.`
+        : `Connected to ${d.app} ${d.version}.`);
+      refresh().catch(() => {});
+      return;
+    }
+  } catch { /* fall through to the browser's own connection */ }
+  finally { btn.disabled = false; btn.textContent = "Connect Ledger"; }
+
+  // Route two: nothing is holding it, so this tab opens it itself.
+  const m = await hidModule();
+  if (!m.supported()) {
+    return paintDevice({
+      state: "no-bridge", label: "no device", canConnect: false,
+      why: "nothing is holding the Flex, and this browser cannot open one",
+      fix: "python3 host/bridge.py, or use a Chromium-based browser",
+    });
+  }
   btn.disabled = true; btn.textContent = "Waiting for the picker…";
   try {
     LEDGER = (await m.WebHidLedger.existing()) ?? (await m.WebHidLedger.request());
@@ -1043,6 +1092,7 @@ async function connectLedger() {
       });
     }
 
+    CONNECTED = true;
     await probeDevice();
     // The fleet and the envelope have been failing against a bridge that was
     // not there. They work now, and waiting five seconds for the next tick to
@@ -1062,7 +1112,7 @@ async function connectLedger() {
 
 /** Give the Flex back to the operating system, and say so. */
 async function disconnectLedger() {
-  LENDING?.stop(); LENDING = null; LENT = null;
+  LENDING?.stop(); LENDING = null; LENT = null; CONNECTED = false;
   if (LEDGER) await LEDGER.close().catch(() => {});
   LEDGER = null;
   await probeDevice();

@@ -224,6 +224,31 @@ def main():
         # down, put the banner off screen. That is the exact thing it exists
         # to prevent, and it looked fine in every screenshot taken from the
         # top of the page.
+        # Connecting, on whichever route this machine has.
+        #
+        # The button only appeared when no bridge was running, which is the
+        # one case the person who asked for it never had — so nobody ever saw
+        # it. With a bridge up, connecting is not a no-op: it is what reads
+        # the key out of the chip and puts the account beside it, instead of
+        # the panel repeating a line from .env.
+        page.locator("#device").click()
+        time.sleep(0.5)
+        offered = page.locator("#device-connect").is_visible()
+        check("connecting is offered even when a bridge is already up", offered)
+        if offered:
+            page.locator("#device-connect").click()
+            time.sleep(4)
+            panel = page.inner_text("#device-panel")
+            check("and it reports what the chip answered, not what .env said",
+                  "device key" in panel, panel[:200])
+            check("with the account checked against Hedera",
+                  "under this device" in panel or "could not check" in panel,
+                  panel[:200])
+        page.keyboard.press("Escape")
+        # Connecting raises the green banner, which holds for five seconds by
+        # design. Wait it out rather than asserting against it below.
+        time.sleep(6)
+
         check("the device banner is out of the way when nothing is asking",
               page.query_selector("#devbar").get_attribute("hidden") is not None)
 
