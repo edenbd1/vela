@@ -217,6 +217,40 @@ def main():
         check("no link falls back to the browser's default colour",
               default_blue == [], f"unstyled: {default_blue}")
 
+        # How many things a first-time reader is asked to choose between.
+        #
+        # This page reached fifteen visible buttons, every one of them real and
+        # none of them explained, named for what was being bought rather than
+        # what pressing them would prove. The argument is three acts; anything
+        # past that is behind the fold at the bottom, and the count is asserted
+        # because it grew one button at a time and nobody noticed.
+        visible = page.eval_on_selector_all(
+            "button",
+            "els => els.filter(e => e.offsetParent).map(e => e.textContent.trim())")
+        check("the page asks a reader to read a handful of buttons, not a wall",
+              len(visible) <= 9, f"{len(visible)}: {visible}")
+
+        # And they say what will happen, not what is being bought.
+        spine = page.eval_on_selector_all(
+            "#flow button", "els => els.map(e => e.textContent.trim())")
+        # Three acts, five buttons: grant, two payments the chip decides
+        # differently, the attempt to route the money away, and revoke.
+        check("the spine stays five buttons", len(spine) == 5, f"{spine}")
+        check("a payment the chip allows says so",
+              any("inside the ceiling" in b for b in spine), f"{spine}")
+        check("and one it refuses says that before you press it",
+              sum("the chip refuses" in b for b in spine) == 2, f"{spine}")
+
+        more = page.query_selector("#more-body")
+        check("everything else starts folded away",
+              more.get_attribute("hidden") is not None)
+        page.click("#more-toggle")
+        time.sleep(0.3)
+        check("and opens when asked",
+              page.query_selector("#more-body").get_attribute("hidden") is None)
+        page.click("#more-toggle")
+        time.sleep(0.3)
+
         # The banner that says what the Flex wants.
         #
         # It lived in the hero section first, where `position: sticky` is

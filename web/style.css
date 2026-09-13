@@ -317,3 +317,54 @@ ol.log > li > .detail { flex: 1 1 auto; color: var(--fg-faint); }
 /* The chip's own statement gets a row to itself rather than being squeezed
    beside the sentence that introduced it. */
 ol.log > li > .signed { flex: 1 0 100%; }
+
+/* --------------------------------------------------------------- flow ----
+ * The argument, as three things you can press.
+ *
+ * This page grew to fifteen buttons — every one of them real, none of them
+ * explained, and named after what was being bought rather than what pressing
+ * it would prove. A reader meeting that reads none of them. So the three acts
+ * are the spine, and everything else is behind a disclosure at the bottom.
+ */
+ol.flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+ol.flow > li {
+  display: grid; grid-template-columns: 44px 1fr; gap: 18px;
+  padding: 22px 0; border-top: 1px solid var(--line);
+}
+ol.flow > li:first-child { border-top: 0; padding-top: 6px; }
+
+.flow-n {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--tint); border: 1px solid var(--line2);
+  font-family: var(--mono); font-size: 14px; color: var(--fg-muted);
+}
+.flow-body h3 { margin: 4px 0 0; font-size: 19px; font-weight: 600; color: var(--fg); }
+.flow-body > p {
+  margin: 7px 0 0; max-width: 62ch; font-size: 14px; line-height: 1.55;
+  color: var(--fg-muted);
+}
+.flow-body > p b { color: var(--fg); font-weight: 600; }
+.flow-body .op-fields { display: flex; flex-wrap: wrap; gap: 10px; }
+.flow-body .op-fields label {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--fg-faint);
+}
+.flow-body .op-fields input { width: 92px; }
+/* Which agent step 2 is about, beside the heading rather than trailing off
+   the end of the sentence under it. */
+.flow-body h3 #try-as {
+  margin-left: 8px; font-size: 13px; font-weight: 400; color: var(--fg-faint);
+}
+
+@media (max-width: 640px) {
+  ol.flow > li { grid-template-columns: 1fr; gap: 10px; }
+}
+
+/* The rest of the console, folded away until someone wants it. */
+#more-toggle {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  width: 100%; cursor: pointer; background: none; border: 0; padding: 0;
+  text-align: left; font: inherit; color: inherit;
+}
+.more-state { margin-left: auto; font-size: 13px; color: var(--fg-faint); }

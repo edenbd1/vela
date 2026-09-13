@@ -464,23 +464,31 @@ function paintEnvelopeFrom(d, fleet = null) {
 function paintTiers(m) {
   const box = $("tiers");
   box.innerHTML = "";
-  for (const tier of CONFIG.tiers) {
+  // The cheapest that fits and the cheapest that does not. A third button
+  // between them is a third thing to read and proves nothing the other two do
+  // not — and this page had fifteen buttons and no story holding them up.
+  const priced = [...CONFIG.tiers].sort((a, b) => Number(a.price) - Number(b.price));
+  const fits = priced.find((t) => Number(t.price) * 1e8 <= Number(m.per_call_max));
+  const over = priced.find((t) => Number(t.price) * 1e8 > Number(m.per_call_max));
+  for (const tier of [fits, over].filter(Boolean)) {
     const tinybars = Number(tier.price) * 1e8;
     const overCeiling = tinybars > Number(m.per_call_max);
 
     const b = document.createElement("button");
-    b.className = "act";
+    b.className = `act${overCeiling ? " danger" : ""}`;
     // DEVICE_BUSY as well as busy: this row is rebuilt on every refresh, and
     // a refresh during a grant put the Buy buttons back while the chip was
     // still holding a screen up.
     b.disabled = busy || DEMO || DEVICE_BUSY;
-    b.append(document.createTextNode(`Buy ${tier.label}`));
+    // Named for what pressing it will prove, not for what it buys. "Buy
+    // synthesis" is the seller's word for a product nobody watching this has
+    // heard of; what a reader wants to know is whether the chip will allow it.
+    b.append(document.createTextNode(
+      overCeiling ? `Pay ${tier.price} — over the ceiling` : `Pay ${tier.price}`));
 
     const price = document.createElement("span");
     price.className = `price${overCeiling ? " over" : ""}`;
-    price.textContent = overCeiling
-      ? `${tier.price} HBAR — over the ceiling`
-      : `${tier.price} HBAR`;
+    price.textContent = overCeiling ? "the chip refuses" : "inside the ceiling";
     b.append(price);
 
     b.onclick = () => buy(tier);
@@ -779,7 +787,9 @@ async function enterDemo(reason) {
     a.textContent = rec.topic;
     $("topic").textContent = "";
     $("topic").append(a);
-    $("verify-link").href = `/verify.html?topic=${rec.topic}`;
+    for (const a of document.querySelectorAll(".js-verify")) {
+      a.href = `/verify.html?topic=${rec.topic}`;
+    }
   }
 
   const played = await replayAgents();
@@ -811,9 +821,26 @@ async function enterDemo(reason) {
   $("load-receipts").onclick = loadReceipts;
   // Carry the topic across, so "check it yourself" is a link rather than an
   // instruction to type something.
-  if (CONFIG?.topic) $("verify-link").href = `/verify.html?topic=${CONFIG.topic}`;
+  if (CONFIG?.topic) {
+    for (const a of document.querySelectorAll(".js-verify")) {
+      a.href = `/verify.html?topic=${CONFIG.topic}`;
+    }
+  }
   $("revoke").onclick = revoke;
-  for (const b of document.querySelectorAll("button.scenario")) {
+  // The fold at the bottom.
+  const moreBtn = $("more-toggle"), moreBody = $("more-body");
+  if (moreBtn) {
+    moreBtn.addEventListener("click", () => {
+      const open = moreBody.hidden;
+      moreBody.hidden = !open;
+      moreBtn.setAttribute("aria-expanded", String(open));
+      moreBtn.querySelector(".more-state").textContent = open ? "hide" : "show";
+    });
+  }
+
+  // The scenario buttons, wherever they are: four of them are behind the
+  // disclosure at the bottom, and the one that matters is on the spine.
+  for (const b of document.querySelectorAll("button.scenario, #try-steal")) {
     b.onclick = () => runScenario(b.dataset.case);
   }
   $("sig-good").textContent = CONFIG.defi.swap.sig;
@@ -1234,7 +1261,7 @@ function deviceIdle() {
 function lockActions(locked) {
   DEVICE_BUSY = locked;
   for (const b of document.querySelectorAll(
-      "#tiers .act, #ops .act[data-op], #revoke, button.scenario")) {
+      "#tiers .act, #ops .act[data-op], #flow .act, #revoke, button.scenario")) {
     b.disabled = locked;
   }
 }
