@@ -573,7 +573,7 @@ Ledger Flex.
 |---|---|
 | Payment signed in the Secure Element | account [`0.0.10397072`](https://hashscan.io/testnet/account/0.0.10397072) — its private key exists on no disk here |
 | x402 settlement | Blocky402 facilitator, `CRYPTOTRANSFER`, `result: SUCCESS` |
-| Public audit log | topic [`0.0.10498583`](https://hashscan.io/testnet/topic/0.0.10498583) — a new one per grant, so this is the latest rather than the only |
+| Public audit log | topic [`0.0.10522510`](https://hashscan.io/testnet/topic/0.0.10522510) — a new one per grant, so this is the latest rather than the only |
 | On-chip refusals | `payee_not_allowed`, `over_per_call`, `over_budget` |
 | NVRAM persistence | *IDENTICAL — the envelope survived a full application restart* |
 
@@ -610,7 +610,7 @@ local state, no trust in this repo, no trust in the host that produced the log.
 ```console
 $ node hedera/verify.mjs            # or pass a topic id
 
-topic   0.0.10498583
+topic   0.0.10522510
 source  https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
 
 mandate 0f39b1086dbf4421…  granted 1789208452  7 draw(s)
@@ -799,7 +799,7 @@ gets a fresh 0.5.
 
 ```console
 $ node hedera/recover.mjs
-topic    0.0.10498583
+topic    0.0.10522510
 source   https://testnet.mirrornode.hedera.com/api/v1 — and nothing else
 backup   3 envelope(s), granted 1789208452
 

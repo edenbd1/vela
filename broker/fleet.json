@@ -80,7 +80,7 @@
   },
   "9de980aa335df2af27ea4c640c09878ca7d9dd91": {
    "label": "remote-1",
-   "slot": 3,
+   "slot": 4,
    "grants": {
     "infer.triage": 5
    },
