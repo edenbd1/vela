@@ -18,12 +18,18 @@ Skips rather than fails when playwright is not installed: this is the only
 test here with a heavy dependency, and it should not stop the rest.
 """
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 
-CONSOLE = "http://127.0.0.1:4050"
+# VELA_WEB so this can be pointed at a console started for the run — CI brings
+# one up on a port that cannot collide with whatever else is on the runner.
+# It was hardcoded, and the consequence was the quiet kind: pointed at another
+# port it silently tested the console on 4050 instead, which on a developer's
+# machine is running and passes.
+CONSOLE = os.environ.get("VELA_WEB", "http://127.0.0.1:4050")
 
 results = []
 
@@ -76,7 +82,7 @@ def main():
     try:
         urllib.request.urlopen(f"{CONSOLE}/api/config", timeout=3)
     except (urllib.error.URLError, OSError) as e:
-        print(f"\n  no console on :4050 ({e}) — start it with ./scripts/up.sh\n")
+        print(f"\n  no console on {CONSOLE} ({e}) — start it with ./scripts/up.sh\n")
         return 2
 
     print("the console, in a browser")
