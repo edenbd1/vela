@@ -85,7 +85,23 @@ def main():
         print(f"\n  no console on {CONSOLE} ({e}) — start it with ./scripts/up.sh\n")
         return 2
 
-    print("the console, in a browser")
+    # Six of the checks below need a mandate on a chip: the tier buttons are
+    # built from one, the thinking columns label an agent with the slot the
+    # device put it in, and connecting reads a key out of the Secure Element.
+    # Everything else is the page itself and runs anywhere.
+    #
+    # Gated on the gateway answering with a labelled slot rather than on a
+    # flag, because that is the thing they actually depend on — and skipping
+    # is printed, not silent, so a green run says which half it was.
+    try:
+        fleet = json.loads(urllib.request.urlopen(
+            f"{CONSOLE}/api/fleet", timeout=8).read())
+        has_chip = any(a.get("label") for a in fleet.get("agents", []))
+    except Exception:
+        has_chip = False
+
+    print("the console, in a browser"
+          + ("" if has_chip else "   (no chip — device checks skipped)"))
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -145,9 +161,10 @@ def main():
         labels = page.eval_on_selector_all(
             "#minds .meta[data-agent]",
             "els => Object.fromEntries(els.map(e => [e.dataset.agent, e.textContent]))")
-        check("a column carries the slot the chip reported",
-              any(l.startswith("slot ") for l in labels.values()),
-              f"{labels}")
+        if has_chip:
+            check("a column carries the slot the chip reported",
+                  any(l.startswith("slot ") for l in labels.values()),
+                  f"{labels}")
         # The model tag lives in the same element. It used to be appended to
         # whatever the text already said, so re-reading the slot erased it and
         # two start events wrote it twice.
@@ -239,13 +256,19 @@ def main():
         # And they say what will happen, not what is being bought.
         spine = page.eval_on_selector_all(
             "#flow button", "els => els.map(e => e.textContent.trim())")
-        # Three acts, five buttons: grant, two payments the chip decides
-        # differently, the attempt to route the money away, and revoke.
-        check("the spine stays five buttons", len(spine) == 5, f"{spine}")
-        check("a payment the chip allows says so",
-              any("inside the ceiling" in b for b in spine), f"{spine}")
-        check("and one it refuses says that before you press it",
-              sum("the chip refuses" in b for b in spine) == 2, f"{spine}")
+        if has_chip:
+            # Three acts, five buttons: grant, two payments the chip decides
+            # differently, the attempt to route the money away, and revoke.
+            # Two of them are built from the mandate, so with no chip there
+            # are three and the count means nothing.
+            check("the spine stays five buttons", len(spine) == 5, f"{spine}")
+            check("a payment the chip allows says so",
+                  any("inside the ceiling" in b for b in spine), f"{spine}")
+            check("and one it refuses says that before you press it",
+                  sum("the chip refuses" in b for b in spine) == 2, f"{spine}")
+        else:
+            check("the spine is there with nothing to spend",
+                  len(spine) == 3, f"{spine}")
 
         more = page.query_selector("#more-body")
         check("everything else starts folded away",
@@ -275,7 +298,7 @@ def main():
         time.sleep(0.5)
         offered = page.locator("#device-connect").is_visible()
         check("connecting is offered even when a bridge is already up", offered)
-        if offered:
+        if offered and has_chip:
             page.locator("#device-connect").click()
             time.sleep(4)
             panel = page.inner_text("#device-panel")
