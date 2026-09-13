@@ -6,7 +6,9 @@
 # agent and a mandate is HTTP.
 #
 # So this runs on GitHub's hardware, against a gateway reachable over a
-# tunnel, and asks the Secure Element for money. It has no USB bus, no Ledger
+# tunnel, and asks the Secure Element for money. Which agent it spends as is
+# an input: the job is not tied to one, only the secret holding that agent's
+# token is. It has no USB bus, no Ledger
 # tooling, no seed and no envelope. What it has is a token scoped to one slot,
 # and everything that token can do is written in NVRAM on a device it cannot
 # address.
@@ -23,6 +25,19 @@ on:
       gateway:
         description: "public URL of the Vela gateway"
         required: true
+      agent:
+        description: "which agent's envelope to spend from"
+        required: false
+        default: "remote-1"
+      # One secret is one agent. Adding another means minting that agent's
+      # token and putting it here under its own name — and, because the Key
+      # Ring bundle seals label→token together, re-sealing that bundle, which
+      # is a tap on the device. The label is an input so this job is not the
+      # thing standing in the way.
+      secret:
+        description: "repository secret holding that agent's token"
+        required: false
+        default: "VELA_REMOTE_TOKEN"
 
 jobs:
   spend:
@@ -39,7 +54,7 @@ jobs:
       - name: the envelope, read from the chip
         env:
           GW: ${{ inputs.gateway }}
-          TOKEN: ${{ secrets.VELA_REMOTE_TOKEN }}
+          TOKEN: ${{ secrets[inputs.secret] }}
         run: |
           curl -sS -m 60 -H "authorization: Bearer $TOKEN" \
                -H "ngrok-skip-browser-warning: 1" "$GW/envelope" > envelope.json
@@ -47,12 +62,12 @@ jobs:
                                    ceiling: .mandate.per_call_max,
                                    available: .mandate.available,
                                    payees: .mandate.payees}'
-          test "$(jq -r .agent envelope.json)" = "remote-1"
+          test "$(jq -r .agent envelope.json)" = "${{ inputs.agent }}"
 
       - name: buy one triage — inside the ceiling
         env:
           GW: ${{ inputs.gateway }}
-          TOKEN: ${{ secrets.VELA_REMOTE_TOKEN }}
+          TOKEN: ${{ secrets[inputs.secret] }}
         run: |
           curl -sS -m 120 -X POST -H "authorization: Bearer $TOKEN" \
                -H "ngrok-skip-browser-warning: 1" \
@@ -67,7 +82,7 @@ jobs:
       - name: ask for eight times the ceiling — and be refused by the chip
         env:
           GW: ${{ inputs.gateway }}
-          TOKEN: ${{ secrets.VELA_REMOTE_TOKEN }}
+          TOKEN: ${{ secrets[inputs.secret] }}
         run: |
           curl -sS -m 120 -X POST -H "authorization: Bearer $TOKEN" \
                -H "ngrok-skip-browser-warning: 1" \

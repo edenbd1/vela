@@ -416,3 +416,11 @@ ol.flow > li:first-child { border-top: 0; padding-top: 6px; }
 .hire-as {
   margin-top: 4px; font-family: var(--mono); font-size: 11px; color: var(--fg-faint);
 }
+
+/* Where an agent runs. The whole argument is that it is somewhere you do not
+   control, so the page should say where rather than leave it implied. */
+.hire-where {
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line);
+  font-size: 12px; line-height: 1.45; color: var(--fg-muted);
+}
+.agent .does .runs { color: var(--fg-faint); }

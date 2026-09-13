@@ -167,6 +167,10 @@ const routes = {
         // granting one is picking a card rather than typing a name you are
         // expected to already know.
         suggest: a.suggest ?? null,
+        // Where it runs today. "All of them on GitHub" costs one token per
+        // agent in the repository secrets — and re-sealing the Key Ring
+        // bundle, which seals label→token together and needs a tap.
+        runs: a.runs ?? null,
         grants: Object.entries(a.grants).map(([name, grant]) => ({
           name,
           limit: quotaOf(grant).limit,

@@ -248,6 +248,12 @@ function paintFleetFrom(d) {
       job = document.createElement("div");
       job.className = "does";
       job.textContent = a.does;
+      if (a.runs) {
+        const w = document.createElement("span");
+        w.className = "runs";
+        w.textContent = `Runs ${a.runs}.`;
+        job.append(" ", w);
+      }
     }
 
     const of = document.createElement("div");
@@ -372,11 +378,18 @@ function paintHire(fleet) {
     terms.className = "hire-terms";
     terms.textContent = `${r.budget} HBAR in total · ${r.ceiling} the most in one payment`;
 
+    const where = document.createElement("div");
+    where.className = "hire-where";
+    where.textContent = r.runs === "on a GitHub runner"
+      ? "Runs on a GitHub runner — hardware nobody here owns"
+      : "Runs in a container here. One token in the repository secrets and it " +
+        "runs on a GitHub runner too.";
+
     const as = document.createElement("div");
     as.className = "hire-as";
     as.textContent = `granted as ${label}`;
 
-    card.append(role, does, terms, as);
+    card.append(role, does, terms, where, as);
     card.onclick = () => {
       HIRE = { ...r, label };
       paintHire(fleet);

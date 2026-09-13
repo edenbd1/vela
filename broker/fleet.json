@@ -34,12 +34,13 @@
     }
    },
    "token_sha256": "06f896c63ba736bb414312890c0656aa8c7fa88c222fd0c83154c21dedcd9b6a",
-   "does": "Screens counterparties and buys the deepest analysis it can afford. The only one allowed to trade.",
+   "does": "Prices a position, pays for market analysis, then swaps on the one router its mandate names. The proceeds have to come back to this account \u2014 the chip reads that address out of the calldata before it signs.",
    "suggest": {
-    "role": "A researcher",
+    "role": "A trader",
     "budget": "0.50",
     "ceiling": "0.10"
-   }
+   },
+   "runs": "in a container here"
   },
   "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": {
    "label": "ops-nightly",
@@ -51,12 +52,13 @@
     }
    },
    "token_sha256": "54b9c6f4ccb96aee4664b47017f92b058cb44c89c2d23be354b3511c4415d2f0",
-   "does": "A cheap check, every night. Buys the smallest thing that answers the question.",
+   "does": "Buys the cheapest pass over a market snapshot, every night, and stops. It may not trade and may not screen.",
    "suggest": {
-    "role": "A nightly check",
+    "role": "A nightly pass",
     "budget": "0.20",
     "ceiling": "0.05"
-   }
+   },
+   "runs": "in a container here"
   },
   "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3": {
    "label": "watcher",
@@ -68,12 +70,13 @@
     }
    },
    "token_sha256": "03e230412eba68e63b2a2c99c83c3d8f0a85a0ef0ce38910eecaef1ae86f4426",
-   "does": "Watches two accounts and reports which is riskier. Cannot spend much.",
+   "does": "Screens counterparties against a private feed and reports which position is riskier. It may not trade, and 0.01 is the most it can spend at once.",
    "suggest": {
-    "role": "A watcher",
+    "role": "A risk watcher",
     "budget": "0.10",
     "ceiling": "0.01"
-   }
+   },
+   "runs": "in a container here"
   },
   "9de980aa335df2af27ea4c640c09878ca7d9dd91": {
    "label": "remote-1",
@@ -82,12 +85,13 @@
     "infer.triage": 5
    },
    "token_sha256": "8cb7dcce83fcaba35c5bed21945af606db589e0bc03c72c40495fcb412755dc0",
-   "does": "Runs on a GitHub runner \u2014 hardware nobody here owns. Buys one inference, then asks for too much.",
+   "does": "Buys one pass over the market, then asks for eight times its ceiling and is refused \u2014 by a chip it has no address for.",
    "suggest": {
     "role": "A remote worker",
     "budget": "0.05",
     "ceiling": "0.01"
-   }
+   },
+   "runs": "on a GitHub runner"
   }
  }
 }

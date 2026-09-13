@@ -490,6 +490,7 @@ const server = createServer(async (req, res) => {
         // chip's — a label like "research-1" tells a reader nothing, and the
         // console was asking people to pick between five of them.
         does: known?.does ?? null,
+        runs: known?.runs ?? null,
         // A mandate with no matching roster entry is not an error. It is an
         // agent the device authorised and this host has never heard of, which
         // is worth surfacing rather than hiding: the chip is the one that
@@ -506,7 +507,7 @@ const server = createServer(async (req, res) => {
       // expected to already know.
       roster: (roster?.agents ?? [])
         .filter((a) => a.suggest)
-        .map((a) => ({ label: a.label, does: a.does, ...a.suggest })),
+        .map((a) => ({ label: a.label, does: a.does, runs: a.runs, ...a.suggest })),
       sources: {
         spending: mandates ? "chip" : "unreachable",
         capabilities: roster ? "broker" : "unreachable",

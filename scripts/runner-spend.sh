@@ -21,15 +21,31 @@
 # and is then refused — by the Secure Element, for exceeding a per-draw
 # ceiling that job cannot read, raise, or route around.
 #
-#   ./scripts/runner-spend.sh            # the whole chain
-#   ./scripts/runner-spend.sh --keep     # leave the tunnel open afterwards
+#   ./scripts/runner-spend.sh                     # the whole chain
+#   ./scripts/runner-spend.sh --keep              # leave the tunnel open
+#   ./scripts/runner-spend.sh --agent watcher \
+#                             --secret VELA_TOKEN_WATCHER
+#
+# Any agent can run there. What it costs to add one is a token in the
+# repository secrets — and because the Key Ring bundle seals label→token
+# together, re-sealing that bundle, which is a tap on the device. Only
+# remote-1 has one registered today.
 set -uo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 WORKFLOW="remote-spend.yml"
 AGENT="remote-1"                 # the label the workflow asserts on
+SECRET="VELA_REMOTE_TOKEN"       # the repository secret holding its token
 KEEP=""
-[ "${1:-}" = "--keep" ] && KEEP=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --keep)   KEEP=1 ;;
+    --agent)  AGENT="$2"; shift ;;
+    --secret) SECRET="$2"; shift ;;
+    *) echo "usage: $0 [--agent <label>] [--secret <NAME>] [--keep]"; exit 1 ;;
+  esac
+  shift
+done
 
 GATEWAY_PORT="${GATEWAY_PORT:-4030}"
 LOG=/tmp/vela-ngrok.log
@@ -45,9 +61,9 @@ die() { echo; echo "  $1"; [ -n "${2:-}" ] && echo "  fix: $2"; exit 1; }
 command -v gh >/dev/null || die "gh is not installed" "brew install gh"
 gh auth status >/dev/null 2>&1 || die "gh is not logged in" "gh auth login"
 
-gh secret list 2>/dev/null | grep -q VELA_REMOTE_TOKEN ||
-  die "the repository has no VELA_REMOTE_TOKEN" \
-      "node broker/enroll.mjs $AGENT, then: gh secret set VELA_REMOTE_TOKEN"
+gh secret list 2>/dev/null | grep -q "^$SECRET" ||
+  die "the repository has no $SECRET" \
+      "node broker/enroll.mjs $AGENT, then: gh secret set $SECRET"
 
 lsof -tiTCP:"$GATEWAY_PORT" -sTCP:LISTEN >/dev/null 2>&1 ||
   die "nothing is listening on :$GATEWAY_PORT" "./scripts/up.sh"
@@ -122,7 +138,8 @@ echo
 echo "dispatching to GitHub — the runner is not this laptop"
 BEFORE=$(gh run list --workflow="$WORKFLOW" --limit 1 --json databaseId \
          --jq '.[0].databaseId' 2>/dev/null)
-gh workflow run "$WORKFLOW" -f gateway="$GW" || die "gh could not dispatch"
+gh workflow run "$WORKFLOW" -f gateway="$GW" -f agent="$AGENT" -f secret="$SECRET" \
+  || die "gh could not dispatch"
 
 # The run does not exist the instant dispatch returns.
 ID=""
