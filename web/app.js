@@ -381,9 +381,9 @@ function paintHire(fleet) {
     const where = document.createElement("div");
     where.className = "hire-where";
     where.textContent = r.runs === "on a GitHub runner"
-      ? "Runs on a GitHub runner — hardware nobody here owns"
-      : "Runs in a container here. One token in the repository secrets and it " +
-        "runs on a GitHub runner too.";
+      ? "Runs on a GitHub runner — hardware nobody here owns, with no USB bus, " +
+        "no Ledger tooling and no seed"
+      : "Runs in a container here — no device, no volume, no key";
 
     const as = document.createElement("div");
     as.className = "hire-as";

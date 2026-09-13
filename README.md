@@ -243,8 +243,10 @@ envelope  none — it is in NVRAM on a device this job cannot address
   "paid": false, "refused": true, "reason": "over_per_call"   # asked for 0.08
 ```
 
-An Azure VM asked a Secure Element in a flat in Paris for money, got some,
-asked for eight times the ceiling, and was refused. The refusal did not happen
+A runner asked a Secure Element in a flat in Paris for money, got some, asked
+for more than its ceiling, and was refused. All four agents do this now — the
+job takes the agent and the tier that agent cannot afford as inputs, and
+`runner-spend.sh` reads both off the chip. The refusal did not happen
 on the runner, in the gateway, or in a policy file — it happened in NVRAM that
 job cannot read, cannot raise and cannot route around. The draw is message 15
 on the public topic and `hedera/verify.mjs` counts it among *4 of 4 envelopes

@@ -48,7 +48,7 @@ chip refuses, the refusal comes back as a reason it can act on, and it adapts.
 | An agent refused by the chip, and adapting | `docs/AGENT-LOOP.md`, on hardware |
 | Software cannot do this | `./scripts/experiment.sh` — same rules, same attack, one variable |
 | A host with no USB port joining the Key Ring | a public GitHub Actions log |
-| An agent **spending** from hardware we do not own | `.github/workflows/remote-spend.yml` — an Azure runner with no USB bus paid 0.01 HBAR and was refused 0.08 by the chip |
+| Every agent **spending** from hardware we do not own | `.github/workflows/remote-spend.yml` — all four, on GitHub runners with no USB bus. Each paid inside its own ceiling and was refused above it, by a chip none of them can address |
 | A trustchain whose owner is the Secure Element | `enroll.cjs grant --device` — every admission a tap, two members admitted |
 | Losing the device and getting the envelopes back | the fleet revoked and restored from the public log, positions intact to the tinybar |
 | A rate limit, not just a budget | four draws paid, the fifth refused `too_fast` with 0.14 HBAR still available |
@@ -123,6 +123,12 @@ the device enforcing terms **between** taps.
   value lands is an ABI argument the body does not interpret — exactly what an
   injected agent rewrites. The chip reads that word out of the calldata it is
   about to sign and compares it with its own account.
+- The whole fleet runs on hardware nobody here owns. Each agent has its token
+  in the repository's secrets, the workflow takes the agent and the tier its
+  ceiling forbids as inputs, and `scripts/runner-spend.sh` derives both from
+  the chip — research-1's ceiling is 0.10, so it is refused at 0.15; the rest
+  at 0.08. One command opens a tunnel, dispatches, follows the run, prints
+  what the chip decided and closes the tunnel behind it.
 - Their second ask, verbatim: *"Bring the Key Ring to hosts with no USB port:
   enroll a VPS, a CI runner, or a hosted agent."* `host/ring/enroll.cjs` does
   the ceremony, and a CI runner does it on every push. `--device` goes further

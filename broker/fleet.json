@@ -40,7 +40,7 @@
     "budget": "0.50",
     "ceiling": "0.10"
    },
-   "runs": "in a container here"
+   "runs": "on a GitHub runner"
   },
   "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": {
    "label": "ops-nightly",
@@ -58,7 +58,7 @@
     "budget": "0.20",
     "ceiling": "0.05"
    },
-   "runs": "in a container here"
+   "runs": "on a GitHub runner"
   },
   "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3": {
    "label": "watcher",
@@ -76,7 +76,7 @@
     "budget": "0.10",
     "ceiling": "0.01"
    },
-   "runs": "in a container here"
+   "runs": "on a GitHub runner"
   },
   "9de980aa335df2af27ea4c640c09878ca7d9dd91": {
    "label": "remote-1",
