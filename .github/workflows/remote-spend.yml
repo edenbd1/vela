@@ -38,6 +38,14 @@ on:
         description: "repository secret holding that agent's token"
         required: false
         default: "VELA_REMOTE_TOKEN"
+      # Which tier is over *this* agent's ceiling. It was hardcoded, which
+      # only worked for a 0.01 ceiling: synthesis costs 0.08, so against an
+      # agent allowed 0.10 a payment meant to be refused went through and the
+      # job failed for asserting a refusal that correctly never happened.
+      over:
+        description: "a tier this agent's ceiling forbids"
+        required: false
+        default: "synthesis"
 
 jobs:
   spend:
@@ -79,7 +87,7 @@ jobs:
           echo "That transaction was signed inside a Secure Element."
           echo "Nothing in this job could have produced that signature."
 
-      - name: ask for eight times the ceiling — and be refused by the chip
+      - name: ask for more than the ceiling — and be refused by the chip
         env:
           GW: ${{ inputs.gateway }}
           TOKEN: ${{ secrets[inputs.secret] }}
@@ -87,7 +95,7 @@ jobs:
           curl -sS -m 120 -X POST -H "authorization: Bearer $TOKEN" \
                -H "ngrok-skip-browser-warning: 1" \
                -H 'content-type: application/json' \
-               -d '{"service":"synthesis"}' "$GW/pay" > refused.json
+               -d '{"service":"'"${{ inputs.over }}"'"}' "$GW/pay" > refused.json
           jq '{paid, refused, reason, advice}' refused.json
           test "$(jq -r .refused refused.json)" = "true"
           test "$(jq -r .reason refused.json)" = "over_per_call"

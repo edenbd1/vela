@@ -35,14 +35,16 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 WORKFLOW="remote-spend.yml"
 AGENT="remote-1"                 # the label the workflow asserts on
-SECRET="VELA_REMOTE_TOKEN"       # the repository secret holding its token
+SECRET=""                        # the repository secret holding its token
+OVER=""                          # a tier this agent's ceiling forbids
 KEEP=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --keep)   KEEP=1 ;;
     --agent)  AGENT="$2"; shift ;;
     --secret) SECRET="$2"; shift ;;
-    *) echo "usage: $0 [--agent <label>] [--secret <NAME>] [--keep]"; exit 1 ;;
+    --over)   OVER="$2"; shift ;;
+    *) echo "usage: $0 [--agent <label>] [--secret <NAME>] [--over <tier>] [--keep]"; exit 1 ;;
   esac
   shift
 done
@@ -58,10 +60,30 @@ die() { echo; echo "  $1"; [ -n "${2:-}" ] && echo "  fix: $2"; exit 1; }
 # Every one of these has cost a run that went red four minutes in for a reason
 # visible in four seconds here.
 
+# remote-1 was registered under VELA_REMOTE_TOKEN before there was a
+# convention; everything since is VELA_TOKEN_<LABEL>.
+if [ -z "$SECRET" ]; then
+  if [ "$AGENT" = "remote-1" ]; then
+    SECRET="VELA_REMOTE_TOKEN"
+  else
+    SECRET="VELA_TOKEN_$(echo "$AGENT" | tr 'a-z-' 'A-Z_')"
+  fi
+fi
+
 command -v gh >/dev/null || die "gh is not installed" "brew install gh"
 gh auth status >/dev/null 2>&1 || die "gh is not logged in" "gh auth login"
 
-gh secret list 2>/dev/null | grep -q "^$SECRET" ||
+# "gh could not tell me" and "the secret is not there" are different answers,
+# and conflating them sent someone off to mint a token they already had —
+# this list comes back empty often enough under back-to-back calls to matter.
+SECRETS=""
+for _ in 1 2 3; do
+  SECRETS=$(gh secret list 2>/dev/null) && [ -n "$SECRETS" ] && break
+  sleep 2
+done
+[ -n "$SECRETS" ] || die "gh could not list this repository's secrets" \
+                        "gh auth status, then try again"
+printf '%s\n' "$SECRETS" | grep -q "^$SECRET" ||
   die "the repository has no $SECRET" \
       "node broker/enroll.mjs $AGENT, then: gh secret set $SECRET"
 
@@ -106,6 +128,25 @@ if [ "$HAVE" != "$WANT" ]; then
 fi
 echo "  $AGENT is in slot $HAVE, on the chip and in the broker"
 
+# The tier meant to be refused has to be over *this* agent's ceiling. It was
+# fixed at synthesis, which is 0.08 — correct against a 0.01 ceiling and wrong
+# against 0.10, where the payment goes through and the job fails for asserting
+# a refusal that correctly never happened.
+if [ -z "$OVER" ]; then
+  OVER=$(printf '%s' "$SLOTS" | AGENT="$AGENT" python3 -c "
+import json, os, sys
+tiers = [('triage', 1_000_000), ('synthesis', 8_000_000), ('exhaustive', 15_000_000)]
+d = json.load(sys.stdin)
+slot = next(s for s in d['slots'] if s.get('label') == os.environ['AGENT'])
+ceiling = int(slot['per_call_max'])
+over = [n for n, p in tiers if p > ceiling]
+print(over[0] if over else '')
+")
+  [ -n "$OVER" ] || die "no tier costs more than $AGENT's ceiling" \
+                       "grant it a smaller ceiling, or this proves nothing"
+fi
+echo "  $OVER is over its ceiling, so the chip should refuse it"
+
 # --- 2. the tunnel --------------------------------------------------------
 #
 # Reused if one is already up, because opening a second would change the URL
@@ -138,7 +179,8 @@ echo
 echo "dispatching to GitHub — the runner is not this laptop"
 BEFORE=$(gh run list --workflow="$WORKFLOW" --limit 1 --json databaseId \
          --jq '.[0].databaseId' 2>/dev/null)
-gh workflow run "$WORKFLOW" -f gateway="$GW" -f agent="$AGENT" -f secret="$SECRET" \
+gh workflow run "$WORKFLOW" -f gateway="$GW" -f agent="$AGENT" \
+                            -f secret="$SECRET" -f over="$OVER" \
   || die "gh could not dispatch"
 
 # The run does not exist the instant dispatch returns.
