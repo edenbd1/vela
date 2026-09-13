@@ -1,0 +1,102 @@
+# The suite, on every push.
+#
+# There was none. Two workflows ran here — a runner joining the Key Ring, and
+# a runner spending against the chip — and both are evidence rather than
+# tests: one is gated on `host/ring/**` changing, the other only runs when
+# somebody dispatches it with a tunnel URL. So a repository with a hundred and
+# seventy host-side assertions had nothing green on any commit, and nothing
+# stopping a change that broke all of them.
+#
+# WHAT THIS CANNOT COVER, said here rather than implied by a green tick:
+#
+#   the chip        test/chip_test.py asserts what the Secure Element enforces
+#                   and needs a Ledger Flex. GitHub does not have one, and the
+#                   emulator signs correctly for a key that owns nothing, so
+#                   payments fail there for the right reason and a CI that ran
+#                   them would be red for a reason nobody should chase.
+#   the device path test/webhid_test.py drives a browser holding a Ledger. It
+#                   replays a recording taken off a Flex and needs no device —
+#                   but it reads the fleet through the gateway, which needs an
+#                   operator credential this runner has no business holding.
+#
+# Everything else runs: the chain arithmetic, the two verifiers agreeing, the
+# browser-as-bridge relay, Ledger's HID framing, the agent loop against a
+# scripted model, Key Ring enrolment, the console in a real Chromium, and the
+# documentation against the repository it describes.
+name: the suite
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # --ignore-scripts: hw-transport-node-hid builds node-hid natively and
+      # wants libudev. Nothing here talks to a USB device, so the build is a
+      # dependency on the runner's system packages bought for nothing.
+      - name: dependencies
+        run: |
+          npm --prefix hedera ci --ignore-scripts --no-audit --no-fund
+          npm --prefix host/ring ci --ignore-scripts --no-audit --no-fund
+
+      - name: host logic, the two verifiers, the relay and the framing
+        run: |
+          node --test \
+            test/logic.test.mjs \
+            test/chain-parity.test.mjs \
+            test/relay.test.mjs \
+            test/framing.test.mjs
+
+      - name: the agent loop
+        run: node test/agent.test.mjs
+
+      - name: Key Ring enrolment
+        run: node test/ring.test.mjs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: a browser
+        run: |
+          pip install --quiet playwright
+          playwright install --with-deps chromium
+
+      # The console reads its topic, buyer and tiers out of .env, and none of
+      # those need to be real for the page to be asserted against: every
+      # figure the suite checks comes from the recording or from events it
+      # posts itself. Ports are not the defaults, so this cannot collide with
+      # anything the runner happens to be doing.
+      - name: the console, in a real browser
+        run: |
+          cat > .env <<'ENV'
+          WEB_PORT=4071
+          GATEWAY_PORT=4072
+          SELLER_PORT=4073
+          HEDERA_TOPIC_ID=0.0.1
+          HEDERA_BUYER_ID=0.0.2
+          ENV
+          node web/server.mjs &
+          for _ in $(seq 1 20); do
+            curl -sf -m 2 http://127.0.0.1:4071/api/config >/dev/null && break
+            sleep 1
+          done
+          VELA_WEB=http://127.0.0.1:4071 python3 test/console_test.py
+
+      # Every command the docs tell you to run exists and has the flags they
+      # pass it, every link resolves, and every stated count matches the
+      # ledger holding it. The arm that checks topic ids against the live
+      # grant epoch skips here, because .vela-instance is not committed.
+      - name: the documentation
+        run: ./scripts/docs-check.sh
