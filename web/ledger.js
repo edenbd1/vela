@@ -78,7 +78,18 @@ export function unframe(packets) {
 }
 
 export class WebHidLedger {
-  constructor(device) { this.device = device; }
+  constructor(device) {
+    this.device = device;
+    // One conversation at a time.
+    //
+    // A device answers one APDU at a time, and this page has more than one
+    // caller: the panel polls every eight seconds while whatever somebody
+    // pressed is mid-exchange. Interleaved, both listeners see both replies,
+    // the framing does not add up, and the failure surfaces as the device
+    // being gone — host/bridge.py holds a lock for exactly this and the
+    // browser side had none.
+    this.queue = Promise.resolve();
+  }
 
   /**
    * Ask for a device. Must be called from a click: browsers refuse the
@@ -113,8 +124,16 @@ export class WebHidLedger {
 
   async close() { if (this.device.opened) await this.device.close(); }
 
-  /** One APDU in, one APDU out, status word included. */
+  /** One APDU in, one APDU out, status word included. Queued. */
   exchange(apdu, timeout = 30000) {
+    const run = () => this.#exchange(apdu, timeout);
+    // Chained on failure too, or one timeout wedges every later call.
+    const next = this.queue.then(run, run);
+    this.queue = next.catch(() => {});
+    return next;
+  }
+
+  #exchange(apdu, timeout) {
     return new Promise((resolve, reject) => {
       const packets = [];
       const done = (fn, arg) => {

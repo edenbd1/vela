@@ -27,6 +27,7 @@ holding, and saying so is the correct outcome, not a red test.
 """
 import json
 import os
+import time
 import socket
 import sys
 import urllib.error
@@ -40,6 +41,13 @@ FIXTURE = os.path.join(HERE, "fixtures", "flex-apdu.json")
 # Everything the recording knows the page asks for, keyed by APDU. Anything
 # else is a question this test has never seen the console ask.
 REPLIES = json.load(open(FIXTURE))
+
+# The mandate replies, captured off the same device, so a browser reading the
+# chip on its own has something to read. Kept in their own file because they
+# also pin web/mandate.js against the gateway's parser.
+_MANDATES = os.path.join(HERE, "fixtures", "mandate-bytes.json")
+for _slot, _rec in json.load(open(_MANDATES)).items():
+    REPLIES[f"e010{int(_slot):02x}0000"] = {"data": _rec["apdu"], "sw": 0x9000}
 
 STUB = """
 (() => {
@@ -213,6 +221,92 @@ def main():
         check("nothing the page asked was outside the recording",
               not missing, ", ".join(missing[:4]))
         check("the page raised no errors", not errors, "; ".join(errors[:2]))
+        # ---------------------------------------------------------------
+        # The same connection on a copy with no gateway behind it.
+        #
+        # vela-console.vercel.app has no bridge, no broker and no device — and
+        # a browser there can still open a Ledger, because WebHID wants a
+        # secure origin and a click and nothing else. So the page reads the
+        # chip itself. That is a second reader of the wire format, which is
+        # why web/mandate.js is pinned against the gateway's parser, and it is
+        # a second path through the device panel, which is this.
+        # The first page is done with the device. Left open it goes on polling
+        # it every eight seconds through the same binding this one needs, and
+        # two pages taking turns on one stub is not what is being tested here.
+        try: page.close()
+        except Exception: pass
+
+        import http.server, socketserver, threading, shutil, tempfile
+        static = tempfile.mkdtemp(prefix="vela-hid-static-")
+        web = os.path.join(os.path.dirname(HERE), "web")
+        for f in os.listdir(web):
+            if f.endswith((".html", ".js", ".css", ".json")):
+                shutil.copy(os.path.join(web, f), static)
+        brand = os.path.join(os.path.dirname(web), "brand")
+        if os.path.isdir(brand):
+            shutil.copytree(brand, os.path.join(static, "brand"), dirs_exist_ok=True)
+
+        class Quiet(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *a, **k): super().__init__(*a, directory=static, **k)
+            def log_message(self, *a): pass
+
+        srv = socketserver.TCPServer(("127.0.0.1", 0), Quiet)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        sport = srv.server_address[1]
+
+        flat = b.new_page(viewport={"width": 1280, "height": 1400})
+        flat_errs = []
+        flat.on("pageerror", lambda e: flat_errs.append(str(e)))
+        flat_logs = []
+        flat.on("console", lambda m: flat_logs.append(m.text[:200]))
+        flat.expose_function("velaApdu", replay)
+        flat.add_init_script(STUB)
+        flat.goto(f"http://127.0.0.1:{sport}/", wait_until="domcontentloaded")
+        flat.wait_for_timeout(6000)
+
+        check("a copy with no gateway says so rather than blaming a bridge",
+              "no device behind it" in flat.inner_text("#device-panel"),
+              flat.inner_text("#device-panel")[:120])
+
+        flat.locator("#device").click()
+        time.sleep(0.6)
+        offer = flat.locator("#device-connect")
+        check("and still offers to connect, because WebHID needs no host",
+              offer.is_visible() and not offer.is_disabled())
+
+        if offer.is_visible() and not offer.is_disabled():
+            offer.click()
+            time.sleep(0.4)
+            # Wait for the banner, not for the panel: the panel's poll can
+            # paint "ready" from its own read while the slot walk is still
+            # going, so the state settles before the page has finished
+            # changing what it claims about itself.
+            for _ in range(50):
+                time.sleep(0.5)
+                if "Your Flex" in flat.inner_text("#demo-banner"):
+                    break
+            check("connecting reads the chip with no gateway in the path",
+                  flat.eval_on_selector("#device", "e => e.dataset.state") == "ready",
+                  flat.inner_text("#device-panel")[:140])
+            # Not the fleet's contents: a recording made on the same day as
+            # the fixture holds the same figures, so "research-1 is on screen"
+            # is true whichever half drew it. The panel's own sentence is only
+            # ever written when this page holds the device, so that is the one
+            # that distinguishes them.
+            why = flat.inner_text("#device-why")
+            check("and the panel says the page opened the device itself",
+                  "opened your device itself" in why, why[:120])
+            names = flat.eval_on_selector_all(
+                "#agents .agent .name", "e => e.map(x => x.textContent)")
+            check("with a fleet on screen", len(names) >= 3, f"{names}")
+
+        check("the static copy raised no errors", not flat_errs,
+              "; ".join(flat_errs[:2]))
+        try: flat.close()
+        except Exception: pass
+        srv.shutdown()
+        shutil.rmtree(static, ignore_errors=True)
+
         b.close()
 
     passed = sum(1 for r in results if r)

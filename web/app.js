@@ -862,11 +862,19 @@ async function loadReceipts() {
  */
 async function enterDemo(reason) {
   DEMO = true;
+  // The panel was painted once at load, before anything knew there was no
+  // gateway — so a copy with no device behind it said "Bridge not running"
+  // for up to eight seconds before the poll corrected it. Repaint now.
+  probeDevice?.();
   $("demo-banner").hidden = false;
   $("dot").className = "dot demo";
   $("device-text").textContent = "recorded — no device";
 
+  // Everything that spends, and nothing in the device panel. Connecting is
+  // not spending: a reader here can still open their own Flex over WebHID and
+  // have this page read it, and a greyed-out Connect told them they could not.
   for (const b of document.querySelectorAll("button.act, button.scenario")) {
+    if (b.closest("#device-panel")) continue;
     b.disabled = true;
     b.title = "inert: this page is replaying a recording";
   }
@@ -1008,6 +1016,15 @@ let LENT = null;           // what the console last said about the lend
 // "connected" should mean a person asked for it and got an answer out of the
 // device, rather than a poll that happened to succeed.
 let CONNECTED = false;
+// Which read of the device is the current one.
+//
+// Every path here is async: the poll asks the console, connecting asks the
+// chip, and both take long enough to overlap. Whichever *started* first can
+// finish last and paint a panel describing a state the page has already left
+// — the load-time probe woke up after the page had discovered it has no
+// gateway and put "Bridge not running" back over "no device here". A ticket
+// each, and only the newest one draws.
+let probeSeq = 0;
 let hid = null;            // the module, loaded lazily
 
 async function hidModule() {
@@ -1016,6 +1033,7 @@ async function hidModule() {
 }
 
 const DEVICE_TITLE = {
+  recorded: "No device here",
   ready: "Connected",
   connect: "Not connected",
   "wrong-app": "Another app is open",
@@ -1025,7 +1043,8 @@ const DEVICE_TITLE = {
   unknown: "Checking",
 };
 
-function paintDevice(d) {
+function paintDevice(d, ticket = null) {
+  if (ticket !== null && ticket !== probeSeq) return;   // a later read won
   $("dot").className = `dot ${d.state === "ready" ? "on" : "off"}`;
   $("device-text").textContent = d.label;
   $("device-state").textContent = DEVICE_TITLE[d.state] ?? "Unknown";
@@ -1085,7 +1104,11 @@ async function readOverHid() {
   return {
     state: ok ? "ready" : "wrong-app",
     label: ok ? (CONFIG?.buyer ?? "connected") : `open Vela on the Flex`,
-    why: ok
+    // On a copy with no gateway there is no bridge to answer for, and saying
+    // so would be the panel describing a machine the reader is not on.
+    why: ok && DEMO
+      ? "this page opened your device itself — nothing of ours is installed"
+      : ok
       ? (LENT?.lending
           ? "this tab holds the Flex and is answering for the bridge, so the " +
             "rest of the console reads the chip through it"
@@ -1100,15 +1123,44 @@ async function readOverHid() {
 }
 
 async function probeDevice() {
+  const mine = ++probeSeq;
+  // 0. a copy of this console with nothing behind it.
+  //
+  // On a static host there is no gateway, no bridge and no device — the page
+  // says so in a banner and replays a recording. The panel went on offering
+  // a Connect button, disabled, above "Bridge not running: the console could
+  // not reach its own API". Both halves are wrong here: there is no bridge to
+  // start, and a greyed-out primary action reads as broken rather than as
+  // absent. What a reader wants is the one sentence that is true.
+  if (DEMO && !LEDGER) {
+    return paintDevice({
+      state: "recorded",
+      label: "recorded — no device",
+      // WebHID needs a secure origin and a click and nothing else, so a
+      // reader here can still point this page at their own Flex. The numbers
+      // become theirs; the agent transcript stays a recording, because no
+      // agent is running for them.
+      canConnect: (await hidModule()).supported(),
+      why: "this copy has no device behind it. Every figure on the page came " +
+           "off a Ledger Flex and is being replayed.",
+      // `note`, not `fix`. Nothing here is broken, and putting this under a
+      // heading that says "To fix" would tell a reader it was.
+      note: "Have a Flex? Press Connect and this page will read yours — the " +
+            "fleet and the envelope below become your device's. Spending needs " +
+            "the console running on your own machine:",
+      noteCmd: "git clone … && ./scripts/up.sh",
+    });
+  }
+
   // 1. the page's own connection, if it has one
   if (LEDGER) {
-    try { return paintDevice(await readOverHid()); }
+    try { return paintDevice(await readOverHid(), mine); }
     catch (e) {
       LEDGER = null;
       return paintDevice({
         state: "no-device", label: "connect Ledger", canConnect: true,
         why: String(e.message ?? e),
-      });
+      }, mine);
     }
   }
 
@@ -1138,11 +1190,11 @@ async function probeDevice() {
         : null,
       noteCmd: canConnect && !/WebHID/.test(d.via ?? "")
         ? "pkill -f host/bridge.py" : null,
-    });
+    }, mine);
   }
   if (d.state === "wrong-app") {
     return paintDevice({ ...d, via: "host/bridge.py", canConnect,
-                         label: `open ${d.expected ?? "Vela"} on the Flex` });
+                         label: `open ${d.expected ?? "Vela"} on the Flex` }, mine);
   }
   return paintDevice({
     ...d, canConnect,
@@ -1153,7 +1205,7 @@ async function probeDevice() {
     why: canConnect
       ? (d.why ? `${d.why} — or connect this page to the Flex directly` : null)
       : d.why,
-  });
+  }, mine);
 }
 
 /**
@@ -1163,8 +1215,126 @@ async function probeDevice() {
  * a device nothing else can reach, which is the broken state the relay exists
  * to prevent. So a refusal closes the device again rather than keeping it.
  */
+/**
+ * The fleet, read straight off the chip by this page.
+ *
+ * Only on a copy with no gateway behind it. Where there is one it reads the
+ * device, and one reader of a device is the whole point of the bridge. Here
+ * there is nothing else to ask, and a browser can ask the Flex directly.
+ *
+ * The slot walk is the chip's own: keep asking until it says there are no
+ * more. 0xB102 is an empty slot and 0xB108 is the end of them — the console
+ * hardcoded three once, and a fleet of four looked like a fleet of three.
+ */
+async function readFleetOverHid() {
+  const { readMandate } = await import("/mandate.js");
+  const agents = [];
+  for (let slot = 0; slot < 64; slot++) {
+    const r = await LEDGER.exchange(new Uint8Array([0xe0, 0x10, slot, 0, 0]));
+    const sw = (r[r.length - 2] << 8) | r[r.length - 1];
+    if (sw === 0xb108) break;                       // no more slots
+    if (sw === 0xb102) { agents.push({ slot, free: true }); continue; }
+    if (sw !== 0x9000) { agents.push({ slot, unknown: true,
+                                       why: `the chip answered 0x${sw.toString(16)}` });
+                         continue; }
+    const m = readMandate(r.subarray(0, r.length - 2));
+    if (!m) { agents.push({ slot, unknown: true, why: "unreadable" }); continue; }
+    agents.push({
+      slot, label: m.label,
+      budget_total: String(m.budget_total),
+      available: String(m.available),
+      per_call_max: String(m.per_call_max),
+      reserved: String(m.reserved),
+      draws: Number(m.draws_so_far),
+      payees: m.payees,
+      calls: m.calls,
+      // The broker's half is a host's word and there is no host here, so it
+      // is absent rather than invented.
+      grants: null, known_to_broker: false,
+      mandate: m,
+    });
+  }
+  return {
+    agents,
+    sources: { spending: "chip", capabilities: "no broker on this origin" },
+    note: "read from the Flex in your hand, by this page, over WebHID.",
+  };
+}
+
 async function connectLedger() {
   const btn = $("device-connect");
+  probeSeq++;                       // any poll already in flight is now stale
+
+  // Route zero: a copy of this console with no gateway behind it. There is
+  // nothing to ask but the device, and a browser can ask it.
+  if (DEMO) {
+    const m = await hidModule();
+    if (!m.supported()) return;
+    btn.disabled = true; btn.textContent = "Waiting for the picker…";
+    try {
+      LEDGER = (await m.WebHidLedger.existing()) ?? (await m.WebHidLedger.request());
+      if (!LEDGER) return;
+      await LEDGER.open();
+      const info = await LEDGER.appInfo();
+      if (info.app !== "Vela") {
+        await LEDGER.close().catch(() => {});
+        LEDGER = null;
+        return paintDevice({
+          state: "wrong-app", label: "open Vela on the Flex", canConnect: true,
+          why: `the Flex is on '${info.app}', not Vela`,
+          fix: "open Vela on the device and stay on it",
+        });
+      }
+      const fleet = await readFleetOverHid();
+      FLEET = fleet;
+      window.__fleet = fleet.agents;
+      paintFleetFrom(fleet);
+      relabelSlots?.();
+
+      const first = fleet.agents.find((a) => a.label);
+      if (first) {
+        selected = first.slot;
+        $("sel-name").textContent = first.label;
+        $("sel-slot").textContent = `slot ${first.slot}`;
+        $("try-as").textContent = `as ${first.label}`;
+        paintEnvelopeFrom({ slot: first.slot, mandate: first.mandate }, fleet);
+      }
+      // The banner has to stop saying every figure is a recording, because
+      // the ones above are not any more. The transcript still is, and saying
+      // only half of that would be the page overclaiming about itself.
+      $("demo-banner").innerHTML = "";
+      const b1 = document.createElement("b");
+      b1.textContent = "Your Flex.";
+      const t1 = document.createElement("span");
+      t1.textContent = " The fleet and the envelope below are being read from " +
+        "the device in your hand, by this page, over WebHID. The agent " +
+        "transcript further down is still a recording — no agent is running " +
+        "for you — and the buttons stay inert, because spending needs the " +
+        "console on your own machine.";
+      $("demo-banner").append(b1, t1);
+
+      paintDevice({
+        state: "ready", label: info.app ? "your Flex" : "connected",
+        canConnect: false,
+        via: "WebHID (this tab)", app: info.app, version: info.version,
+        why: "this page opened your device itself — nothing of ours is installed",
+      });
+      return;
+    } catch (e) {
+      // Logged as well as painted. The panel is repainted by the poll a few
+      // seconds later, so a failure here was visible for one tick and then
+      // gone — which is how this path failed silently while the fleet behind
+      // it had already been read correctly.
+      console.error("connect over WebHID failed:", e);
+      LEDGER = null;
+      return paintDevice({
+        state: "no-device", label: "connect Ledger", canConnect: true,
+        why: String(e.message ?? e),
+      });
+    } finally {
+      btn.disabled = false; btn.textContent = "Connect Ledger";
+    }
+  }
 
   // Route one: something is already holding the device for this console. Then
   // connecting means asking the chip who it is and checking that against

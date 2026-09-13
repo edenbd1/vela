@@ -20,7 +20,8 @@ mkdir -p "$OUT"
 # Everything the two pages ask for by path, and nothing else. server.mjs is
 # left behind on purpose: it is the thing that would need a device.
 cp web/index.html web/verify.html "$OUT"/
-cp web/app.js web/feed.js web/chain.js web/verify.js web/ledger.js "$OUT"/
+cp web/app.js web/feed.js web/chain.js web/verify.js web/ledger.js \
+   web/mandate.js "$OUT"/
 cp web/style.css web/agama.css "$OUT"/
 cp web/demo-run.json "$OUT"/
 [ -d web/fonts ] && cp -R web/fonts "$OUT"/fonts

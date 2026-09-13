@@ -535,9 +535,16 @@ def main():
               "; ".join(demo_errs[:2]))
         check("and says so rather than looking live",
               not demo.eval_on_selector("#demo-banner", "e => e.hidden"))
-        check("every control is inert in a recording",
-              demo.eval_on_selector_all("button.act, button.scenario",
-                                        "e => e.every(b => b.disabled)"))
+        # Everything that spends. Not the device panel: a reader here can
+        # still open their own Flex over WebHID — that needs a secure origin
+        # and a click and no host at all — and the page then reads their chip.
+        # Connecting is not spending, and a greyed-out Connect told them it
+        # was impossible when it is the one thing that still works.
+        check("every control that spends is inert in a recording",
+              demo.eval_on_selector_all(
+                  "button.act:not([hidden]), button.scenario",
+                  "e => e.filter(x => !x.disabled && !x.closest('#device-panel'))"
+                  "     .map(x => x.textContent.trim())") == [])
         names = demo.eval_on_selector_all(".mind .who", "e => e.map(x => x.textContent)")
         check("the recorded agents replay", len(names) >= 2, f"{names}")
         cards = demo.eval_on_selector_all("#agents .agent .name",

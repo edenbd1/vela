@@ -1,0 +1,116 @@
+{
+ "0": {
+  "apdu": "01a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a10000000002faf080000000000000000000000000029020c0000000000098968000000000006acfc000000000000000080100000000009e85c90100000000004c4b4101f406a91a010000000000000000000000000a72657365617263682d31",
+  "gateway": {
+   "agent": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+   "budget_total": "50000000",
+   "reserved": "0",
+   "spent": "43000000",
+   "per_call_max": "10000000",
+   "available": "7000000",
+   "expiry": 0,
+   "draws_so_far": 8,
+   "label": "research-1",
+   "payees": [
+    "0.0.10388937"
+   ],
+   "calls": {
+    "contracts": [
+     "0.0.5000001"
+    ],
+    "selectors": [
+     "0xf406a91a"
+    ],
+    "recipient_arg": 1,
+    "proceeds": "must return to this account"
+   },
+   "velocity": null,
+   "self": "0.0.10397072",
+   "asset": "HBAR, in tinybars"
+  }
+ },
+ "1": {
+  "apdu": "01b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b20000000001312d00000000000000000000000000001e848000000000004c4b40000000000112a88000000000000000020100000000009e85c90000ff00000e10000400026aa68fb50b6f70732d6e696768746c79",
+  "gateway": {
+   "agent": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+   "budget_total": "20000000",
+   "reserved": "0",
+   "spent": "2000000",
+   "per_call_max": "5000000",
+   "available": "18000000",
+   "expiry": 0,
+   "draws_so_far": 2,
+   "label": "ops-nightly",
+   "payees": [
+    "0.0.10388937"
+   ],
+   "calls": {
+    "contracts": [],
+    "selectors": [],
+    "recipient_arg": null,
+    "proceeds": "no contract calls permitted"
+   },
+   "velocity": {
+    "window_seconds": 3600,
+    "max_per_window": 4,
+    "used_in_window": 2,
+    "window_started": 1789300661,
+    "note": "draws, not HBAR. The budget bounds how much; this bounds how fast."
+   },
+   "self": "0.0.10397072",
+   "asset": "HBAR, in tinybars"
+  }
+ },
+ "2": {
+  "apdu": "01c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c30000000000989680000000000000000000000000003d090000000000000f424000000000005b8d8000000000000000040100000000009e85c90000ff0000000000000000000000000777617463686572",
+  "gateway": {
+   "agent": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+   "budget_total": "10000000",
+   "reserved": "0",
+   "spent": "4000000",
+   "per_call_max": "1000000",
+   "available": "6000000",
+   "expiry": 0,
+   "draws_so_far": 4,
+   "label": "watcher",
+   "payees": [
+    "0.0.10388937"
+   ],
+   "calls": {
+    "contracts": [],
+    "selectors": [],
+    "recipient_arg": null,
+    "proceeds": "no contract calls permitted"
+   },
+   "velocity": null,
+   "self": "0.0.10397072",
+   "asset": "HBAR, in tinybars"
+  }
+ },
+ "4": {
+  "apdu": "019de980aa335df2af27ea4c640c09878ca7d9dd9100000000004c4b40000000000000000000000000000f424000000000000f424000000000003d090000000000000000010100000000009e85c90000ff0000000000000000000000000872656d6f74652d31",
+  "gateway": {
+   "agent": "9de980aa335df2af27ea4c640c09878ca7d9dd91",
+   "budget_total": "5000000",
+   "reserved": "0",
+   "spent": "1000000",
+   "per_call_max": "1000000",
+   "available": "4000000",
+   "expiry": 0,
+   "draws_so_far": 1,
+   "label": "remote-1",
+   "payees": [
+    "0.0.10388937"
+   ],
+   "calls": {
+    "contracts": [],
+    "selectors": [],
+    "recipient_arg": null,
+    "proceeds": "no contract calls permitted"
+   },
+   "velocity": null,
+   "self": "0.0.10397072",
+   "asset": "HBAR, in tinybars"
+  }
+ }
+}
