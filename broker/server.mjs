@@ -160,6 +160,9 @@ const routes = {
         agent_id: id,
         label: a.label,
         slot: a.slot,
+        // What this agent is for, in a sentence. A console asking somebody to
+        // pick between five labels is asking them to guess.
+        does: a.does ?? null,
         grants: Object.entries(a.grants).map(([name, grant]) => ({
           name,
           limit: quotaOf(grant).limit,

@@ -486,6 +486,10 @@ const server = createServer(async (req, res) => {
         // From the broker, and named as such.
         grants: known?.grants ?? null,
         agent_id: known?.agent_id ?? null,
+        // What this agent is for, in a sentence. The roster's word, not the
+        // chip's — a label like "research-1" tells a reader nothing, and the
+        // console was asking people to pick between five of them.
+        does: known?.does ?? null,
         // A mandate with no matching roster entry is not an error. It is an
         // agent the device authorised and this host has never heard of, which
         // is worth surfacing rather than hiding: the chip is the one that

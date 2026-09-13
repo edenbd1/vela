@@ -368,3 +368,26 @@ ol.flow > li:first-child { border-top: 0; padding-top: 6px; }
   text-align: left; font: inherit; color: inherit;
 }
 .more-state { margin-left: auto; font-size: 13px; color: var(--fg-faint); }
+
+/* What an agent is for, and which one the buttons above are acting as.
+ *
+ * The fleet listed five labels and a number each. Nothing on the page said
+ * what "research-1" does, why one would pick it over "watcher", or what
+ * picking one changed — so the answer to "which agent should I select?" was
+ * a guess, including for the person who built it.
+ */
+.agent .does {
+  margin: 7px 0 2px; font-size: 13px; line-height: 1.5; color: var(--fg-muted);
+}
+.agent .picked {
+  margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line);
+  font-size: 12px; color: var(--ok);
+}
+.agent:not(.free) { cursor: pointer; }
+
+/* A model asking for the same refused thing again. Real behaviour, and one
+   agent did it nine times — printed nine times it reads as a broken console
+   rather than a looping agent. */
+.mind .again {
+  display: block; margin-top: 4px; font-size: 11px; color: var(--host);
+}

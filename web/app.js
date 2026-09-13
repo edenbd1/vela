@@ -237,6 +237,16 @@ function paintFleetFrom(d) {
     unit.textContent = "HBAR";
     amount.append(unit);
 
+    // What this agent is for. A label like "research-1" tells a reader
+    // nothing, and this list was asking them to pick between five of them.
+    // Built here, appended below the name — not here, which put it above.
+    let job = null;
+    if (a.does) {
+      job = document.createElement("div");
+      job.className = "does";
+      job.textContent = a.does;
+    }
+
     const of = document.createElement("div");
     of.className = "of";
     of.textContent = `of ${(Number(a.budget_total) / 1e8).toFixed(2)} granted` +
@@ -254,7 +264,7 @@ function paintFleetFrom(d) {
     s2.className = "held"; s2.style.width = pct(a.reserved ?? 0);
     meter.append(s1, s2);
 
-    el.append(row, amount, of, meter);
+    el.append(row, ...(job ? [job] : []), amount, of, meter);
 
     const grants = document.createElement("div");
     grants.className = "grants";
@@ -285,7 +295,15 @@ function paintFleetFrom(d) {
       grants.append(warn);
     }
 
+    if (a.slot === selected) {
+      const now = document.createElement("div");
+      now.className = "picked";
+      now.textContent = "Step 2 above spends as this agent";
+      el.append(now);
+    }
+
     el.onclick = () => { selected = a.slot; refresh(); };
+    el.title = `act as ${a.label}`;
     box.append(el);
   }
   return d;

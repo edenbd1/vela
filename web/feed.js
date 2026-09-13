@@ -112,7 +112,30 @@ function onAgentEvent(e) {
   const m = mindFor(e.agent);
 
   if (e.kind === "decision") {
+    // A model that gets refused and asks for the same thing again is a real
+    // and interesting behaviour — one of these ran the identical check nine
+    // times after a broker refusal. Printed nine times it reads as a broken
+    // console rather than a looping agent, and it pushes everything else off
+    // the screen. Said once, with a count.
+    const same = m.steps.lastElementChild;
+    const signature = `${e.call || e.tool}\u0000${e.thought || ""}`;
+    if (same && same.dataset.sig === signature) {
+      const n = Number(same.dataset.n || 1) + 1;
+      same.dataset.n = n;
+      let tag = same.querySelector(".again");
+      if (!tag) {
+        tag = document.createElement("span");
+        tag.className = "again";
+        same.append(tag);
+      }
+      // What was observed, not what it means: these are repeats of one call,
+      // and whether each was refused is a separate event this does not see.
+      tag.textContent = `asked ${n} times in a row`;
+      return;
+    }
+
     const li = document.createElement("li");
+    li.dataset.sig = signature;
     const call = document.createElement("span");
     call.className = "call";
     call.textContent = e.call || e.tool;
@@ -174,7 +197,13 @@ function onAgentEvent(e) {
   out.textContent = e.kind === "refused"
     ? `refused: ${e.reason} — ${e.why ?? ""}`
     : (e.summary || "");
-  (m.last ?? m.steps).append(out);
+  // A collapsed step gets one copy of its outcome, not one per repeat. An
+  // agent that asked the same thing nine times was refused nine times, and
+  // nine identical refusals under one line is the thing collapsing was for.
+  const host = m.last ?? m.steps;
+  const already = [...host.querySelectorAll(".out")]
+    .some((n) => n.textContent === out.textContent);
+  if (!already) host.append(out);
 }
 
 /**

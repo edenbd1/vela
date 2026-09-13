@@ -210,6 +210,31 @@ def main():
               "thought": "a fresh run"})
         time.sleep(1.0)
         again = page.inner_text("#minds")
+        # A model refused once and asking for the identical thing again is real
+        # behaviour — one of these ran the same check nine times after a broker
+        # refusal. Nine identical blocks read as a broken console rather than a
+        # looping agent, and they push everything else off the screen.
+        for i in range(4):
+            post({"agent": "loop-1", "kind": "decision", "step": i,
+                  "tool": "check_envelope", "call": "check_envelope()",
+                  "thought": "Nightly budget."})
+            time.sleep(0.1)
+        time.sleep(0.8)
+        # Scoped to this agent's own column: the live feed may hold other
+        # agents that looped for real, and counting theirs proves nothing.
+        looped = page.evaluate("""() => {
+          const head = [...document.querySelectorAll('#minds .mind')]
+            .find(m => m.querySelector('.who')?.textContent === 'loop-1');
+          return head ? [...head.querySelectorAll('.steps li')]
+            .map(e => e.textContent) : [];
+        }""")
+        # The shape, not the number: the console's event buffer survives
+        # between runs of this suite, so an exact count asserts how many times
+        # the suite has run rather than what the page does with repeats.
+        check("a looping agent is one line with a count, not one line each",
+              len(looped) == 1 and "times in a row" in looped[0],
+              f"{looped}")
+
         check("a new run replaces the agent's previous one",
               "recipient_not_self" not in again and "a fresh run" in again,
               again[:200])
