@@ -97,8 +97,13 @@ def main():
         fleet = json.loads(urllib.request.urlopen(
             f"{CONSOLE}/api/fleet", timeout=8).read())
         has_chip = any(a.get("label") for a in fleet.get("agents", []))
+        # Step 1's cards come from the broker's roster, which is a different
+        # absence from the chip's: a runner has neither, and gating one on the
+        # other would hide a real failure.
+        has_roster = bool(fleet.get("roster"))
     except Exception:
         has_chip = False
+        has_roster = False
 
     print("the console, in a browser"
           + ("" if has_chip else "   (no chip — device checks skipped)"))
@@ -318,15 +323,24 @@ def main():
         # a reader was expected to already know.
         cards = page.eval_on_selector_all(
             ".hire-card", "els => els.map(e => e.textContent.replace(/\\s+/g,' ').trim())")
-        check("hiring is a choice between described roles", len(cards) >= 3, f"{cards}")
-        check("and each says what it does and what it may spend",
-              all("HBAR in total" in c and "in one payment" in c for c in cards),
-              f"{cards}")
-        chosen = page.eval_on_selector_all(".hire-card.on", "els => els.length")
-        check("exactly one is chosen", chosen == 1, f"{chosen} chosen")
-        check("and the device's words are shown before it is pressed",
-              "will name" in page.inner_text("#grant-note"),
-              page.inner_text("#grant-note"))
+        # Step 1 offers roles rather than a text field with a label in it that
+        # a reader was expected to already know. The cards are the broker's
+        # roster, not the chip's fleet: a runner has neither, and they are
+        # different absences.
+        if has_roster:
+            check("hiring is a choice between described roles",
+                  len(cards) >= 3, f"{cards}")
+            check("and each says what it does and what it may spend",
+                  all("HBAR in total" in c and "in one payment" in c for c in cards),
+                  f"{cards}")
+            chosen = page.eval_on_selector_all(".hire-card.on", "els => els.length")
+            check("exactly one is chosen", chosen == 1, f"{chosen} chosen")
+            check("and the device's words are shown before it is pressed",
+                  "will name" in page.inner_text("#grant-note"),
+                  page.inner_text("#grant-note"))
+        else:
+            check("with no roster, step 1 offers nothing rather than a blank card",
+                  cards == [], f"{cards}")
 
         # And they say what will happen, not what is being bought.
         spine = page.eval_on_selector_all(
