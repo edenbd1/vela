@@ -1412,9 +1412,9 @@ async function runOp(op, params = {}) {
   opRunning = op;
 
   lockActions(true);
-  const buttons = document.querySelectorAll("#ops .act");
+  const buttons = document.querySelectorAll("#ops .act, #flow [data-op]");
   buttons.forEach((b) => (b.disabled = true));
-  const pressed = document.querySelector(`#ops .act[data-op="${op}"]`);
+  const pressed = document.querySelector(`[data-op="${op}"]`);
   const was = pressed ? pressed.textContent : "";
   if (pressed) pressed.textContent = "Running…";
 
@@ -1459,7 +1459,15 @@ async function runOp(op, params = {}) {
   }
 }
 
-document.querySelectorAll("#ops .act[data-op]").forEach((b) => {
+// Anywhere, not just inside #ops. Grant moved to the spine when the page was
+// rebuilt around the three acts, and this selector did not move with it — so
+// the first button on the page did nothing at all when pressed.
+document.querySelectorAll("[data-op]").forEach((b) => {
+  // Marked so a test can tell a wired control from one that only looks like
+  // it. addEventListener leaves nothing readable behind, and the bug this
+  // catches is a button that is present, enabled, styled as the primary
+  // action, and listening to nobody.
+  b.dataset.bound = "1";
   b.addEventListener("click", () => {
     const op = b.dataset.op;
     const params = op === "grant"

@@ -313,6 +313,22 @@ def main():
             check("the spine is there with nothing to spend",
                   len(spine) == 3, f"{spine}")
 
+        # Every button on the spine must actually do something.
+        #
+        # Grant moved here when the page was rebuilt around the three acts,
+        # and the click handler — scoped to the card it used to live in — did
+        # not move with it. The first button on the page, styled as the
+        # primary action, listened to nobody. Nothing else here could see
+        # that: it renders, it is enabled, it has the right label, and the
+        # suite asserted all three.
+        dead = page.evaluate("""() => {
+          return [...document.querySelectorAll('#flow button:not(.hire-card)')]
+            .filter(b => !b.onclick && !b.dataset.bound)
+            .map(b => b.textContent.trim());
+        }""")
+        check("every button on the spine is wired to something", dead == [],
+              f"dead: {dead}")
+
         more = page.query_selector("#more-body")
         check("everything else starts folded away",
               more.get_attribute("hidden") is not None)
