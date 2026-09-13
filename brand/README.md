@@ -27,3 +27,13 @@ from PIL import Image
 Image.open('/tmp/i.png').convert('L').point(lambda p: 0 if p<128 else 255,'1') \
      .convert('P').save('app_vela_40px.gif')"
 ```
+
+## For a submission form
+
+`vela-logo-512.png` is the square one: the mark, white, on the forest green
+the console's own header uses. The transparent `vela-mark-512.png` next to it
+is white on nothing, which is invisible on any light background.
+
+`vela-cover.png` is 1280x720. The mark bleeds off the right at 7% opacity,
+exactly as the console carries it behind the hero, so the cover and the
+product are recognisably the same thing.
