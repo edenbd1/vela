@@ -11,6 +11,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/edenbd1/vela/actions/workflows/test.yml"><img
+     src="https://github.com/edenbd1/vela/actions/workflows/test.yml/badge.svg"
+     alt="the suite"></a>
+</p>
+
+<p align="center">
   <a href="#an-agent-actually-decides">An agent, deciding</a> ·
   <a href="#the-fleet">The fleet</a> ·
   <a href="#capabilities-not-credentials">Capabilities, not credentials</a> ·
