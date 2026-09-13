@@ -391,3 +391,28 @@ ol.flow > li:first-child { border-top: 0; padding-top: 6px; }
 .mind .again {
   display: block; margin-top: 4px; font-size: 11px; color: var(--host);
 }
+
+/* ---------------------------------------------------------------- hire ----
+ * Choosing what to put on the device.
+ *
+ * Step 1 was a text field containing "remote-1" and two unlabelled numbers,
+ * which asks a reader to already know which agents exist, what they are for,
+ * and what a sensible budget looks like. Cards say all three.
+ */
+.hire { display: grid; gap: 11px; grid-template-columns: repeat(auto-fit, minmax(236px, 1fr)); }
+.hire-card {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 14px 15px; border-radius: 13px;
+  border: 1px solid var(--line2); background: #fdfaf1; color: inherit;
+  font: inherit; transition: border-color .12s, background .12s;
+}
+.hire-card:hover { border-color: rgba(37,72,57,.34); }
+.hire-card.on { border-color: var(--fg); background: rgba(37,72,57,.05); }
+.hire-card[disabled] { opacity: .5; cursor: default; }
+
+.hire-role { font-size: 15px; font-weight: 600; color: var(--fg); }
+.hire-does { margin-top: 6px; font-size: 13px; line-height: 1.5; color: var(--fg-muted); }
+.hire-terms { margin-top: 10px; font-size: 12px; color: var(--fg); }
+.hire-as {
+  margin-top: 4px; font-family: var(--mono); font-size: 11px; color: var(--fg-faint);
+}

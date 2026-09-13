@@ -500,6 +500,13 @@ const server = createServer(async (req, res) => {
 
     return send(res, 200, "application/json", JSON.stringify({
       agents,
+      // Everything the broker knows how to hire, whether or not the chip is
+      // holding one right now. The grant step is a choice between these, and
+      // it used to be a text field with a label in it that a reader was
+      // expected to already know.
+      roster: (roster?.agents ?? [])
+        .filter((a) => a.suggest)
+        .map((a) => ({ label: a.label, does: a.does, ...a.suggest })),
       sources: {
         spending: mandates ? "chip" : "unreachable",
         capabilities: roster ? "broker" : "unreachable",

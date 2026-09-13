@@ -134,16 +134,17 @@
                 <li>
                   <div class="flow-n">1</div>
                   <div class="flow-body">
-                    <h3>A human grants an envelope</h3>
-                    <p>The Flex shows the agent, the budget and the ceiling, and
-                       waits for a finger. <b>This is the only tap in the whole
-                       story.</b></p>
-                    <div class="op-fields mt-3">
-                      <label>agent <input id="grant-label" value="remote-1" spellcheck="false"></label>
-                      <label>budget <input id="grant-budget" value="0.05" spellcheck="false"></label>
-                      <label>ceiling <input id="grant-ceiling" value="0.01" spellcheck="false"></label>
-                    </div>
-                    <button class="act mt-3" data-op="grant">Grant it — needs your finger</button>
+                    <h3>A human hires an agent</h3>
+                    <p>Pick what you are hiring. The Flex will show you those
+                       exact terms — the job, the budget, the most it may spend
+                       in one payment — and wait for a finger.
+                       <b>This is the only tap in the whole story.</b></p>
+                    <!-- Cards, not a text field. Step 1 used to ask for a name
+                         a reader was expected to already know, and two numbers
+                         with no unit and no sense of scale. -->
+                    <div class="hire mt-4" id="hire"></div>
+                    <button class="act mt-4" data-op="grant" id="grant-go">Grant it — needs your finger</button>
+                    <p class="mt-2 text-[13px] text-fg-muted" id="grant-note"></p>
                   </div>
                 </li>
 

@@ -272,15 +272,33 @@ def main():
         # what pressing them would prove. The argument is three acts; anything
         # past that is behind the fold at the bottom, and the count is asserted
         # because it grew one button at a time and nobody noticed.
+        # Choice cards are buttons in the markup — they are a radio group, and
+        # a keyboard should reach them — but a reader picking one of four
+        # roles is making one decision, not four. Counted separately below.
         visible = page.eval_on_selector_all(
-            "button",
+            "button:not(.hire-card)",
             "els => els.filter(e => e.offsetParent).map(e => e.textContent.trim())")
         check("the page asks a reader to read a handful of buttons, not a wall",
               len(visible) <= 9, f"{len(visible)}: {visible}")
 
+        # Step 1 offers roles rather than a text field with a label in it that
+        # a reader was expected to already know.
+        cards = page.eval_on_selector_all(
+            ".hire-card", "els => els.map(e => e.textContent.replace(/\\s+/g,' ').trim())")
+        check("hiring is a choice between described roles", len(cards) >= 3, f"{cards}")
+        check("and each says what it does and what it may spend",
+              all("HBAR in total" in c and "in one payment" in c for c in cards),
+              f"{cards}")
+        chosen = page.eval_on_selector_all(".hire-card.on", "els => els.length")
+        check("exactly one is chosen", chosen == 1, f"{chosen} chosen")
+        check("and the device's words are shown before it is pressed",
+              "will name" in page.inner_text("#grant-note"),
+              page.inner_text("#grant-note"))
+
         # And they say what will happen, not what is being bought.
         spine = page.eval_on_selector_all(
-            "#flow button", "els => els.map(e => e.textContent.trim())")
+            "#flow button:not(.hire-card)",
+            "els => els.map(e => e.textContent.trim())")
         if has_chip:
             # Three acts, five buttons: grant, two payments the chip decides
             # differently, the attempt to route the money away, and revoke.

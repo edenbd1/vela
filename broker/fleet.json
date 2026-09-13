@@ -34,7 +34,12 @@
     }
    },
    "token_sha256": "06f896c63ba736bb414312890c0656aa8c7fa88c222fd0c83154c21dedcd9b6a",
-   "does": "Screens counterparties and buys the deepest analysis it can afford. The only one allowed to trade."
+   "does": "Screens counterparties and buys the deepest analysis it can afford. The only one allowed to trade.",
+   "suggest": {
+    "role": "A researcher",
+    "budget": "0.50",
+    "ceiling": "0.10"
+   }
   },
   "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2": {
    "label": "ops-nightly",
@@ -46,7 +51,12 @@
     }
    },
    "token_sha256": "54b9c6f4ccb96aee4664b47017f92b058cb44c89c2d23be354b3511c4415d2f0",
-   "does": "A cheap check, every night. Buys the smallest thing that answers the question."
+   "does": "A cheap check, every night. Buys the smallest thing that answers the question.",
+   "suggest": {
+    "role": "A nightly check",
+    "budget": "0.20",
+    "ceiling": "0.05"
+   }
   },
   "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3": {
    "label": "watcher",
@@ -58,7 +68,12 @@
     }
    },
    "token_sha256": "03e230412eba68e63b2a2c99c83c3d8f0a85a0ef0ce38910eecaef1ae86f4426",
-   "does": "Watches two accounts and reports which is riskier. Cannot spend much."
+   "does": "Watches two accounts and reports which is riskier. Cannot spend much.",
+   "suggest": {
+    "role": "A watcher",
+    "budget": "0.10",
+    "ceiling": "0.01"
+   }
   },
   "9de980aa335df2af27ea4c640c09878ca7d9dd91": {
    "label": "remote-1",
@@ -67,7 +82,12 @@
     "infer.triage": 5
    },
    "token_sha256": "8cb7dcce83fcaba35c5bed21945af606db589e0bc03c72c40495fcb412755dc0",
-   "does": "Runs on a GitHub runner \u2014 hardware nobody here owns. Buys one inference, then asks for too much."
+   "does": "Runs on a GitHub runner \u2014 hardware nobody here owns. Buys one inference, then asks for too much.",
+   "suggest": {
+    "role": "A remote worker",
+    "budget": "0.05",
+    "ceiling": "0.01"
+   }
   }
  }
 }

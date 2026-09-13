@@ -163,6 +163,10 @@ const routes = {
         // What this agent is for, in a sentence. A console asking somebody to
         // pick between five labels is asking them to guess.
         does: a.does ?? null,
+        // And what an envelope for this kind of agent usually looks like, so
+        // granting one is picking a card rather than typing a name you are
+        // expected to already know.
+        suggest: a.suggest ?? null,
         grants: Object.entries(a.grants).map(([name, grant]) => ({
           name,
           limit: quotaOf(grant).limit,

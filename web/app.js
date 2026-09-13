@@ -156,6 +156,9 @@ async function paintFleet() {
     return null;
   }
   FLEET = d;
+  // What can be hired is drawn from the same answer as what is already held —
+  // it has to be, or the card offers a name the chip is holding.
+  paintHire(d);
   return paintFleetFrom(d);
 }
 
@@ -307,6 +310,84 @@ function paintFleetFrom(d) {
     box.append(el);
   }
   return d;
+}
+
+/* ---------------------------------------------------------------- hire ----
+ * What step 1 is offering to put on the device.
+ *
+ * It was a text field with "remote-1" in it and two unlabelled numbers. That
+ * asks a reader to already know which agents exist, what they are for, and
+ * what a sensible budget looks like — and the person who built this could not
+ * answer the first one from the page.
+ *
+ * The roster is the broker's, and it says so: what an agent is for and what
+ * its envelope usually looks like are host-side facts. What the chip holds
+ * once somebody has approved it is the other half, and it is drawn separately.
+ */
+let HIRE = null;      // the card that is chosen
+
+/**
+ * A name that is not already on the chip.
+ *
+ * Granting the same label twice is legal and confusing — two slots, one name,
+ * and a public log that cannot tell the two chains apart. So "research-1"
+ * becomes "research-2" when the first is still held, rather than the console
+ * offering something that would land badly.
+ */
+function freeLabel(base, taken) {
+  if (!taken.has(base)) return base;
+  const m = base.match(/^(.*?)-(\d+)$/);
+  const stem = m ? m[1] : base;
+  for (let n = m ? Number(m[2]) + 1 : 2; n < 99; n++) {
+    if (!taken.has(`${stem}-${n}`)) return `${stem}-${n}`;
+  }
+  return base;
+}
+
+function paintHire(fleet) {
+  const box = $("hire");
+  if (!box) return;
+  const taken = new Set((fleet?.agents ?? []).map((a) => a.label).filter(Boolean));
+  const roster = fleet?.roster ?? [];
+  if (!roster.length) { box.replaceChildren(); return; }
+
+  if (!HIRE || !roster.some((r) => r.role === HIRE.role)) HIRE = roster[0];
+
+  box.replaceChildren();
+  for (const r of roster) {
+    const label = freeLabel(r.label, taken);
+    const card = document.createElement("button");
+    card.className = "hire-card" + (r.role === HIRE.role ? " on" : "");
+    card.disabled = DEMO;
+
+    const role = document.createElement("div");
+    role.className = "hire-role";
+    role.textContent = r.role;
+
+    const does = document.createElement("div");
+    does.className = "hire-does";
+    does.textContent = r.does ?? "";
+
+    const terms = document.createElement("div");
+    terms.className = "hire-terms";
+    terms.textContent = `${r.budget} HBAR in total · ${r.ceiling} the most in one payment`;
+
+    const as = document.createElement("div");
+    as.className = "hire-as";
+    as.textContent = `granted as ${label}`;
+
+    card.append(role, does, terms, as);
+    card.onclick = () => {
+      HIRE = { ...r, label };
+      paintHire(fleet);
+    };
+    box.append(card);
+  }
+
+  HIRE = { ...HIRE, label: freeLabel(HIRE.label, taken) };
+  $("grant-note").textContent =
+    `The device will name ${HIRE.label}, ${HIRE.budget} HBAR and a ` +
+    `${HIRE.ceiling} ceiling before it asks.`;
 }
 
 /* ------------------------------------------------------------ envelope -- */
@@ -1369,9 +1450,7 @@ document.querySelectorAll("#ops .act[data-op]").forEach((b) => {
   b.addEventListener("click", () => {
     const op = b.dataset.op;
     const params = op === "grant"
-      ? { label: $("grant-label").value.trim(),
-          budget: $("grant-budget").value.trim(),
-          ceiling: $("grant-ceiling").value.trim() }
+      ? { label: HIRE?.label, budget: HIRE?.budget, ceiling: HIRE?.ceiling }
       // The selected agent, by the label the chip gave it — not the one the
       // broker thinks it has. The device is the one that cannot be edited.
       : op === "agent-here"
