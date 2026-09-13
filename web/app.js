@@ -767,6 +767,10 @@ async function revoke() {
   if (!row) return;
 
   const btn = $("revoke");
+  // Remembered, not hardcoded. This put back "Revoke this agent" — the label
+  // from before the page was rebuilt around the three acts — so the button
+  // renamed itself the first time anyone used it.
+  const label = btn.textContent;
   lockActions(true);
   btn.classList.add("waiting");
   btn.textContent = `waiting for a finger on the device…`;
@@ -787,7 +791,7 @@ async function revoke() {
 
   lockActions(false);
   btn.classList.remove("waiting");
-  btn.textContent = "Revoke this agent";
+  btn.textContent = label;
 
   if (d.revoked) {
     deviceDone(`${d.was} is gone from the chip.`);
@@ -805,6 +809,10 @@ async function revoke() {
     });
     $("hint").textContent = "";
     selected = null;
+    // Step 2's heading names the selected agent, and the refresh below is
+    // what redraws it. Without this it went on saying "as ops-nightly" over
+    // a banner announcing ops-nightly was gone.
+    $("try-as").textContent = "as —";
   } else {
     $("hint").textContent = d.advice ?? d.reason ?? "not revoked";
   }

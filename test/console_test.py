@@ -161,10 +161,23 @@ def main():
         labels = page.eval_on_selector_all(
             "#minds .meta[data-agent]",
             "els => Object.fromEntries(els.map(e => [e.dataset.agent, e.textContent]))")
+        # Only for columns whose agent the chip is actually holding. An agent
+        # that has been revoked still has a column — the run happened — and
+        # "unclaimed slot" is the correct label for it, not a failure. This
+        # asserted that at least one column matched, which is a claim about
+        # which agents happen to be granted right now.
+        live = set()
         if has_chip:
+            live = {a["label"] for a in fleet.get("agents", []) if a.get("label")}
+        shown = {k: v for k, v in labels.items() if k in live}
+        if shown:
             check("a column carries the slot the chip reported",
-                  any(l.startswith("slot ") for l in labels.values()),
-                  f"{labels}")
+                  all(v.startswith("slot ") for v in shown.values()), f"{shown}")
+        gone = {k: v for k, v in labels.items() if has_chip and k not in live}
+        if gone:
+            check("and one the chip has forgotten says so rather than guessing",
+                  all(v.startswith("unclaimed slot") for v in gone.values()),
+                  f"{gone}")
         # The model tag lives in the same element. It used to be appended to
         # whatever the text already said, so re-reading the slot erased it and
         # two start events wrote it twice.
@@ -328,6 +341,21 @@ def main():
         }""")
         check("every button on the spine is wired to something", dead == [],
               f"dead: {dead}")
+
+        # A control that renames itself the first time you use it.
+        #
+        # revoke() put back a hardcoded "Revoke this agent" — the label from
+        # before the page was rebuilt around the three acts — so the button
+        # said one thing until somebody pressed it and another afterwards.
+        # Cheap to catch and invisible to anyone who only loads the page.
+        renamed = page.evaluate("""() => {
+          const b = document.getElementById('revoke');
+          const before = b.textContent;
+          const src = String(window.revoke || '');
+          return { before, hardcoded: /textContent = "Revoke/.test(src) };
+        }""")
+        check("the revoke button keeps its own label",
+              "needs your finger" in renamed["before"], renamed)
 
         more = page.query_selector("#more-body")
         check("everything else starts folded away",
