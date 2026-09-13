@@ -75,10 +75,24 @@ function mindFor(agent) {
   head.append(who, slot);
   labelSlot(slot);
 
+  // One line saying what this agent did, always visible. The transcript below
+  // it is the evidence and it is also a wall of text: three of these filled
+  // the page and a reader got none of it. So it stays open while the run is
+  // live — which is the whole point of watching — and folds into this line
+  // when the run ends, unless somebody opens it.
+  const sum = document.createElement("button");
+  sum.className = "sum";
+  sum.setAttribute("aria-expanded", "false");
+  sum.textContent = "starting…";
+  sum.onclick = () => {
+    const open = box.classList.toggle("open");
+    sum.setAttribute("aria-expanded", String(open));
+  };
+
   const steps = document.createElement("ol");
   steps.className = "steps";
 
-  box.append(head, steps);
+  box.append(head, sum, steps);
 
   const host = document.getElementById("minds");
   // The empty state is a sibling of the grid now, not a child of it, so
@@ -88,9 +102,33 @@ function mindFor(agent) {
   if (empty) empty.hidden = true;
   host.append(box);
 
-  const m = { box, steps, last: null };
+  const m = { box, steps, sum, last: null,
+              n: 0, refused: 0, spent: 0, latest: "" };
   minds.set(agent, m);
   return m;
+}
+
+/**
+ * What this agent did, in one line.
+ *
+ * Counted rather than summarised by a model: steps taken, what the chip let
+ * it spend, how many times the chip or the broker said no, and the last thing
+ * that happened. Every one of those is a number this page already has.
+ */
+function tally(m, e) {
+  if (e.kind === "decision") { m.n++; m.latest = e.call || e.tool; }
+  if (e.kind === "refused") {
+    m.refused++;
+    m.latest = `refused — ${e.reason}`;
+  }
+  const bought = /cost=([\d.]+) HBAR/.exec(e.summary ?? "");
+  if (bought) m.spent += Number(bought[1]);
+  if (e.kind === "done") m.latest = "finished";
+
+  const bits = [`${m.n} step${m.n === 1 ? "" : "s"}`];
+  if (m.spent > 0) bits.push(`spent ${m.spent.toFixed(2)} HBAR`);
+  if (m.refused) bits.push(`refused ${m.refused}×`);
+  m.sum.textContent = `${bits.join(" · ")}${m.latest ? ` — ${m.latest}` : ""}`;
 }
 
 function onAgentEvent(e) {
@@ -110,6 +148,7 @@ function onAgentEvent(e) {
   }
 
   const m = mindFor(e.agent);
+  tally(m, e);
 
   if (e.kind === "decision") {
     // A model that gets refused and asks for the same thing again is a real

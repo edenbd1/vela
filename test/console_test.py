@@ -141,13 +141,25 @@ def main():
         check("and a second agent gets its own",
               "ops-nightly" in names, f"columns: {names}")
 
-        text = page.inner_text("#minds")
+        text = page.eval_on_selector("#minds", "el => el.textContent")
         check("a hardware refusal is shown with its reason",
               "recipient_not_self" in text and "not this device" in text)
         check("a broker refusal is distinguishable from it",
               "not_granted" in text)
         check("a flagged instruction is quoted",
               "0.0.9999999" in text and "Do not mention" in text)
+        # Three full transcripts filled the page and a reader got none of
+        # them. A finished run folds into one counted line; a live one stays
+        # open, because watching it happen is the point of the panel.
+        folded = page.evaluate("""() => [...document.querySelectorAll('#minds .mind')]
+          .map(m => ({ live: m.classList.contains('live'),
+                       sum: m.querySelector('.sum')?.textContent ?? '',
+                       open: !!m.querySelector('.steps')?.offsetParent }))""")
+        check("every run carries a one-line summary",
+              all("step" in f["sum"] for f in folded), f"{folded}")
+        check("a live run stays open, a finished one folds away",
+              all(f["open"] == f["live"] for f in folded), f"{folded}")
+
         check("the verdict lands when the run ends",
               "flagged, not followed" in text)
 
@@ -222,7 +234,14 @@ def main():
               "tool": "check_envelope", "call": "check_envelope()",
               "thought": "a fresh run"})
         time.sleep(1.0)
-        again = page.inner_text("#minds")
+        # research-1's own column. Reading the whole panel meant any other
+        # agent's refusal counted as this agent's previous run not having been
+        # cleared, which is a claim about who else happens to be in the feed.
+        again = page.evaluate("""() => {
+          const m = [...document.querySelectorAll('#minds .mind')]
+            .find(x => x.querySelector('.who')?.textContent === 'research-1');
+          return m ? m.textContent : '';
+        }""")
         # A model refused once and asking for the identical thing again is real
         # behaviour — one of these ran the same check nine times after a broker
         # refusal. Nine identical blocks read as a broken console rather than a
@@ -251,7 +270,8 @@ def main():
         check("a new run replaces the agent's previous one",
               "recipient_not_self" not in again and "a fresh run" in again,
               again[:200])
-        check("and leaves the other agents alone", "not_granted" in again)
+        others = page.eval_on_selector("#minds", "el => el.textContent")
+        check("and leaves the other agents alone", "not_granted" in others)
 
         # The one string on this page written by a third party, by way of a
         # language model. If it ever renders as markup, that is the whole
@@ -289,7 +309,7 @@ def main():
         # a keyboard should reach them — but a reader picking one of four
         # roles is making one decision, not four. Counted separately below.
         visible = page.eval_on_selector_all(
-            "button:not(.hire-card)",
+            "button:not(.hire-card):not(.sum)",
             "els => els.filter(e => e.offsetParent).map(e => e.textContent.trim())")
         check("the page asks a reader to read a handful of buttons, not a wall",
               len(visible) <= 9, f"{len(visible)}: {visible}")
@@ -334,12 +354,24 @@ def main():
         # primary action, listened to nobody. Nothing else here could see
         # that: it renders, it is enabled, it has the right label, and the
         # suite asserted all three.
+        # The fold has to be open, or its buttons are not in the document's
+        # layout and it is easy to believe they were checked.
+        page.click("#more-toggle")
+        time.sleep(0.3)
         dead = page.evaluate("""() => {
-          return [...document.querySelectorAll('#flow button:not(.hire-card)')]
+          const skip = ['more-toggle', 'device', 'device-panel'];
+          return [...document.querySelectorAll('button:not(.hire-card)')]
             .filter(b => !b.onclick && !b.dataset.bound)
-            .map(b => b.textContent.trim());
+            .filter(b => !skip.includes(b.id) && !b.closest('#device-panel'))
+            .map(b => (b.id || b.textContent.trim().slice(0, 40)));
         }""")
-        check("every button on the spine is wired to something", dead == [],
+        page.click("#more-toggle")
+        time.sleep(0.3)
+        # Every button on the page, not only the three acts. A dead control
+        # survived forty assertions once because the suite only checked that
+        # it rendered, was enabled and had the right label — and the one it
+        # missed was the primary action.
+        check("every button on the page is wired to something", dead == [],
               f"dead: {dead}")
 
         # A control that renames itself the first time you use it.

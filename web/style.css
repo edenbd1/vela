@@ -424,3 +424,22 @@ ol.flow > li:first-child { border-top: 0; padding-top: 6px; }
   font-size: 12px; line-height: 1.45; color: var(--fg-muted);
 }
 .agent .does .runs { color: var(--fg-faint); }
+
+/* A run, in one line, with the transcript behind it.
+ *
+ * Three full transcripts filled the page and a reader got none of them. This
+ * stays open while the run is live — watching it happen is the point — and
+ * folds into its summary when the run ends, unless somebody opens it.
+ */
+.mind .sum {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  margin-top: 9px; padding: 0; border: 0; background: none;
+  font: inherit; font-size: 13px; color: var(--fg-muted);
+}
+.mind .sum::after {
+  content: " — show"; color: var(--fg-faint); font-size: 12px;
+}
+.mind.open .sum::after { content: " — hide"; }
+.mind.live .sum::after { content: ""; }
+.mind:not(.live):not(.open) .steps,
+.mind:not(.live):not(.open) .verdict { display: none; }
