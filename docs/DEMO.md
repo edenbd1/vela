@@ -1,5 +1,34 @@
 # The demo — a shooting plan
 
+**Four minutes is the hard limit.** ETHGlobal's rules cap the video at four
+minutes and say speeding one up is checked by hand and disqualifies the
+submission — so the plan below, which was timed against Hedera's five, does
+not fit. The cut that does is at the top of this file; the full version is
+kept underneath because it is where each beat's wording lives.
+
+## The four-minute cut
+
+    0:00  the problem, on the device          25s
+    0:25  three agents, one chip               45s   ← never cut
+    1:10  an agent talked into stealing        70s   ← never cut
+    2:20  hardware we do not own, one button   35s
+    2:55  the gesture: revoke                  35s   ← never cut
+    3:30  anyone can check it                  25s
+                                              ————
+                                              3:55
+
+What that drops, and why it is survivable: the Key Ring beat at 0:40 (the
+claim is in the README and a public CI log), the benchmark at 2:50 (its last
+three lines can be said over the exfiltration beat), the velocity beat at
+3:10, the controlled experiment at 3:20, the enclave at 4:00, and the Connect
+beat at 1:20 — the console holding the Flex over WebHID is on the deployed
+page, so a judge can do it themselves rather than watch you do it.
+
+If a take runs long, the 2:20 runner beat is the next to go: it is the one
+whose evidence is already a public GitHub Actions log a judge can open.
+
+---
+
 Five minutes is the Hedera limit and the right length anyway. The plan is
 built so it can be recorded in one take, and so that the moment that carries
 the argument needs no narration.
