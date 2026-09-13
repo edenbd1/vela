@@ -443,3 +443,11 @@ ol.flow > li:first-child { border-top: 0; padding-top: 6px; }
 .mind.live .sum::after { content: ""; }
 .mind:not(.live):not(.open) .steps,
 .mind:not(.live):not(.open) .verdict { display: none; }
+
+/* The recorded-run banner, once some of it is not recorded any more.
+   Green because this is the page succeeding, not warning. */
+.banner.live {
+  background: rgba(31, 111, 74, .07);
+  border-color: rgba(31, 111, 74, .26);
+}
+.banner.live b { color: var(--ok); }

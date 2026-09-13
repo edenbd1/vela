@@ -1103,7 +1103,8 @@ async function readOverHid() {
   const ok = info.app === "Vela";
   return {
     state: ok ? "ready" : "wrong-app",
-    label: ok ? (CONFIG?.buyer ?? "connected") : `open Vela on the Flex`,
+    label: ok ? (CONFIG?.buyer ?? (DEMO ? "your Flex" : "connected"))
+              : `open Vela on the Flex`,
     // On a copy with no gateway there is no bridge to answer for, and saying
     // so would be the panel describing a machine the reader is not on.
     why: ok && DEMO
@@ -1302,15 +1303,17 @@ async function connectLedger() {
       // The banner has to stop saying every figure is a recording, because
       // the ones above are not any more. The transcript still is, and saying
       // only half of that would be the page overclaiming about itself.
-      $("demo-banner").innerHTML = "";
+      // Green, and short. This is the page succeeding at something, and the
+      // first version said so in five lines the colour of a warning.
+      $("demo-banner").className = "banner live";
+      $("demo-banner").replaceChildren();
       const b1 = document.createElement("b");
-      b1.textContent = "Your Flex.";
+      b1.textContent = "Your Flex, live.";
       const t1 = document.createElement("span");
-      t1.textContent = " The fleet and the envelope below are being read from " +
-        "the device in your hand, by this page, over WebHID. The agent " +
-        "transcript further down is still a recording — no agent is running " +
-        "for you — and the buttons stay inert, because spending needs the " +
-        "console on your own machine.";
+      t1.textContent = " The fleet and envelope below are read from your own " +
+        "device over WebHID, with nothing installed. The agent transcript is " +
+        "a recording, and the buttons are inert: spending needs the console " +
+        "on your own machine.";
       $("demo-banner").append(b1, t1);
 
       paintDevice({
