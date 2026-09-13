@@ -551,6 +551,14 @@ def main():
             "#c-agents, #c-left, #c-draws", "e => e.map(x => x.textContent)")
         check("and the headline figures are not zero",
               len(claims) == 3 and claims[0] not in ("0", "—"), f"{claims}")
+        # Wait for the replay rather than guessing at its length. It plays
+        # the recording at the pace it happened, bounded, so a longer run is
+        # a longer wait — and a fixed sleep turns "we recorded more" into a
+        # failing assertion about the page.
+        for _ in range(60):
+            if demo.eval_on_selector_all(".mind.live", "e => e.length") == 0:
+                break
+            time.sleep(1)
         check("nothing pulses once the recording ends",
               demo.eval_on_selector_all(".mind.live", "e => e.length") == 0)
         check("a static page contacts no origin but itself",

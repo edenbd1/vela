@@ -894,13 +894,6 @@ async function enterDemo(reason) {
     paintHire(rec.fleet);
   }
 
-  // When the recording was made. The banner said so, and said it from
-  // nothing: #demo-when was never written, so it kept whatever was in the
-  // markup and told a reader the figures came off a device on a day the
-  // recording had nothing to do with.
-  if (rec?.recorded) {
-    $("demo-when").textContent = String(rec.recorded).slice(0, 10);
-  }
   // The fleet goes in too: the three figures at the top of the page are
   // counted from it, and a recording that showed "0 agents" above three
   // agents would be worse than showing nothing.
