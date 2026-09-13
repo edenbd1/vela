@@ -679,7 +679,10 @@ async function buy(tier) {
   lockActions(false);
   const m = await refresh();
   $("hint").textContent = m
-    ? `${hbar(m.available)} left in the envelope`
+    // refresh() hands back the whole envelope, not the mandate inside it, so
+    // this read undefined and printed "NaN HBAR left in the envelope" under
+    // the buttons every time a payment went through.
+    ? `${hbar(m.mandate?.available ?? m.available)} left in the envelope`
     : "";
 }
 
