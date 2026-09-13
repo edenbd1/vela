@@ -626,3 +626,28 @@ test("a --keep entry finds its own chain on the public topic", async () => {
   });
   assert.equal(digest.slice(0, 16), "699722a32363a210");
 });
+
+test("an envelope in the backup that has not drawn yet is not 'missing'", () => {
+  // recover.mjs --check reports envelopes the chip holds that no backup
+  // covers. It compared against the *restorable* list, which is the backup
+  // with the refused entries filtered out — and "nothing on this topic" is a
+  // refusal. So three envelopes granted two minutes earlier, sitting in the
+  // backup, were reported as unrecoverable. The two states are not the same
+  // and one of them is what every fresh grant looks like.
+  // 0.50 for the one with a chain, so the 0.40 it claims to have left is
+  // inside the envelope rather than describing some other one.
+  const backup = [one("research-1", "50000000"), one("ops-nightly"),
+                  one("watcher")];
+  const seen = positions([draw(D, 7, 1, 10_000_000, 40_000_000)]);
+  const rows = plan({ mandates: backup, instance: "7", seen,
+                      digestOf: (m) => (m.label === "research-1" ? D : "other") });
+
+  const restorable = rows.filter((r) => !r.refused);
+  assert.equal(restorable.length, 1, "only research-1 has a chain here");
+
+  const onChip = ["research-1", "ops-nightly", "watcher", "stranger"];
+  const backedUp = new Set(rows.map((r) => r.label));
+  const uncovered = onChip.filter((l) => !backedUp.has(l));
+  assert.deepEqual(uncovered, ["stranger"],
+    "only the one that is genuinely not in the backup");
+});

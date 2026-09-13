@@ -580,6 +580,20 @@ answer.
 - Do not run the benchmark, the swarm and a live agent at the same time. They
   compete for one model runtime and all three degrade — a refused agent went
   into a seven-turn loop the first time that happened.
+- **If an agent dies with `unexpected EOF`, unload the model.** It is not
+  contention and it is not a missing model: a plain request to the same model
+  answers fine while every agent run dies a few steps in, because the agent
+  sends a JSON schema with a context that grows. The runtime gets into that
+  state and stays there — two runs in a row failed with nothing else running.
+  One line fixes it, and it is worth doing before a take rather than during:
+
+  ```bash
+  curl -s http://127.0.0.1:11434/api/generate \
+       -d '{"model":"hermes3:8b","keep_alive":0}'
+  ```
+
+  The next run reloads the model from scratch and passes. If it does not,
+  `ollama ps` will show what is still resident.
 - Do not say the models "obey the injection X% of the time" for the payee
   scenario. It has read 33%, 0%, 83% and 40% across runs of the same thing,
   and the 0% was a context-window bug hiding the injection from the model.

@@ -220,7 +220,14 @@ if (process.argv.includes("--check")) {
   // Not a failure, so it does not change the exit code. It is a fact about
   // what this file covers, and the whole point of the file is that someone
   // can trust what it says.
-  const uncovered = slots.filter((s) => !plan.some((r) => r.label === s.label));
+  // Against the backup, not against `plan` — which is `rows` with the refused
+  // ones filtered out, and "nothing on this topic" is a refusal. So a freshly
+  // granted envelope that had not drawn yet was reported as missing from a
+  // backup it was sitting in, three of them at once, right after a clean
+  // fleet grant. The two states are not the same thing and one of them is
+  // ordinary.
+  const backedUp = new Set(rows.map((r) => r.label));
+  const uncovered = slots.filter((s) => !backedUp.has(s.label));
   if (uncovered.length) {
     console.log();
     console.log(`  ${uncovered.length} envelope(s) on the chip are not in this backup:`);
