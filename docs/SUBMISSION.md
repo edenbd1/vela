@@ -52,6 +52,8 @@ chip refuses, the refusal comes back as a reason it can act on, and it adapts.
 | A trustchain whose owner is the Secure Element | `enroll.cjs grant --device` — every admission a tap, two members admitted |
 | Losing the device and getting the envelopes back | the fleet revoked and restored from the public log, positions intact to the tinybar |
 | A rate limit, not just a budget | four draws paid, the fifth refused `too_fast` with 0.14 HBAR still available |
+| The console, without cloning anything | [vela-console.vercel.app](https://vela-console.vercel.app) — replaying a run recorded off the Flex, every button inert and a banner saying so |
+| The log, checked in **your** browser | [verify.html](https://vela-console.vercel.app/verify.html?topic=0.0.10522510) — reads Hedera's mirror node and nothing of ours |
 | A browser talking to the Flex with nothing of ours installed | press **Connect Ledger**: WebHID, no bridge process, no extension |
 
 ## The one measurement worth reading

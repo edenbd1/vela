@@ -11,6 +11,11 @@
 </p>
 
 <p align="center">
+  <b><a href="https://vela-console.vercel.app">the console, replaying a real run</a></b> ·
+  <b><a href="https://vela-console.vercel.app/verify.html?topic=0.0.10522510">check the log yourself</a></b>
+</p>
+
+<p align="center">
   <a href="https://github.com/edenbd1/vela/actions/workflows/test.yml"><img
      src="https://github.com/edenbd1/vela/actions/workflows/test.yml/badge.svg"
      alt="the suite"></a>
@@ -1007,6 +1012,18 @@ read by anyone without handing them the fleet. Losing a token costs one
 re-enrolment.
 
 Open `http://127.0.0.1:4050` to see the fleet and stop one of them.
+
+Without a device, the same page is at
+[vela-console.vercel.app](https://vela-console.vercel.app). It is the console,
+not a mock-up of it: with no gateway on its origin it replays
+`web/demo-run.json` — a run recorded off the Flex, with the chip's refusals in
+it — says so in a banner, and disables every button. `verify.html` there is
+fully live, because it reads Hedera's mirror node from your browser and needs
+nothing of ours at all.
+
+```bash
+./scripts/build-static.sh dist      # the files that page is made of
+```
 
 Four tools that are not part of any flow above, listed because an entry point
 nobody documents is one nobody maintains — `host/verify_body.py` rotted for

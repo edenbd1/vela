@@ -887,6 +887,19 @@ async function enterDemo(reason) {
     // recording clearly shows in slot 0.
     window.__fleet = rec.fleet.agents ?? [];
     paintFleetFrom(rec.fleet);
+    // Step 1's cards come from the roster, which the recording carries. A
+    // static copy of this console showed an empty first step with a Grant
+    // button under it and nothing to grant — which looks broken rather than
+    // recorded.
+    paintHire(rec.fleet);
+  }
+
+  // When the recording was made. The banner said so, and said it from
+  // nothing: #demo-when was never written, so it kept whatever was in the
+  // markup and told a reader the figures came off a device on a day the
+  // recording had nothing to do with.
+  if (rec?.recorded) {
+    $("demo-when").textContent = String(rec.recorded).slice(0, 10);
   }
   // The fleet goes in too: the three figures at the top of the page are
   // counted from it, and a recording that showed "0 agents" above three
